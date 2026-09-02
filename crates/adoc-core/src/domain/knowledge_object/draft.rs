@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
-use crate::domain::graph::GraphRelationKind;
 use crate::domain::identity::ObjectId;
 use crate::domain::knowledge_object::api::{
     INTERFACE_TYPE_FIELD, METHOD_FIELD, PATH_FIELD as API_PATH_FIELD, SYMBOL_FIELD,
@@ -17,13 +16,16 @@ use crate::domain::knowledge_object::observation::{
     OBSERVED_AT_FIELD, ObservationStatus, SAMPLE_SIZE_FIELD,
 };
 use crate::domain::knowledge_object::policy::PolicyStatus;
-use crate::domain::knowledge_object::procedure::body_text_starts_with_ordered_list;
+use crate::domain::knowledge_object::procedure::{
+    body_text_starts_with_ordered_list, verified_fields_complete,
+};
 use crate::domain::knowledge_object::question::{
     ANSWERED_STATUS, QuestionStatus, RESOLVED_BY_FIELD,
 };
 use crate::domain::knowledge_object::task::{DUE_FIELD, TaskStatus};
 use crate::domain::knowledge_object::{
-    BlockKind, EVIDENCE_REF_FIELD, closed_schema_field_error, list_content_range,
+    BlockKind, EVIDENCE_REF_FIELD, closed_schema_field_error, is_allowed_field_key,
+    is_relation_field, list_items,
 };
 use crate::domain::source_edit::planner::field_value_line_break_diagnostic;
 use crate::domain::value_objects::action::{AllowedAction, ForbiddenAction};
@@ -79,10 +81,9 @@ pub(crate) fn validate_draft(draft: KnowledgeObjectDraft<'_>) -> DraftValidation
 
 /// Revalidate an existing object's prospective field state for every shipped
 /// [`BlockKind`]. Existing-object proof obligations stay with the graph-aware
-/// patch rules; this pass returns diagnostics only. For a two-patch logical
-/// edit it sees the exact-head body, while `replace_body` is guarded and
-/// post-checked independently; add sequence-aware validation before any
-/// future kind rule couples fields to body content.
+/// patch rules; this pass returns diagnostics only. Callers supply either the
+/// prospective fields or prospective body for one patch; add sequence-aware
+/// validation before any future kind rule couples both changes.
 pub(crate) fn validate_existing_draft(draft: KnowledgeObjectDraft<'_>) -> Vec<Diagnostic> {
     let mut validator = DraftValidator {
         draft,
@@ -113,6 +114,15 @@ impl DraftValidator<'_> {
     fn validate_common(&mut self) {
         if NonEmptyText::try_new(self.draft.body).is_none() {
             self.error("knowledge object requires a non-empty body");
+        }
+        if let Some(kind) = BlockKind::from_fence_word(self.draft.kind)
+            && self.draft.status.is_some()
+            && !is_allowed_field_key(kind, "status")
+        {
+            self.error(format!(
+                "{} objects must not set changes.status",
+                self.draft.kind
+            ));
         }
         self.validate_fields();
     }
@@ -179,12 +189,7 @@ impl DraftValidator<'_> {
     }
 
     fn validate_warning(&mut self) {
-        let severity = self
-            .draft
-            .fields
-            .get("severity")
-            .map(String::as_str)
-            .or(self.draft.status);
+        let severity = self.draft.fields.get("severity").map(String::as_str);
         if Severity::try_new(severity.unwrap_or("")).is_err() {
             match severity {
                 Some(severity) => self.error(format!("warning has invalid severity `{severity}`")),
@@ -248,15 +253,24 @@ impl DraftValidator<'_> {
     }
 
     fn validate_procedure(&mut self) {
-        match self.draft.status {
-            Some(status) if LifecycleStatus::try_new(status).is_err() => {
+        let status = self.draft.status.map(LifecycleStatus::try_new).transpose();
+        match &status {
+            Err(_) => {
+                let status = self.draft.status.unwrap_or_default();
                 self.error(format!("procedure has invalid status `{status}`"));
             }
-            None => self.error("procedure requires status"),
-            Some(_) => {}
+            Ok(None) => self.error("procedure requires status"),
+            Ok(Some(_)) => {}
         }
         if !body_text_starts_with_ordered_list(self.draft.body) {
             self.error("procedure body must begin with an ordered list");
+        }
+        if status.is_ok_and(|status| status.is_some_and(|status| status.is_verified()))
+            && !verified_fields_complete(self.draft.fields)
+        {
+            self.error(
+                "verified procedure requires fields.owner, fields.verified_at, and evidence",
+            );
         }
     }
 
@@ -669,22 +683,6 @@ impl DraftValidator<'_> {
     }
 }
 
-fn list_items(value: &str) -> Option<Vec<&str>> {
-    let range = list_content_range(value).ok()?;
-    let mut items = value[range].split(',').map(str::trim).peekable();
-    let mut result = Vec::new();
-    while let Some(item) = items.next() {
-        if item.is_empty() {
-            if items.peek().is_some() {
-                return None;
-            }
-        } else {
-            result.push(item);
-        }
-    }
-    (!result.is_empty()).then_some(result)
-}
-
 fn is_valid_field_key(key: &str) -> bool {
     let mut chars = key.chars();
     let Some(first) = chars.next() else {
@@ -694,12 +692,6 @@ fn is_valid_field_key(key: &str) -> bool {
         && chars.all(|character| {
             character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_'
         })
-}
-
-fn is_relation_field(key: &str) -> bool {
-    GraphRelationKind::ALL
-        .iter()
-        .any(|relation| relation.as_str() == key)
 }
 
 fn validation_error(object_id: &str, message: impl Into<String>) -> Diagnostic {

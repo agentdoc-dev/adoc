@@ -10,7 +10,7 @@ use crate::domain::knowledge_object::draft::{
 };
 use crate::domain::knowledge_object::{
     BlockKind, EVIDENCE_REF_FIELD, closed_schema_field_error, is_allowed_field_key,
-    list_content_range, shared_field_value_error,
+    is_relation_field, list_content_range, list_items, shared_field_value_error,
 };
 use crate::domain::obligation::ProofObligation;
 use crate::domain::source_edit::planner::{field_value_line_break_diagnostic, guard_body_lines};
@@ -232,6 +232,15 @@ impl PatchValidator<'_> {
         if body.trim().is_empty() {
             return;
         }
+        if let Some(kind) = BlockKind::from_fence_word(&object.kind) {
+            for diagnostic in
+                prospective_draft_diagnostics(target, &object, kind, &BTreeMap::new(), body)
+            {
+                if !self.diagnostics.contains(&diagnostic) {
+                    self.diagnostics.push(diagnostic);
+                }
+            }
+        }
         self.diffs.push(value_diff("body", &object.body, body));
         self.add_verified_claim_obligation_if_needed(
             &object,
@@ -262,7 +271,9 @@ impl PatchValidator<'_> {
             ));
             return;
         };
-        for diagnostic in updated_draft_diagnostics(target, &object, kind, &fields) {
+        for diagnostic in
+            prospective_draft_diagnostics(target, &object, kind, &fields, &object.body)
+        {
             if !self.diagnostics.contains(&diagnostic) {
                 self.diagnostics.push(diagnostic);
             }
@@ -746,23 +757,29 @@ fn is_allowed_on_any_kind(key: &str) -> bool {
         .any(|kind| is_allowed_field_key(*kind, key))
 }
 
-fn updated_draft_diagnostics(
+fn prospective_draft_diagnostics(
     target: &ObjectId,
     object: &GraphKnowledgeObjectNode,
     kind: BlockKind,
     changes: &BTreeMap<String, String>,
+    body: &str,
 ) -> Vec<Diagnostic> {
-    if kind == BlockKind::Glossary {
-        // Glossary `status` is an optional field, not the structural status
-        // slot consumed by the supported typed-draft validators.
-        return Vec::new();
-    }
     let mut fields = object.fields.clone();
     if let Some(severity) = &object.severity {
         fields.insert("severity".to_string(), severity.clone());
     }
     if let Some(trust) = &object.trust {
         fields.insert("trust".to_string(), trust.clone());
+    }
+    if kind == BlockKind::Procedure
+        && let Some(value) = object
+            .evidence
+            .iter()
+            .find_map(|evidence| evidence.value.as_ref())
+    {
+        // Procedure verification only requires one inline evidence value; the
+        // graph intentionally projects its typed kind separately from fields.
+        fields.insert("source".to_string(), value.clone());
     }
     for (key, values) in [
         ("approved_by", &object.approved_by),
@@ -791,10 +808,10 @@ fn updated_draft_diagnostics(
             !value.trim().is_empty() && field_value_line_break_diagnostic(key, value).is_none()
         })
     };
-    let status = if kind == BlockKind::Warning {
-        changed_status("severity")
-            .or(object.severity.as_ref())
-            .map(String::as_str)
+    let status = if kind == BlockKind::Glossary || !is_allowed_field_key(kind, "status") {
+        // Glossary `status` is an ordinary field; the other branches have no
+        // status key. Their prospective metadata is already carried by fields.
+        None
     } else {
         changed_status("status")
             .or(object.status.as_ref())
@@ -804,20 +821,15 @@ fn updated_draft_diagnostics(
         id: target,
         kind: &object.kind,
         status,
-        body: &object.body,
+        body,
         fields: &fields,
     })
 }
 
 fn evidence_ref_segments(value: &str) -> Vec<&str> {
-    let Ok(range) = list_content_range(value) else {
-        return Vec::new();
-    };
-    value[range]
-        .split(',')
-        .map(str::trim)
-        .filter(|segment| !segment.is_empty())
-        .collect()
+    // Syntax validation runs first, so lossless authored-list semantics are
+    // shared with the aggregate/source parser here.
+    list_items(value).unwrap_or_default()
 }
 
 fn evidence_ref_syntax_diagnostics(object_id: &str, value: &str) -> Vec<Diagnostic> {
@@ -853,12 +865,6 @@ fn evidence_ref_syntax_diagnostics(object_id: &str, value: &str) -> Vec<Diagnost
     diagnostics
 }
 
-fn is_relation_field(key: &str) -> bool {
-    GraphRelationKind::ALL
-        .iter()
-        .any(|relation| relation.as_str() == key)
-}
-
 fn validation_error(object_id: &str, message: impl Into<String>) -> Diagnostic {
     Diagnostic::error(DiagnosticCode::PatchValidationFailed, message)
         .with_object_id(object_id)
@@ -889,8 +895,8 @@ fn missing_graph_object_diagnostic(id: impl Into<String>) -> Diagnostic {
 mod tests {
     use super::*;
     use crate::domain::graph::{
-        GraphArtifactDocument, GraphEdge, GraphKnowledgeObjectNode, GraphNode, GraphPageNode,
-        GraphRelations, GraphSourceSpan,
+        GraphArtifactDocument, GraphEdge, GraphEvidence, GraphKnowledgeObjectNode, GraphNode,
+        GraphPageNode, GraphRelations, GraphSourceSpan,
     };
 
     fn graph(objects: Vec<GraphKnowledgeObjectNode>) -> GraphIndex {
@@ -973,6 +979,55 @@ mod tests {
             effective_reason: None,
             evidence_quality: None,
         }
+    }
+
+    #[test]
+    fn prospective_glossary_update_runs_common_field_validation() {
+        let mut glossary = object("billing.term", "draft");
+        glossary.kind = "glossary".to_string();
+        glossary.status = None;
+        glossary
+            .fields
+            .insert("unsupported".to_string(), "value".to_string());
+        let target = ObjectId::new(glossary.id.clone()).expect("valid object id");
+
+        let diagnostics = prospective_draft_diagnostics(
+            &target,
+            &glossary,
+            BlockKind::Glossary,
+            &BTreeMap::new(),
+            &glossary.body,
+        );
+
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::SchemaUnknownField);
+    }
+
+    #[test]
+    fn prospective_verified_procedure_preserves_projected_evidence() {
+        let mut procedure = object("billing.rotate", "verified");
+        procedure.kind = "procedure".to_string();
+        procedure.body = "1. Rotate the key.".to_string();
+        procedure
+            .fields
+            .insert("owner".to_string(), "billing".to_string());
+        procedure
+            .fields
+            .insert("verified_at".to_string(), "2026-09-02".to_string());
+        procedure
+            .evidence
+            .push(GraphEvidence::inline("source_code", "src/keys.rs"));
+        let target = ObjectId::new(procedure.id.clone()).expect("valid object id");
+
+        let diagnostics = prospective_draft_diagnostics(
+            &target,
+            &procedure,
+            BlockKind::Procedure,
+            &BTreeMap::new(),
+            &procedure.body,
+        );
+
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
 
     fn patch(intent: PatchIntent) -> PatchDocument {

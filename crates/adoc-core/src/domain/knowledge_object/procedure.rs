@@ -322,13 +322,33 @@ fn verified_procedure_dedicated_field_in(
     .find(|field| fields.contains_key(*field))
 }
 
-/// True when the body's first non-blank line begins with an ordered-list
-/// marker (`1. `, `12. `). Operates on the canonical source projection so it
-/// is independent of how the body inlines were produced.
+pub(crate) fn verified_fields_complete(fields: &BTreeMap<String, String>) -> bool {
+    fields
+        .get(OWNER_FIELD)
+        .and_then(|value| Owner::try_new(value))
+        .is_some()
+        && fields
+            .get(VERIFIED_AT_FIELD)
+            .and_then(|value| VerifiedAt::try_new(value))
+            .is_some()
+        && [SOURCE_FIELD, HUMAN_REVIEW_FIELD, REVIEWED_BY_FIELD]
+            .into_iter()
+            .any(|key| {
+                fields
+                    .get(key)
+                    .and_then(|value| Evidence::from_field(key, value))
+                    .is_some()
+            })
+}
+
 fn body_starts_with_ordered_list(body: &Body) -> bool {
     body_text_starts_with_ordered_list(&body.to_source())
 }
 
+/// True when `body`'s first non-blank line begins with an ordered-list marker
+/// (`1. `, `12. `). Callers pass either the canonical source projection
+/// ([`Body::to_source`]) or raw authored patch text; the rule is line-oriented
+/// so the two agree for any body the planner can splice.
 pub(crate) fn body_text_starts_with_ordered_list(body: &str) -> bool {
     body.lines()
         .map(trim_ascii_edges)

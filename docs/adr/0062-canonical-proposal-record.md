@@ -69,6 +69,10 @@ API.
    to `draft`, `proposed`, or `open` (ADR-0054 §3's explicit
    status-preservation stays an Action delivery option that never forms a
    proposal record); the ADR-0053 §3 authority fields are never proposable.
+   Existing `warning`, `constraint`, `agent_instruction`, and `source` objects
+   are also outside this proposal surface: their closed schemas intentionally
+   have no lifecycle `status`, so they cannot satisfy the mandatory reviewable
+   status write.
    Violations fail with `proposal_record.authority_rejected`, so a
    model-originated submission can only create a proposal record and never
    touches active state. Every create carries placement whose embedded

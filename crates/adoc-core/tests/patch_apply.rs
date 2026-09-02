@@ -554,6 +554,12 @@ fn apply_refuses_invalid_values_for_every_supported_kind_family() {
             "invalid status",
         ),
         (
+            "billing.rotate-key",
+            "status",
+            "verified",
+            "verified procedure requires fields.owner, fields.verified_at, and evidence",
+        ),
+        (
             "billing.client-example",
             "status",
             "totally-bogus",
@@ -936,6 +942,60 @@ fn apply_refuses_invalid_extended_kind_create_invariants() {
             }),
             "ordered list",
         ),
+        (
+            "billing.unverified-procedure",
+            serde_json::json!({
+                "kind": "procedure",
+                "status": "verified",
+                "body": "1. Rotate the key."
+            }),
+            "verified procedure requires fields.owner, fields.verified_at, and evidence",
+        ),
+        (
+            "billing.warning-status",
+            serde_json::json!({
+                "kind": "warning",
+                "status": "draft",
+                "body": "Warn about an unsupported structural status.",
+                "fields": { "severity": "critical" }
+            }),
+            "must not set changes.status",
+        ),
+        (
+            "billing.constraint-status",
+            serde_json::json!({
+                "kind": "constraint",
+                "status": "draft",
+                "body": "Constrain an unsupported structural status.",
+                "fields": { "severity": "critical" }
+            }),
+            "must not set changes.status",
+        ),
+        (
+            "billing.instruction-status",
+            serde_json::json!({
+                "kind": "agent_instruction",
+                "status": "draft",
+                "body": "Instruct with an unsupported structural status.",
+                "fields": {
+                    "scope": "billing",
+                    "trust": "team",
+                    "allowed_actions": "read",
+                    "forbidden_actions": "write"
+                }
+            }),
+            "must not set changes.status",
+        ),
+        (
+            "billing.source-status",
+            serde_json::json!({
+                "kind": "source",
+                "status": "draft",
+                "body": "Bind an unsupported structural status.",
+                "fields": { "kind": "source_code", "path": "src/lib.rs" }
+            }),
+            "must not set changes.status",
+        ),
     ] {
         let workspace = Workspace::new(PAGE_TEXT);
         let artifact = workspace.build();
@@ -975,6 +1035,42 @@ fn apply_refuses_invalid_extended_kind_create_invariants() {
             "invalid create writes nothing"
         );
     }
+}
+
+#[test]
+fn apply_refuses_unordered_procedure_body_replacement_before_write() {
+    let workspace = Workspace::new(EXTENDED_KINDS_PAGE_TEXT);
+    let artifact = workspace.build();
+    let target = "billing.rotate-key";
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "replace_body",
+            "target": target,
+            "base_hash": workspace.content_hash(&artifact, target),
+            "changes": { "body": "Rotate the key without an ordered step." },
+            "reason": "E5.1 procedure body preflight"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert!(result.written_files.is_empty());
+    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::PatchValidationFailed
+    );
+    assert!(
+        result.diagnostics[0].message.contains("ordered list"),
+        "{:?}",
+        result.diagnostics
+    );
+    assert_eq!(
+        fs::read_to_string(workspace.page_path()).expect("read"),
+        EXTENDED_KINDS_PAGE_TEXT,
+        "invalid body replacement writes nothing"
+    );
 }
 
 #[test]

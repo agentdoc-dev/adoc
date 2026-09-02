@@ -543,6 +543,50 @@ pub(crate) fn list_content_range(value: &str) -> Result<Range<usize>, (usize, us
     }
 }
 
+/// Parse the scalar-or-bracket-list shape used by authored list fields.
+/// Interior empty segments are invalid; one trailing comma is tolerated to
+/// match the source parser.
+pub(crate) fn list_items(value: &str) -> Option<Vec<&str>> {
+    let range = list_content_range(value).ok()?;
+    let mut result = Vec::new();
+    for (start, end, is_last) in list_segments(value, range) {
+        let item = value[start..end].trim();
+        if item.is_empty() {
+            if !is_last {
+                return None;
+            }
+        } else {
+            result.push(item);
+        }
+    }
+    (!result.is_empty()).then_some(result)
+}
+
+fn list_segments(
+    value: &str,
+    range: Range<usize>,
+) -> impl Iterator<Item = (usize, usize, bool)> + '_ {
+    let range_end = range.end;
+    let mut start = range.start;
+    value[range].split_inclusive(',').map(move |segment| {
+        let next_start = start + segment.len();
+        let has_comma = segment.ends_with(',');
+        let result = (
+            start,
+            next_start - usize::from(has_comma),
+            next_start == range_end && !has_comma,
+        );
+        start = next_start;
+        result
+    })
+}
+
+pub(crate) fn is_relation_field(key: &str) -> bool {
+    GraphRelationKind::ALL
+        .iter()
+        .any(|relation| relation.as_str() == key)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn push_relation_segment(
     parsed: &ParsedTypedBlock,
@@ -813,33 +857,19 @@ where
     }
 
     let mut items: BTreeSet<String> = BTreeSet::new();
-    let mut segment_start = content_start;
-    for (relative_comma_index, _) in content.match_indices(',') {
-        let comma_index = content_start + relative_comma_index;
+    for (start, end, is_last) in list_segments(&value, content_start..content_end) {
         push_action_list_segment(
             parsed,
             field_name,
             &value,
-            segment_start,
-            comma_index,
+            start,
+            end,
             &value_span,
             &mut items,
             diagnostics,
-            false,
+            is_last,
         );
-        segment_start = comma_index + 1;
     }
-    push_action_list_segment(
-        parsed,
-        field_name,
-        &value,
-        segment_start,
-        content_end,
-        &value_span,
-        &mut items,
-        diagnostics,
-        true,
-    );
 
     let result: Vec<T> = items.into_iter().filter_map(|s| ctor(&s)).collect();
     if result.is_empty() {
