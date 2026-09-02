@@ -72,11 +72,16 @@ API.
 7. An existing object is edited by at most one `update_fields` followed by at
    most one `replace_body` (ADR-0054 §5). Each patch carries the object's
    `base_hash` at its point in that sequence, so the body patch binds the
-   hash re-derived after the field patch (PRD §51.5) and never the same
-   `base_hash`; `content_bindings` records the exact-head hash the first
-   patch carries. Application order is fixed by the operations, not by the
-   digest-ordered `patches` array. A second patch of one operation for one
-   target fails with `proposal_record.patch_invalid`.
+   hash re-derived after the field patch (PRD §51.5). When the field patch
+   is only the §6 status write on an object that is already reviewable it
+   changes nothing, the object is not re-hashed, and the body patch
+   legitimately binds the same `base_hash`; the record cannot see the
+   object, so it never judges the second hash — that is the apply-time
+   check in the Action sandbox and Cloud's exact-head preflight.
+   `content_bindings` records the exact-head hash the first patch carries.
+   Application order is fixed by the operations, not by the digest-ordered
+   `patches` array. A second patch of one operation for one target fails
+   with `proposal_record.patch_invalid`.
 
 ## Refuted alternatives
 

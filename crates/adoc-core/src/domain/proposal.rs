@@ -331,9 +331,12 @@ fn binding_invalid(field: &str) -> ProposalRecordError {
 /// ADR-0054 §5: one logical update of an existing object is at most one
 /// `update_fields` followed by at most one `replace_body`. Each patch binds
 /// the object's hash at its point in the sequence, so the body patch carries
-/// the hash re-derived after the field patch (PRD §51.5); the record binds
-/// the exact-head hash the first patch carries. Application order is fixed
-/// by the operations, not by the digest-ordered record.
+/// the hash re-derived after the field patch (PRD §51.5) — or the same hash
+/// when the field patch is the mandatory status write on an object that is
+/// already reviewable, which changes nothing. The record cannot see the
+/// object, so it binds the exact-head hash the first patch carries and
+/// leaves the second hash to the apply-time check. Application order is
+/// fixed by the operations, not by the digest-ordered record.
 #[derive(Default)]
 struct TargetSequence {
     update_fields: Option<String>,
@@ -385,13 +388,6 @@ impl TargetSequence {
             });
         }
         match (self.update_fields, self.replace_body) {
-            (Some(first), Some(second)) if first == second => {
-                Err(ProposalRecordError::PatchInvalid {
-                    message: format!(
-                        "replace_body for '{target}' must bind the content hash re-derived after update_fields, not the same base_hash"
-                    ),
-                })
-            }
             (Some(first), _) | (None, Some(first)) => Ok(first),
             (None, None) => Err(ProposalRecordError::PatchInvalid {
                 message: format!("no content hash bound for '{target}'"),

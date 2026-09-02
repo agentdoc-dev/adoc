@@ -624,18 +624,31 @@ fn two_patch_logical_update_binds_the_exact_head_hash() {
         "proposal_record.patch_invalid"
     );
 
-    // PRD §51.5: the body patch never binds the same base_hash as the field
-    // patch — applying the first re-hashes the object.
-    let error = build_proposal_record(
+    // Review round 3 (PR #194): a body-only edit of an already-reviewable
+    // object carries the mandatory status write as a no-op, so the field
+    // patch does not re-hash the object and the body patch legitimately
+    // binds the same base_hash. The record cannot see whether the field
+    // patch changes anything; whether the second hash is right is checked
+    // where the patches are applied (PRD §51.5), not here.
+    let mut status_only = update_patch("billing.credits", D, "billing");
+    status_only["changes"] = json!({"fields": {"status": "draft"}});
+    let record = build_proposal_record(
         bindings(),
         vec![
-            input(&update_patch("billing.credits", D, "billing")),
-            input(&replace_body_patch("billing.credits", D, "Same hash.")),
+            input(&status_only),
+            input(&replace_body_patch("billing.credits", D, "Body only.")),
         ],
         None,
     )
-    .expect_err("a body patch must bind the re-derived hash");
-    assert!(error.to_string().contains("re-derived"), "{error}");
+    .expect("a no-op status write leaves the body patch on the exact-head hash");
+    let bound: Vec<_> = record
+        .content_bindings()
+        .iter()
+        .map(|binding| (binding.object_id(), binding.content_hash()))
+        .collect();
+    assert_eq!(bound, vec![("billing.credits", D)]);
+    validate_proposal_record(record.to_canonical_json().expect("serializes").as_bytes())
+        .expect("round-trips");
 }
 
 // Review round 2 (PR #194): the record cannot see an object's current
