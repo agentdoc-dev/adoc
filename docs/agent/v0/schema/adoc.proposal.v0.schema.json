@@ -103,7 +103,58 @@
                   "id": { "$ref": "#/$defs/text" }
                 }
               }
-            }
+            },
+            "oneOf": [
+              {
+                "required": ["base_hash"],
+                "properties": {
+                  "op": { "const": "replace_body" },
+                  "changes": {
+                    "type": "object",
+                    "required": ["body"],
+                    "properties": { "body": { "type": "string" } },
+                    "additionalProperties": false
+                  }
+                }
+              },
+              {
+                "required": ["base_hash"],
+                "properties": {
+                  "op": { "const": "update_fields" },
+                  "changes": {
+                    "type": "object",
+                    "required": ["fields"],
+                    "properties": {
+                      "fields": {
+                        "allOf": [
+                          { "$ref": "#/$defs/fields" },
+                          { "minProperties": 1 }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              },
+              {
+                "not": { "required": ["base_hash"] },
+                "properties": {
+                  "op": { "const": "create_object" },
+                  "changes": {
+                    "type": "object",
+                    "required": ["kind", "body"],
+                    "properties": {
+                      "kind": { "type": "string" },
+                      "status": { "type": "string" },
+                      "body": { "type": "string" },
+                      "fields": { "$ref": "#/$defs/fields" },
+                      "placement": { "$ref": "#/$defs/placement" }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              }
+            ]
           }
         }
       }
@@ -120,6 +171,19 @@
       "pattern": "^[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?)+$"
     },
     "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "fields": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "placement": {
+      "type": "object",
+      "required": ["page_id"],
+      "properties": {
+        "page_id": { "type": "string" },
+        "after": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
     "revision": {
       "type": "object",
       "required": ["system", "value"],

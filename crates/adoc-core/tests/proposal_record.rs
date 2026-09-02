@@ -215,6 +215,65 @@ fn published_schema_rejects_text_the_domain_rejects() {
     let mut unknown_patch_member = canonical.clone();
     unknown_patch_member["patches"][0]["patch"]["admin"] = json!(true);
     assert!(!validator.is_valid(&unknown_patch_member));
+
+    let mut unknown_change_member = canonical.clone();
+    unknown_change_member["patches"][0]["patch"]["changes"]["admin"] = json!(true);
+    assert!(!validator.is_valid(&unknown_change_member));
+}
+
+#[test]
+fn published_schema_matches_each_patch_operation_shape() {
+    let validator = jsonschema::validator_for(&schema()).expect("schema compiles");
+    let canonical: Value = serde_json::from_str(&record().to_canonical_json().expect("serializes"))
+        .expect("record is JSON");
+
+    for (operation, changes, base_hash, foreign_field) in [
+        (
+            "replace_body",
+            json!({"body": "Updated body."}),
+            Some(D),
+            ("status", json!("draft")),
+        ),
+        (
+            "update_fields",
+            json!({"fields": {"status": "draft"}}),
+            Some(D),
+            ("body", json!("Foreign body.")),
+        ),
+        (
+            "create_object",
+            json!({"kind": "claim", "status": "draft", "body": "Claim."}),
+            None,
+            ("supersedes", json!(["billing.old"])),
+        ),
+    ] {
+        let mut instance = canonical.clone();
+        {
+            let entry = &mut instance["patches"][0];
+            entry["operation"] = json!(operation);
+            entry["patch"]["op"] = json!(operation);
+            entry["patch"]["changes"] = changes;
+            match base_hash {
+                Some(base_hash) => entry["patch"]["base_hash"] = json!(base_hash),
+                None => {
+                    entry["patch"]
+                        .as_object_mut()
+                        .expect("patch is an object")
+                        .remove("base_hash");
+                }
+            }
+        }
+        assert!(
+            validator.is_valid(&instance),
+            "schema rejected valid {operation} shape"
+        );
+
+        instance["patches"][0]["patch"]["changes"][foreign_field.0] = foreign_field.1;
+        assert!(
+            !validator.is_valid(&instance),
+            "schema accepted foreign {operation} change"
+        );
+    }
 }
 
 #[test]
