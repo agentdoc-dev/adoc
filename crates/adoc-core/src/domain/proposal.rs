@@ -23,6 +23,7 @@ use thiserror::Error;
 
 use super::diagnostic::DiagnosticCode;
 use super::hashing::sha256_prefixed;
+use super::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
 use super::patch::{PatchDocument, PatchIntent, PatchOperation};
 use super::semantic_context::{ExactRevision, is_semantic_context_text, is_sha256_digest};
 
@@ -415,6 +416,17 @@ fn assemble_patch(
                 message: format!("patch {field} is missing or invalid"),
             });
         }
+    }
+    // The patch parser takes any string as a target; the record holds it to
+    // the Object ID grammar so the published schema and the apply-time
+    // checks never see an empty or malformed one.
+    if ObjectId::new(document.target.clone()).is_err() {
+        return Err(ProposalRecordError::PatchInvalid {
+            message: format!(
+                "patch target '{}' is not an Object ID. {OBJECT_ID_GRAMMAR_HELP}",
+                document.target
+            ),
+        });
     }
     if canonical_patch_bytes(&patch)? != input.patch_bytes {
         return Err(ProposalRecordError::PatchInvalid {

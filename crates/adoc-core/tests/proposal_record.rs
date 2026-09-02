@@ -376,6 +376,34 @@ fn model_path_cannot_touch_active_state() {
     }
 }
 
+// Review round 4 (PR #194): a patch target is an Object ID. An empty or
+// malformed target would otherwise reach the record and break the published
+// schema's `target` (text, minLength 1) as well as every apply-time check.
+#[test]
+fn patch_target_must_be_an_object_id() {
+    for target in ["", "credits", "Billing.Credits", "billing..credits"] {
+        let error = build_proposal_record(
+            bindings(),
+            vec![patch_input(
+                "finding-001",
+                "docs/billing.adoc",
+                "billing.kb",
+                &create_patch(target),
+            )],
+            None,
+        )
+        .expect_err("target outside the Object ID grammar");
+        assert!(
+            matches!(error, ProposalRecordError::PatchInvalid { .. }),
+            "{target:?}: {error}"
+        );
+        assert_eq!(
+            error.diagnostic_code().as_str(),
+            "proposal_record.patch_invalid"
+        );
+    }
+}
+
 #[test]
 fn conflicting_content_bindings_for_one_target_are_rejected() {
     let error = build_proposal_record(

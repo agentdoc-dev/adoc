@@ -58,8 +58,9 @@ API.
    whose `supersedes` names the prior digest, so the invalidation consequence
    is visible before submission. A byte-identical revision is not a version
    and fails with `proposal_record.revision_unchanged`.
-6. The create-only floors remain: operations are closed to `create_object`,
-   `update_fields`, and `replace_body`; creates use the ADR-0053 §2 kind/status
+6. The create-only floors remain: every patch `target` is an Object ID
+   (`proposal_record.patch_invalid` otherwise); operations are closed to
+   `create_object`, `update_fields`, and `replace_body`; creates use the ADR-0053 §2 kind/status
    pairs; updates leave the object at a reviewable status (ADR-0054 §3) and
    must say so — the record cannot see the object's current lifecycle, so
    every existing-object edit carries an `update_fields` that sets `status`
