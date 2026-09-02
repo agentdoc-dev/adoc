@@ -69,10 +69,6 @@ API.
    to `draft`, `proposed`, or `open` (ADR-0054 §3's explicit
    status-preservation stays an Action delivery option that never forms a
    proposal record); the ADR-0053 §3 authority fields are never proposable.
-   Existing `warning`, `constraint`, `agent_instruction`, and `source` objects
-   are also outside this proposal surface: their closed schemas intentionally
-   have no lifecycle `status`, so they cannot satisfy the mandatory reviewable
-   status write.
    Violations fail with `proposal_record.authority_rejected`, so a
    model-originated submission can only create a proposal record and never
    touches active state. Every create carries placement whose embedded
@@ -106,7 +102,11 @@ API.
    representation switch between mutually exclusive fields; a trusted source
    edit must first establish a valid reviewable shape. The record layer cannot
    see this head state and may accept the patch; exact-head refusal uses
-   `patch.validation_failed`. Intrinsic failures use
+   `patch.validation_failed`. Existing `warning`, `constraint`,
+   `agent_instruction`, and `source` objects are likewise outside the proposal
+   surface because their closed schemas intentionally have no lifecycle
+   `status`; their mandatory status write is refused at exact head with
+   `schema.unknown_field`. Intrinsic failures use
    `proposal_record.patch_invalid`.
 
 ## Refuted alternatives

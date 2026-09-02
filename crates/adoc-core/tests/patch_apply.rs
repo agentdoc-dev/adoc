@@ -136,6 +136,28 @@ The billing implementation.
 ::
 ";
 
+const VERIFIED_PROCEDURES_PAGE_TEXT: &str = "\
+# Billing
+
+::procedure billing.source-verified
+status: verified
+owner: billing
+verified_at: 2026-09-02
+source: src/keys.rs
+--
+1. Rotate the source-backed key.
+::
+
+::procedure billing.review-verified
+status: verified
+owner: billing
+verified_at: 2026-09-02
+human_review: security-review
+--
+1. Rotate the reviewed key.
+::
+";
+
 struct Workspace {
     root: tempfile::TempDir,
 }
@@ -1071,6 +1093,93 @@ fn apply_refuses_unordered_procedure_body_replacement_before_write() {
         EXTENDED_KINDS_PAGE_TEXT,
         "invalid body replacement writes nothing"
     );
+}
+
+#[test]
+fn verified_procedure_projection_allows_benign_field_and_body_changes() {
+    for (target, patch) in [
+        (
+            "billing.source-verified",
+            serde_json::json!({
+                "op": "update_fields",
+                "changes": { "fields": { "estimated_time": "10m" } }
+            }),
+        ),
+        (
+            "billing.review-verified",
+            serde_json::json!({
+                "op": "replace_body",
+                "changes": { "body": "1. Rotate the reviewed key safely." }
+            }),
+        ),
+    ] {
+        let workspace = Workspace::new(VERIFIED_PROCEDURES_PAGE_TEXT);
+        let artifact = workspace.build();
+        let mut patch = patch;
+        patch["schema_version"] = serde_json::json!("adoc.patch.v0");
+        patch["target"] = serde_json::json!(target);
+        patch["base_hash"] = serde_json::json!(workspace.content_hash(&artifact, target));
+        patch["reason"] = serde_json::json!("E5.1 verified procedure projection regression");
+
+        let result = workspace.apply(&artifact, patch);
+
+        assert!(result.applied, "diagnostics: {:?}", result.diagnostics);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    }
+}
+
+#[test]
+fn apply_refuses_invalid_impacts_on_update_and_create_before_write() {
+    for patch in [
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": "billing.credits",
+            "changes": { "fields": { "impacts": "../outside" } },
+            "reason": "E5.1 impacts update validation"
+        }),
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "create_object",
+            "target": "billing.invalid-impact",
+            "changes": {
+                "kind": "claim",
+                "status": "draft",
+                "body": "An invalid impact must not be written.",
+                "fields": { "impacts": "../outside" }
+            },
+            "reason": "E5.1 impacts create validation"
+        }),
+    ] {
+        let workspace = Workspace::new(PAGE_TEXT);
+        let artifact = workspace.build();
+        let page_id = workspace.node(&artifact, "billing.credits")["page_id"]
+            .as_str()
+            .expect("page_id")
+            .to_string();
+        let mut patch = patch;
+        if patch["op"] == "update_fields" {
+            patch["base_hash"] =
+                serde_json::json!(workspace.content_hash(&artifact, "billing.credits"));
+        } else {
+            patch["changes"]["placement"] =
+                serde_json::json!({ "page_id": page_id, "after": "billing.credits" });
+        }
+
+        let result = workspace.apply(&artifact, patch);
+
+        assert!(!result.applied);
+        assert!(result.written_files.is_empty());
+        assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+        assert_eq!(
+            result.diagnostics[0].code,
+            DiagnosticCode::SchemaImpactsInvalidPath
+        );
+        assert_eq!(
+            fs::read_to_string(workspace.page_path()).expect("read"),
+            PAGE_TEXT
+        );
+    }
 }
 
 #[test]

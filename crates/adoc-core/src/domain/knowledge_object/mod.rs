@@ -359,33 +359,19 @@ pub(crate) fn parse_evidence_refs(
 
     let mut refs: Vec<Evidence> = Vec::new();
     let mut seen = std::collections::BTreeSet::new();
-    let mut segment_start = content_start;
-    for (rel, _) in value[content_start..content_end].match_indices(',') {
-        let comma = content_start + rel;
+    for (start, end, is_last) in list_segments(&value, content_start..content_end) {
         push_evidence_ref_segment(
             parsed,
             &value,
-            segment_start,
-            comma,
+            start,
+            end,
             &value_span,
             &mut seen,
             &mut refs,
             diagnostics,
-            false,
+            is_last,
         );
-        segment_start = comma + 1;
     }
-    push_evidence_ref_segment(
-        parsed,
-        &value,
-        segment_start,
-        content_end,
-        &value_span,
-        &mut seen,
-        &mut refs,
-        diagnostics,
-        true,
-    );
     refs
 }
 
@@ -562,7 +548,10 @@ pub(crate) fn list_items(value: &str) -> Option<Vec<&str>> {
     (!result.is_empty()).then_some(result)
 }
 
-fn list_segments(
+/// Yield comma-delimited byte ranges without their commas. The final flag is
+/// false for a comma-terminated segment, so an empty segment before a trailing
+/// comma is still rejected while one ordinary trailing comma stays tolerated.
+pub(crate) fn list_segments(
     value: &str,
     range: Range<usize>,
 ) -> impl Iterator<Item = (usize, usize, bool)> + '_ {
@@ -692,31 +681,18 @@ pub(super) fn extract_impacts(
     }
 
     let mut paths: std::collections::BTreeSet<RelPath> = std::collections::BTreeSet::new();
-    let mut segment_start = content_start;
-    for (relative_comma_index, _) in content.match_indices(',') {
-        let comma_index = content_start + relative_comma_index;
+    for (start, end, is_last) in list_segments(&value, content_start..content_end) {
         push_impact_segment(
             parsed,
             &value,
-            segment_start,
-            comma_index,
+            start,
+            end,
             &value_span,
             &mut paths,
             diagnostics,
-            false,
+            is_last,
         );
-        segment_start = comma_index + 1;
     }
-    push_impact_segment(
-        parsed,
-        &value,
-        segment_start,
-        content_end,
-        &value_span,
-        &mut paths,
-        diagnostics,
-        true,
-    );
 
     NonEmpty::from_vec(paths.into_iter().collect())
 }

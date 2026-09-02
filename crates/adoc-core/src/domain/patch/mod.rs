@@ -9,11 +9,12 @@ use crate::domain::knowledge_object::draft::{
     KnowledgeObjectDraft, validate_draft, validate_existing_draft,
 };
 use crate::domain::knowledge_object::{
-    BlockKind, EVIDENCE_REF_FIELD, closed_schema_field_error, is_allowed_field_key,
-    is_relation_field, list_content_range, list_items, shared_field_value_error,
+    BlockKind, EVIDENCE_REF_FIELD, IMPACTS_FIELD, closed_schema_field_error, is_allowed_field_key,
+    is_relation_field, list_content_range, list_items, list_segments, shared_field_value_error,
 };
 use crate::domain::obligation::ProofObligation;
 use crate::domain::source_edit::planner::{field_value_line_break_diagnostic, guard_body_lines};
+use crate::domain::value_objects::rel_path::RelPath;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PatchDocument {
@@ -664,6 +665,8 @@ pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnost
                     diagnostics.push(validation_error(&patch.target, message));
                 } else if key == EVIDENCE_REF_FIELD {
                     diagnostics.extend(evidence_ref_syntax_diagnostics(&patch.target, value));
+                } else if key == IMPACTS_FIELD {
+                    diagnostics.extend(impacts_value_diagnostics(&patch.target, value));
                 } else if let Some(diagnostic) = shared_field_value_error(key, value) {
                     diagnostics.push(diagnostic.with_object_id(&patch.target));
                 }
@@ -717,6 +720,14 @@ pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnost
                 && field_value_line_break_diagnostic(EVIDENCE_REF_FIELD, value).is_none()
             {
                 diagnostics.extend(evidence_ref_syntax_diagnostics(&patch.target, value));
+            }
+            if let Some(value) = fields.get(IMPACTS_FIELD)
+                && BlockKind::from_fence_word(kind)
+                    .is_some_and(|kind| is_allowed_field_key(kind, IMPACTS_FIELD))
+                && !value.trim().is_empty()
+                && field_value_line_break_diagnostic(IMPACTS_FIELD, value).is_none()
+            {
+                diagnostics.extend(impacts_value_diagnostics(&patch.target, value));
             }
         }
         _ => {}
@@ -777,8 +788,9 @@ fn prospective_draft_diagnostics(
             .iter()
             .find_map(|evidence| evidence.value.as_ref())
     {
-        // Procedure verification only requires one inline evidence value; the
-        // graph intentionally projects its typed kind separately from fields.
+        // Procedure verification treats its three inline carriers equally, so
+        // one projected value can stand in as `source`. Object references have
+        // no value and intentionally do not satisfy this aggregate invariant.
         fields.insert("source".to_string(), value.clone());
     }
     for (key, values) in [
@@ -844,11 +856,10 @@ fn evidence_ref_syntax_diagnostics(object_id: &str, value: &str) -> Vec<Diagnost
             .with_help(OBJECT_ID_GRAMMAR_HELP),
         ];
     };
-    let mut segments = value[range].split(',').peekable();
-    while let Some(segment) = segments.next() {
-        let target = segment.trim();
+    for (start, end, is_last) in list_segments(value, range) {
+        let target = value[start..end].trim();
         if target.is_empty() {
-            if segments.peek().is_some() {
+            if !is_last {
                 diagnostics.push(
                     Diagnostic::error(
                         DiagnosticCode::IdInvalid,
@@ -861,6 +872,55 @@ fn evidence_ref_syntax_diagnostics(object_id: &str, value: &str) -> Vec<Diagnost
         } else if ObjectId::new(target.to_string()).is_err() {
             diagnostics.push(invalid_object_id_diagnostic(target, "evidence_ref target"));
         }
+    }
+    diagnostics
+}
+
+fn impacts_value_diagnostics(object_id: &str, value: &str) -> Vec<Diagnostic> {
+    let Ok(range) = list_content_range(value) else {
+        return vec![
+            Diagnostic::error(
+                DiagnosticCode::IdInvalid,
+                "impacts has a malformed bracket-list value",
+            )
+            .with_object_id(object_id),
+        ];
+    };
+    let mut diagnostics = Vec::new();
+    let mut has_path = false;
+    for (start, end, is_last) in list_segments(value, range) {
+        let path = value[start..end].trim();
+        if path.is_empty() {
+            if !is_last {
+                diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode::SchemaImpactsInvalidPath,
+                        "impacts contains an empty path segment",
+                    )
+                    .with_object_id(object_id),
+                );
+            }
+        } else {
+            has_path = true;
+            if let Err(error) = RelPath::try_new(path) {
+                diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode::SchemaImpactsInvalidPath,
+                        format!("invalid `impacts` path `{path}`: {error}"),
+                    )
+                    .with_object_id(object_id),
+                );
+            }
+        }
+    }
+    if !has_path && diagnostics.is_empty() {
+        diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::SchemaImpactsEmpty,
+                "impacts requires at least one repository-relative path",
+            )
+            .with_object_id(object_id),
+        );
     }
     diagnostics
 }
@@ -895,8 +955,8 @@ fn missing_graph_object_diagnostic(id: impl Into<String>) -> Diagnostic {
 mod tests {
     use super::*;
     use crate::domain::graph::{
-        GraphArtifactDocument, GraphEdge, GraphEvidence, GraphKnowledgeObjectNode, GraphNode,
-        GraphPageNode, GraphRelations, GraphSourceSpan,
+        GraphArtifactDocument, GraphEdge, GraphKnowledgeObjectNode, GraphNode, GraphPageNode,
+        GraphRelations, GraphSourceSpan,
     };
 
     fn graph(objects: Vec<GraphKnowledgeObjectNode>) -> GraphIndex {
@@ -1001,33 +1061,6 @@ mod tests {
 
         assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
         assert_eq!(diagnostics[0].code, DiagnosticCode::SchemaUnknownField);
-    }
-
-    #[test]
-    fn prospective_verified_procedure_preserves_projected_evidence() {
-        let mut procedure = object("billing.rotate", "verified");
-        procedure.kind = "procedure".to_string();
-        procedure.body = "1. Rotate the key.".to_string();
-        procedure
-            .fields
-            .insert("owner".to_string(), "billing".to_string());
-        procedure
-            .fields
-            .insert("verified_at".to_string(), "2026-09-02".to_string());
-        procedure
-            .evidence
-            .push(GraphEvidence::inline("source_code", "src/keys.rs"));
-        let target = ObjectId::new(procedure.id.clone()).expect("valid object id");
-
-        let diagnostics = prospective_draft_diagnostics(
-            &target,
-            &procedure,
-            BlockKind::Procedure,
-            &BTreeMap::new(),
-            &procedure.body,
-        );
-
-        assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
 
     fn patch(intent: PatchIntent) -> PatchDocument {
