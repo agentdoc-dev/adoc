@@ -248,7 +248,11 @@ impl PatchValidator<'_> {
             return;
         }
         for (key, value) in fields {
-            if !is_valid_field_key(&key) || is_relation_field(&key) || value.trim().is_empty() {
+            if !is_valid_field_key(&key)
+                || is_update_structural_field(&key)
+                || is_relation_field(&key)
+                || value.trim().is_empty()
+            {
                 continue;
             }
             // E1.1.T3 (ADR-0058): the target kind's closed schema binds the
@@ -611,7 +615,7 @@ pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnost
             for (key, value) in fields {
                 let message = if !is_valid_field_key(key) {
                     Some(format!("field key `{key}` is invalid"))
-                } else if matches!(key.as_str(), "id" | "kind" | "body" | "placement") {
+                } else if is_update_structural_field(key) {
                     Some(format!("field `{key}` is structural"))
                 } else if is_relation_field(key) {
                     Some(format!(
@@ -691,6 +695,10 @@ fn is_valid_field_key(key: &str) -> bool {
         && chars.all(|character| {
             character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_'
         })
+}
+
+fn is_update_structural_field(key: &str) -> bool {
+    matches!(key, "id" | "kind" | "body" | "placement")
 }
 
 fn is_relation_field(key: &str) -> bool {

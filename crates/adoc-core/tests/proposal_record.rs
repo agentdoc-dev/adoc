@@ -908,14 +908,22 @@ fn one_target_is_created_at_most_once_and_never_also_edited() {
 }
 
 #[test]
-fn creates_cannot_use_proposed_objects_as_placement_anchors() {
+fn creates_cannot_use_proposed_objects_for_placement() {
     let anchored = |target: &str, after: &str| {
         let mut patch = create_patch(target);
         patch["changes"]["placement"]["after"] = json!(after);
         patch
     };
+    let placed_on = |target: &str, page_id: &str| {
+        let mut patch = create_patch(target);
+        patch["changes"]["placement"]["page_id"] = json!(page_id);
+        patch
+    };
     let input = |finding: &str, patch: &Value| {
         patch_input(finding, "docs/billing.adoc", "billing.kb", patch)
+    };
+    let input_on = |finding: &str, page_id: &str, patch: &Value| {
+        patch_input(finding, "docs/billing.adoc", page_id, patch)
     };
 
     for patches in [
@@ -927,9 +935,22 @@ fn creates_cannot_use_proposed_objects_as_placement_anchors() {
             input("finding-001", &anchored("billing.second", "billing.first")),
             input("finding-002", &create_patch("billing.first")),
         ],
+        vec![input_on(
+            "finding-001",
+            "billing.proposed",
+            &placed_on("billing.proposed", "billing.proposed"),
+        )],
+        vec![
+            input_on(
+                "finding-001",
+                "billing.first",
+                &placed_on("billing.second", "billing.first"),
+            ),
+            input("finding-002", &create_patch("billing.first")),
+        ],
     ] {
         let error = build_proposal_record(bindings(), patches, None)
-            .expect_err("a proposed object cannot anchor another create");
+            .expect_err("a proposed object cannot define another create's placement");
         assert!(matches!(error, ProposalRecordError::PatchInvalid { .. }));
     }
 }

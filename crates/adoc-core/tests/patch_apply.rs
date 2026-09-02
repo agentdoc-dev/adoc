@@ -318,6 +318,33 @@ fn apply_refuses_invalid_visibility_value_in_update_fields() {
 }
 
 #[test]
+fn apply_reports_structural_update_field_once() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+    let base_hash = workspace.content_hash(&artifact, "billing.credits");
+
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": "billing.credits",
+            "base_hash": base_hash,
+            "changes": { "fields": { "body": "Replacement" } },
+            "reason": "E5.1 intrinsic structural-field validation"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert!(result.written_files.is_empty());
+    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::PatchValidationFailed
+    );
+}
+
+#[test]
 fn apply_reports_invalid_create_anchor_once() {
     let workspace = Workspace::new(PAGE_TEXT);
     let artifact = workspace.build();
