@@ -8,9 +8,10 @@ use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
 use crate::domain::knowledge_object::draft::{KnowledgeObjectDraft, validate_draft};
 use crate::domain::knowledge_object::{
     BlockKind, EVIDENCE_REF_FIELD, closed_schema_field_error, is_allowed_field_key,
-    shared_field_value_error,
+    list_content_range, shared_field_value_error,
 };
 use crate::domain::obligation::ProofObligation;
+use crate::domain::source_edit::planner::{field_value_line_break_diagnostic, guard_body_lines};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PatchDocument {
@@ -598,11 +599,19 @@ pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnost
         );
     }
     match &patch.intent {
-        PatchIntent::ReplaceBody { body, .. } if body.trim().is_empty() => {
-            diagnostics.push(validation_error(
-                &patch.target,
-                "replace_body requires a non-empty changes.body value",
-            ));
+        PatchIntent::ReplaceBody { body, .. } => {
+            if body.trim().is_empty() {
+                diagnostics.push(validation_error(
+                    &patch.target,
+                    "replace_body requires a non-empty changes.body value",
+                ));
+            } else {
+                diagnostics.extend(
+                    guard_body_lines(body)
+                        .into_iter()
+                        .map(|diagnostic| diagnostic.with_object_id(&patch.target)),
+                );
+            }
         }
         PatchIntent::UpdateFields { fields, .. } => {
             for (key, value) in fields {
@@ -615,11 +624,22 @@ pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnost
                         "field `{key}` is a relation field; use a relation operation"
                     ))
                 } else if !is_allowed_on_any_kind(key) {
-                    Some(format!(
-                        "field `{key}` is not valid for any Knowledge Object kind"
-                    ))
+                    diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode::SchemaUnknownField,
+                            format!(
+                                "unknown field `{key}`; it is not valid for any Knowledge Object kind"
+                            ),
+                        )
+                        .with_object_id(&patch.target)
+                        .with_help(DiagnosticCode::SchemaUnknownField.default_help()),
+                    );
+                    continue;
                 } else if value.trim().is_empty() {
                     Some(format!("field `{key}` requires a non-empty value"))
+                } else if let Some(diagnostic) = field_value_line_break_diagnostic(key, value) {
+                    diagnostics.push(diagnostic.with_object_id(&patch.target));
+                    continue;
                 } else {
                     None
                 };
@@ -667,7 +687,30 @@ pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnost
                     .diagnostics,
                 );
             }
-            if let Some(value) = fields.get(EVIDENCE_REF_FIELD) {
+            if !body.trim().is_empty() {
+                diagnostics.extend(
+                    guard_body_lines(body)
+                        .into_iter()
+                        .map(|diagnostic| diagnostic.with_object_id(&patch.target)),
+                );
+            }
+            if let Some(kind) = BlockKind::from_fence_word(kind) {
+                diagnostics.extend(fields.iter().filter_map(|(key, value)| {
+                    if is_relation_field(key)
+                        || !is_allowed_field_key(kind, key)
+                        || value.trim().is_empty()
+                    {
+                        return None;
+                    }
+                    field_value_line_break_diagnostic(key, value)
+                        .map(|diagnostic| diagnostic.with_object_id(&patch.target))
+                }));
+            }
+            if let Some(value) = fields.get(EVIDENCE_REF_FIELD)
+                && BlockKind::from_fence_word(kind)
+                    .is_some_and(|kind| is_allowed_field_key(kind, EVIDENCE_REF_FIELD))
+                && field_value_line_break_diagnostic(EVIDENCE_REF_FIELD, value).is_none()
+            {
                 diagnostics.extend(evidence_ref_syntax_diagnostics(&patch.target, value));
             }
         }
@@ -709,16 +752,30 @@ fn is_allowed_on_any_kind(key: &str) -> bool {
         .any(|kind| is_allowed_field_key(*kind, key))
 }
 
-fn evidence_ref_segments(value: &str) -> impl Iterator<Item = &str> {
-    value
+fn evidence_ref_segments(value: &str) -> Vec<&str> {
+    let Some(range) = list_content_range(value) else {
+        return Vec::new();
+    };
+    value[range]
         .split(',')
         .map(str::trim)
         .filter(|segment| !segment.is_empty())
+        .collect()
 }
 
 fn evidence_ref_syntax_diagnostics(object_id: &str, value: &str) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
-    let mut segments = value.split(',').peekable();
+    let Some(range) = list_content_range(value) else {
+        return vec![
+            Diagnostic::error(
+                DiagnosticCode::IdInvalid,
+                "evidence_ref has a malformed bracket-list value",
+            )
+            .with_object_id(object_id)
+            .with_help(OBJECT_ID_GRAMMAR_HELP),
+        ];
+    };
+    let mut segments = value[range].split(',').peekable();
     while let Some(segment) = segments.next() {
         let target = segment.trim();
         if target.is_empty() {

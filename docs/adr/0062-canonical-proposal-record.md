@@ -91,8 +91,9 @@ API.
    with `proposal_record.patch_invalid`.
 8. Every embedded patch passes the graph-independent half of `adoc patch
    --check` before the record exists: draft requirements, field key and shared
-   value rules, evidence-reference and placement ID syntax, and required
-   create placement. Graph existence, target-kind field compatibility,
+   value rules, source-splice-safe body and field text, evidence-reference
+   list syntax, placement ID syntax, and required create placement. Graph
+   existence, target-kind field compatibility,
    placement resolution, and post-apply source validity remain exact-head
    preflight concerns. Intrinsic failures use
    `proposal_record.patch_invalid`.

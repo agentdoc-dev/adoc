@@ -1,6 +1,7 @@
 //! Aggregate family — populated by Slice 1.
 
 use std::collections::BTreeSet;
+use std::ops::Range;
 
 use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourcePosition, SourceSpan};
@@ -506,13 +507,11 @@ fn relation_content_range(
     value_span: &SourceSpan,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<(usize, usize)> {
-    let Some((trimmed, trimmed_start, trimmed_end)) = trim_segment(value) else {
-        return Some((0, 0));
-    };
-
-    match (trimmed.strip_prefix('['), trimmed.strip_suffix(']')) {
-        (Some(_), Some(_)) => Some((trimmed_start + 1, trimmed_end - 1)),
-        (Some(_), None) | (None, Some(_)) => {
+    match list_content_range(value) {
+        Some(range) => Some((range.start, range.end)),
+        None => {
+            let (_, trimmed_start, trimmed_end) =
+                trim_segment(value).expect("a mismatched bracket is non-empty");
             diagnostics.push(
                 Diagnostic::error(
                     DiagnosticCode::IdInvalid,
@@ -529,7 +528,19 @@ fn relation_content_range(
             );
             None
         }
-        (None, None) => Some((0, value.len())),
+    }
+}
+
+/// Return the scalar or bracket-list content range used by authored list
+/// fields. A mismatched outer bracket is malformed and returns `None`.
+pub(crate) fn list_content_range(value: &str) -> Option<Range<usize>> {
+    let Some((trimmed, trimmed_start, trimmed_end)) = trim_segment(value) else {
+        return Some(0..0);
+    };
+    match (trimmed.starts_with('['), trimmed.ends_with(']')) {
+        (true, true) => Some(trimmed_start + 1..trimmed_end - 1),
+        (true, false) | (false, true) => None,
+        (false, false) => Some(0..value.len()),
     }
 }
 

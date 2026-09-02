@@ -81,11 +81,8 @@ pub(crate) fn plan_update_fields(
     let eol = LineEnding::detect(source);
 
     for (key, value) in fields {
-        if value.contains('\n') || value.contains('\r') {
-            diagnostics.push(Diagnostic::error(
-                DiagnosticCode::PatchValidationFailed,
-                format!("field `{key}` value contains a line break and cannot be applied"),
-            ));
+        if let Some(diagnostic) = field_value_line_break_diagnostic(key, value) {
+            diagnostics.push(diagnostic);
             continue;
         }
         if layout
@@ -224,11 +221,8 @@ pub(crate) fn plan_create_object(
 ) -> Result<SourceEditPlan, Vec<Diagnostic>> {
     let mut diagnostics = guard_body_lines(body);
     for (key, value) in fields {
-        if value.contains('\n') || value.contains('\r') {
-            diagnostics.push(Diagnostic::error(
-                DiagnosticCode::PatchValidationFailed,
-                format!("field `{key}` value contains a line break and cannot be applied"),
-            ));
+        if let Some(diagnostic) = field_value_line_break_diagnostic(key, value) {
+            diagnostics.push(diagnostic);
         }
         if !is_field_key(key) {
             diagnostics.push(Diagnostic::error(
@@ -281,7 +275,7 @@ pub(crate) fn plan_create_object(
 /// Reject body lines that would re-fence the block on reparse: a bare `::`
 /// closes the fence early, and a grammar-valid open-fence shape becomes a
 /// nested-block error.
-fn guard_body_lines(body: &str) -> Vec<Diagnostic> {
+pub(crate) fn guard_body_lines(body: &str) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     for line in body.split('\n') {
         let line = line.strip_suffix('\r').unwrap_or(line);
@@ -298,6 +292,15 @@ fn guard_body_lines(body: &str) -> Vec<Diagnostic> {
         }
     }
     diagnostics
+}
+
+pub(crate) fn field_value_line_break_diagnostic(key: &str, value: &str) -> Option<Diagnostic> {
+    (value.contains('\n') || value.contains('\r')).then(|| {
+        Diagnostic::error(
+            DiagnosticCode::PatchValidationFailed,
+            format!("field `{key}` value contains a line break and cannot be applied"),
+        )
+    })
 }
 
 /// Pure mirror of the parser's open-fence detector

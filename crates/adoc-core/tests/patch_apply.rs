@@ -266,7 +266,7 @@ fn apply_refuses_update_fields_outside_the_kind_closed_schema() {
     assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
     assert_eq!(
         result.diagnostics[0].code,
-        DiagnosticCode::PatchValidationFailed
+        DiagnosticCode::SchemaUnknownField
     );
     assert_eq!(
         fs::read_to_string(workspace.page_path()).expect("read"),
@@ -392,6 +392,82 @@ fn apply_reports_invalid_evidence_refs_once() {
         assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
         assert_eq!(result.diagnostics[0].code, DiagnosticCode::IdInvalid);
     }
+}
+
+#[test]
+fn apply_resolves_each_bracketed_evidence_ref() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+    let base_hash = workspace.content_hash(&artifact, "billing.credits");
+
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": "billing.credits",
+            "base_hash": base_hash,
+            "changes": {
+                "fields": { "evidence_ref": "[source.one, source.two]" }
+            },
+            "reason": "E5.1 source-compatible bracketed evidence references"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| {
+                diagnostic.code == DiagnosticCode::SchemaEvidenceTargetNotFound
+            })
+            .count(),
+        2,
+        "diagnostics: {:?}",
+        result.diagnostics
+    );
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.code != DiagnosticCode::IdInvalid),
+        "diagnostics: {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
+fn apply_reports_unknown_create_kind_before_evidence_ref_syntax() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+    let page_id = workspace.node(&artifact, "billing.credits")["page_id"]
+        .as_str()
+        .expect("anchor page_id")
+        .to_string();
+
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "create_object",
+            "target": "billing.unknown-kind",
+            "changes": {
+                "kind": "unknown",
+                "body": "Unknown kinds fail before their field contents.",
+                "fields": { "evidence_ref": "not-an-object-id" },
+                "placement": { "page_id": page_id, "after": "billing.credits" }
+            },
+            "reason": "E5.1 create diagnostic ownership"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::PatchValidationFailed
+    );
 }
 
 #[test]
