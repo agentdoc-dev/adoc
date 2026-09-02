@@ -28,6 +28,7 @@ use super::patch::{
     AGENT_PROPOSER_TYPE, PatchDocument, PatchIntent, PatchOperation, intrinsic_patch_diagnostics,
 };
 use super::semantic_context::{ExactRevision, is_semantic_context_text, is_sha256_digest};
+use super::source::LogicalPath;
 
 pub const PROPOSAL_SCHEMA_VERSION: &str = "adoc.proposal.v0";
 
@@ -460,7 +461,6 @@ fn assemble_patch(
     } = parsed;
     for (field, value) in [
         ("finding_id", &input.finding_id),
-        ("placement_path", &input.placement_path),
         ("page_id", &input.page_id),
         ("reason", &document.reason),
     ] {
@@ -469,6 +469,14 @@ fn assemble_patch(
                 message: format!("patch {field} is missing or invalid"),
             });
         }
+    }
+    if LogicalPath::parse(&input.placement_path).is_err() {
+        return Err(ProposalRecordError::PatchInvalid {
+            message: format!(
+                "patch placement_path '{}' is not project-relative and slash-normalized",
+                input.placement_path
+            ),
+        });
     }
     if ObjectId::new(input.page_id.clone()).is_err() {
         return Err(ProposalRecordError::PatchInvalid {

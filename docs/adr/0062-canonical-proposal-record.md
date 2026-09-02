@@ -59,8 +59,9 @@ API.
    is visible before submission. A byte-identical revision is not a version
    and fails with `proposal_record.revision_unchanged`.
 6. The create-only floors remain: every patch `target` and entry `page_id` is
-   an Object ID (`proposal_record.patch_invalid` otherwise); operations are
-   closed to `create_object`, `update_fields`, and `replace_body`; creates use the
+   an Object ID, and every `placement_path` is project-relative and
+   slash-normalized (`proposal_record.patch_invalid` otherwise); operations
+   are closed to `create_object`, `update_fields`, and `replace_body`; creates use the
    ADR-0053 §2 kind/status pairs and their `fields` never duplicate a
    structural member (ADR-0053 §3 — a nested `status` would bypass the
    pair); updates leave the object at a reviewable status (ADR-0054 §3) and

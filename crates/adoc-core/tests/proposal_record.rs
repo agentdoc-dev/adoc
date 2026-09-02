@@ -736,6 +736,31 @@ fn patch_page_must_be_an_object_id() {
 }
 
 #[test]
+fn patch_placement_path_must_be_logical() {
+    for path in [
+        "../outside.adoc",
+        "/tmp/page.adoc",
+        "docs\\page.adoc",
+        "C:/docs/page.adoc",
+        "docs//page.adoc",
+    ] {
+        let error = build_proposal_record(
+            bindings(),
+            vec![patch_input(
+                "finding-002",
+                path,
+                "billing.kb",
+                &update_patch("billing.credits", D, "billing"),
+            )],
+            None,
+        )
+        .expect_err("placement path must be project-relative and slash-normalized");
+        assert!(matches!(error, ProposalRecordError::PatchInvalid { .. }));
+        assert!(error.to_string().contains("placement_path"), "{error}");
+    }
+}
+
+#[test]
 fn proposal_record_rejects_null_patch_members() {
     let mut null_base_hash = create_patch("billing.proposed");
     null_base_hash["base_hash"] = Value::Null;

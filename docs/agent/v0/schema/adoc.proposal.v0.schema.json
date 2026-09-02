@@ -77,7 +77,10 @@
         "additionalProperties": false,
         "properties": {
           "finding_id": { "$ref": "#/$defs/text" },
-          "placement_path": { "$ref": "#/$defs/text" },
+          "placement_path": {
+            "$ref": "#/$defs/text",
+            "description": "Project-relative, slash-normalized logical source path; the exact path grammar is enforced by adoc-core."
+          },
           "page_id": { "$ref": "#/$defs/object_id" },
           "target": { "$ref": "#/$defs/object_id" },
           "operation": { "enum": ["create_object", "update_fields", "replace_body"] },

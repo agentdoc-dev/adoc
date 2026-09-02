@@ -494,10 +494,11 @@ diagnostic_codes! {
     /// E5.1: a patch in the proposal set is not a canonical `adoc.patch.v0`
     /// document — unparseable, non-canonical bytes, duplicate, intrinsically
     /// invalid, missing or mismatched create placement, a target outside the
-    /// Object ID grammar, a non-semantic reason, a digest-visible null member,
-    /// or a create/edit sequence outside ADR-0054 §5.
+    /// Object ID grammar, a non-logical placement path, a non-semantic reason,
+    /// a digest-visible null member, or a create/edit sequence outside
+    /// ADR-0054 §5.
     ProposalRecordPatchInvalid = "proposal_record.patch_invalid" =>
-        "Use intrinsically valid canonical patches with Object ID targets and entry pages, semantic-text reasons, no null members, and matching create placement; serialize each as sorted compact JSON with one trailing newline; create a target once or edit it with at most one update_fields then at most one replace_body.";
+        "Use intrinsically valid canonical patches with Object ID targets and entry pages, project-relative slash-normalized placement paths, semantic-text reasons, no null members, and matching create placement; serialize each as sorted compact JSON with one trailing newline; create a target once or edit it with at most one update_fields then at most one replace_body.";
     /// E5.1.T3 (ADR-0053 §2–§3, §7, ADR-0054 §3): the proposal would mint
     /// authority — a governance-changing operation, a create outside the
     /// non-authoritative kind/status floors, a create whose `fields`
