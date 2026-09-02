@@ -41,6 +41,7 @@ Producer for every row is the `adoc` release train (CLI, MCP server, and local g
 | `adoc.patch.v0` | shipped | adoc 0.3.4 (validator; input authored by agents) | adoc 0.3.4; Action v2.0.0-alpha.19 | v0-additive |
 | `adoc.project.status.v0` | shipped | adoc 0.3.4 | MCP agent clients (contract-tested at adoc 0.3.4) | v0-additive |
 | `adoc.proof_obligation.v0` | shipped | adoc 0.4.0 | adoc 0.4.0 (domain contract-tested; schema `adoc.proof_obligation.v0.schema.json`); Cloud approval surface — data-only consumer (E1.6.T4) | v0-additive; stage-bound stateful obligation record + waiver + classification policy (KNOWLEDGE-MODEL §K8, D16): obligation states and `required_at` stages are registered closed vocabularies (see “Proof obligation states” / “Proof obligation stages”); informational-vs-blocking per stage/risk/action is classification-policy data enclosed by this envelope; a waiver binds the exact obligation + workspace-qualified managed-version subject + principal + policy version and never converts unverified to verified — an expired waiver reopens its obligation as blocking; the record object embeds neither the waiver nor the policy — both are envelope-governed `$defs` subschemas carried by the obligation ledger's event stream (their enclosing audit envelope is registered when the E1.4/E4.2 enclosure lands), so a `waived` record is interpretable only alongside its binding waiver's ordinal bound; the stateless `ProofObligation` shape embedded in `adoc.review.v0`/`adoc.patch.check.v0` is a separate, unchanged contract related by a bridge constructor |
+| `adoc.proposal.v0` | shipped | adoc 0.4.x | adoc 0.4.x (`adoc proposal-record`, domain contract-tested; schema `adoc.proposal.v0.schema.json`); Action v2 E5.1 producer (`propose.sh` retained record); Cloud E5.1 consumer as the `agentdoc.cloud.proposal_command.v0` payload | exact-match reader (ADR-0062; owner adjusted from the E0.3 `cloud` reservation to `adoc` at E5.1 slice start because the record is a shared domain contract produced by the Action and the CLI and consumed by Cloud); canonical proposal record keyed by the proposal-set digest over exact sorted patch bytes (ADR-0053 §8), bound to exact base/head revisions, change-request system + id (never branch name or title), deterministic assessment digest, semantic-context digest, semantic-assessment digest, and the exact `content_hash` of every edited Knowledge Object; any patch byte change mints a new record whose `supersedes` names the prior digest; patches are closed to `create_object`/`update_fields`/`replace_body` at the ADR-0053/ADR-0054 non-authoritative floors (`proposal_record.authority_rejected`), so a proposal can never carry candidate activation or governance-record mutation; the typed per-finding no-change disposition record joins this envelope at E5.3.T3 |
 | `adoc.repository_baseline.v0` | shipped | adoc 0.3.4 | Action v2.0.0-alpha.19 | v0-additive; known registration-gap history — the original V10 inventory flagged it unregistered; true-up obligation tracked in [`DECISION-REGISTER.md`](DECISION-REGISTER.md) |
 | `adoc.retrieval.v1` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v1 additive; v0 is historical (see “Envelopes — historical”) |
 | `adoc.review.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
@@ -91,6 +92,7 @@ Deliberately invalid version fixtures cited from test modules in `crates/*/src`,
 | --- | --- | --- |
 | `adoc.graph.v99` | fixture | rejected-version fixture proving the Validation Runtime's exact-match context-artifact gating (E1.7.T4): neither an older nor a newer unknown graph version is consumed |
 | `adoc.search.v99` | fixture | rejected-version fixture for Search Artifact version gating |
+| `adoc.proposal.v99` | fixture | rejected-version fixture proving canonical proposal records fail closed with exact-version remediation (E5.1) |
 | `adoc.semantic_assessment.v99` | fixture | rejected-version fixture proving semantic assessments fail with exact-version remediation |
 | `adoc.semantic_context.v1` | fixture | rejected-version fixture proving the first unsupported semantic-context successor fails closed |
 | `adoc.semantic_context.v99` | fixture | rejected-version fixture proving arbitrary future semantic-context versions fail closed |
@@ -137,7 +139,6 @@ Reserved ids for the accepted V1 contract set (E0.3.T2). Each row names its owni
 | `agentdoc.cloud.external_promotion_receipt.v0` | cloud | E4.3 | immutable external-promotion receipt binding the exact attestation digest and Source Assertion, exact managed candidate version ID and content digest, exact policy receipt, exact Governance Event sequence and digest, policy effect ordinal and transaction ID, strictly later promotion-operation ordinal and transaction ID, service principal, and policy-declared issuer and attestation type; promotion accepts only a policy receipt visible from a prior committed transaction and exact-matches the attested policy receipt digest, so same-transaction policy-change-then-promote and attestation reuse across policy versions fail closed |
 | `adoc.governance_event.v0` | cloud | E4.2 | append-only governance transition record |
 | `adoc.semantic_endpoint_policy.v0` | cloud | E3.4 | immutable declaration binding one generic semantic endpoint id, endpoint class, exact URL, and allowed state; Action rejects a missing or non-matching declaration before invocation; moves to shipped at Cloud's first versioned release |
-| `adoc.proposal.v0` | cloud | E5.1 | canonical proposal record; includes the typed per-finding no-change disposition record (E5.3.T3) |
 | `adoc.approval.v0` | cloud | E5.2 | native approval bound to exact proposal digest, principal, policy version |
 | `adoc.gate_result.v0` | adoc | E5.3 | four-mode gate decision record carrying registered `gate.*` codes |
 | `adoc.reconciliation_candidate.v0` | adoc | E1.2 | typed same-Object-ID collision record (ADR-0057 invariant 1, RT-03/D36): names both parties by workspace canonical identity, repository identity, latest immutable version id, and content hash; reason vocabulary closed to `object_id_collision` — hash/title/similarity never produce a candidate and never merge; the record ships in `adoc-core` since E1.2.T1 with its serialized shape pinned in domain tests; moves to shipped when a surface emits it on the wire |
@@ -231,6 +232,10 @@ Explicit mapping (RT-21, like the attestation family): `audit.persistence_failed
 | `patch.target_already_exists` |
 | `patch.validation_failed` |
 | `procedure.verified_missing_evidence` |
+| `proposal_record.authority_rejected` |
+| `proposal_record.binding_invalid` |
+| `proposal_record.invalid_document` |
+| `proposal_record.patch_invalid` |
 | `ref.broken` |
 | `retrieval.no_knowledge_objects_consider_migration` |
 | `retrieval.object_not_found` |

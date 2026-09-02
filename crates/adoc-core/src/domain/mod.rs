@@ -26,6 +26,7 @@ pub(crate) mod obligation_record;
 pub(crate) mod patch;
 pub(crate) mod ports;
 pub(crate) mod project_config;
+pub(crate) mod proposal;
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) mod reconciliation;
 pub(crate) mod retrieval;

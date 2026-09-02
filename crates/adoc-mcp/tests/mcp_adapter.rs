@@ -316,6 +316,7 @@ fn lists_and_reads_all_stable_agent_resources() {
         "adoc://agent/v0/schema/adoc.source_record.v1.schema.json",
         "adoc://agent/v0/schema/adoc.work_request.v0.schema.json",
         "adoc://agent/v0/schema/adoc.work_result.v0.schema.json",
+        "adoc://agent/v0/schema/adoc.proposal.v0.schema.json",
         "adoc://agent/v0/schema/agentdoc.connector_capabilities.v0.schema.json",
         "adoc://agent/v0/schema/agentdoc.cloud.approval_command.v0.schema.json",
         "adoc://agent/v0/schema/agentdoc.cloud.assessment_submission.v0.schema.json",

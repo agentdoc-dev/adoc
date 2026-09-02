@@ -39,6 +39,7 @@ pub use application::migrate::{
 pub use application::patch::{
     PATCH_CHECK_SCHEMA_VERSION, PatchCheckResult, PatchInput, PatchJsonInput, PatchParseError,
 };
+pub use application::proposal::{build_proposal_record, validate_proposal_record};
 pub use application::retrieval::{
     RETRIEVAL_SCHEMA_VERSION, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult,
     RetrievalSession, SearchFilters, SearchQuery, SearchRecordScope, SearchResult, WhyResult,
@@ -82,6 +83,10 @@ pub use domain::ports::snapshot_workspace::{GitRef, SnapshotError, SnapshotSelec
 pub use domain::project_config::{
     EmbeddingsProvider, ParsedConfigOutputs, ParsedProjectConfig, ProjectConfigDocumentError,
     parse_project_config,
+};
+pub use domain::proposal::{
+    ContentBinding, PROPOSAL_SCHEMA_VERSION, ProposalBindings, ProposalChangeRequest,
+    ProposalPatch, ProposalPatchInput, ProposalRecord, ProposalRecordError,
 };
 pub use domain::retrieval::{
     ProseRecord, RetrievalEntry, RetrievalMatch, RetrievalRecord, RetrievalRelations,

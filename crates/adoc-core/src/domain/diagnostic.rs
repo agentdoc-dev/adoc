@@ -481,6 +481,27 @@ diagnostic_codes! {
         "Record non-empty provider and model identity in every semantic assessment, including structured human submissions.";
     AssessmentSemanticIdentityMismatch = "assessment.semantic_identity_mismatch" =>
         "Regenerate the assessment with the exact provider and model identity declared by the semantic executor request.";
+    /// E5.1: bytes offered as an `adoc.proposal.v0` record do not parse,
+    /// name an unsupported version, or carry fields that differ from their
+    /// canonical derivation (digests, ordering, content bindings).
+    ProposalRecordInvalidDocument = "proposal_record.invalid_document" =>
+        "Regenerate the proposal record with `adoc proposal-record` from the exact patch bytes; a record never carries digests it did not derive.";
+    /// E5.1.T1: a proposal record binding — exact revisions, change request
+    /// identity, or assessment/context/semantic digests — is missing or
+    /// malformed. A record with any binding missing is unconstructible.
+    ProposalRecordBindingInvalid = "proposal_record.binding_invalid" =>
+        "Supply every binding: exact base/head revisions, change-request system and id, and sha256-prefixed assessment, semantic-context, and semantic-assessment digests.";
+    /// E5.1: a patch in the proposal set is not a canonical `adoc.patch.v0`
+    /// document — unparseable, non-canonical bytes, duplicate, or binding the
+    /// same target to different content hashes.
+    ProposalRecordPatchInvalid = "proposal_record.patch_invalid" =>
+        "Serialize every patch as sorted compact JSON with one trailing newline, and bind each edited object to exactly one content hash.";
+    /// E5.1.T3 (ADR-0053 §2–§3, ADR-0054 §3): the proposal would mint
+    /// authority — a governance-changing operation, a create outside the
+    /// non-authoritative kind/status floors, a non-reviewable status, or an
+    /// authority field. Proposals only ever create reviewable knowledge.
+    ProposalRecordAuthorityRejected = "proposal_record.authority_rejected" =>
+        "Propose only create_object at the non-authoritative floors or reviewable update_fields/replace_body edits; never set verified_at, reviewed_by, approved_by, decided_by, or resolved_by.";
 }
 
 impl DiagnosticCode {
