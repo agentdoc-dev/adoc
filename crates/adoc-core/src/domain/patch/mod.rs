@@ -916,6 +916,9 @@ fn evidence_ref_syntax_diagnostics(object_id: &str, value: &str) -> Vec<Diagnost
     diagnostics
 }
 
+const IMPACTS_LIST_HELP: &str =
+    "Use `[path/one, path/two]` or one repository-relative path for impacts.";
+
 fn impacts_value_diagnostics(object_id: &str, value: &str) -> Vec<Diagnostic> {
     let Ok(range) = list_content_range(value) else {
         return vec![
@@ -923,7 +926,8 @@ fn impacts_value_diagnostics(object_id: &str, value: &str) -> Vec<Diagnostic> {
                 DiagnosticCode::IdInvalid,
                 "impacts has a malformed bracket-list value",
             )
-            .with_object_id(object_id),
+            .with_object_id(object_id)
+            .with_help(IMPACTS_LIST_HELP),
         ];
     };
     let mut diagnostics = Vec::new();
@@ -1481,15 +1485,24 @@ mod tests {
 
     #[test]
     fn intrinsic_impacts_diagnostics_include_remediation() {
-        for (value, code) in [
-            ("../outside", DiagnosticCode::SchemaImpactsInvalidPath),
-            ("[]", DiagnosticCode::SchemaImpactsEmpty),
+        for (value, code, help) in [
+            (
+                "../outside",
+                DiagnosticCode::SchemaImpactsInvalidPath,
+                DiagnosticCode::SchemaImpactsInvalidPath.default_help(),
+            ),
+            (
+                "[]",
+                DiagnosticCode::SchemaImpactsEmpty,
+                DiagnosticCode::SchemaImpactsEmpty.default_help(),
+            ),
+            ("[docs/a.rs", DiagnosticCode::IdInvalid, IMPACTS_LIST_HELP),
         ] {
             let diagnostics = impacts_value_diagnostics("billing.credits", value);
 
             assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
             assert_eq!(diagnostics[0].code, code);
-            assert_eq!(diagnostics[0].help.as_deref(), Some(code.default_help()));
+            assert_eq!(diagnostics[0].help.as_deref(), Some(help));
         }
     }
 }
