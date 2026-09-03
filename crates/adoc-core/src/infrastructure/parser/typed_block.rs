@@ -226,7 +226,9 @@ pub(super) fn consume_typed_block_line(
             state
                 .content_spans
                 .push(source.span_for_line(line_number, line));
-            if let Some(field) = try_parse_field(line.trim_end()) {
+            if let Some(field) = try_parse_field(
+                line.trim_end_matches(|character: char| character.is_ascii_whitespace()),
+            ) {
                 let value_span = source.span_for_line_columns(
                     line_number,
                     field.value_start_column,

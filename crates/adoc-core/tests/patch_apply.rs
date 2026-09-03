@@ -303,6 +303,40 @@ fn apply_accepts_unicode_whitespace_body() {
 }
 
 #[test]
+fn apply_preserves_unicode_whitespace_field_value() {
+    for (source, target) in [
+        (PAGE_TEXT, "billing.credits"),
+        (TASK_PAGE_TEXT, "billing.follow-up"),
+    ] {
+        let workspace = Workspace::new(source);
+        let artifact = workspace.build();
+        let result = workspace.apply(
+            &artifact,
+            serde_json::json!({
+                "schema_version": "adoc.patch.v0",
+                "op": "update_fields",
+                "target": target,
+                "base_hash": workspace.content_hash(&artifact, target),
+                "changes": { "fields": { "owner": "\u{a0}" } },
+                "reason": "E5.1 source field round-trip regression"
+            }),
+        );
+
+        assert!(result.applied, "diagnostics: {:?}", result.diagnostics);
+        assert_eq!(
+            result.post_check.error_count, 0,
+            "post-check diagnostics: {:?}",
+            result.post_check.diagnostics
+        );
+        let rebuilt = workspace.build();
+        assert_eq!(
+            workspace.node(&rebuilt, target)["fields"]["owner"],
+            "\u{a0}"
+        );
+    }
+}
+
+#[test]
 fn reapplying_without_rebuild_refuses_on_source_drift_and_writes_nothing() {
     let workspace = Workspace::new(PAGE_TEXT);
     let artifact = workspace.build();
