@@ -538,7 +538,8 @@ fn e5_1_proposal_record_is_shipped_by_its_contract_owner() {
 
 #[test]
 fn e5_2_cloud_approval_codes_are_registered_exactly() {
-    let registered: BTreeSet<_> = anchored_ids(&registry(), "registry:cloud-codes")
+    let registry = registry();
+    let registered: BTreeSet<_> = anchored_ids(&registry, "registry:cloud-codes")
         .into_iter()
         .filter(|code| code.starts_with("approval."))
         .collect();
@@ -553,6 +554,12 @@ fn e5_2_cloud_approval_codes_are_registered_exactly() {
     ]);
 
     assert_eq!(registered, expected);
+    let scope_row = registry
+        .lines()
+        .find(|line| line.contains("`approval.scope_mismatch`"))
+        .expect("approval scope-mismatch row");
+    assert!(scope_row.contains("declared object scope"));
+    assert!(scope_row.contains("proposal's affected object set"));
 }
 
 #[test]
