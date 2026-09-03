@@ -85,6 +85,9 @@ API.
    Every embedded patch declares an `agent` proposer with a non-empty
    identifier constructed by the trusted Action rather than the provider
    (ADR-0053 §7).
+   Authority is evaluated across the proposal set before entry, placement, or
+   byte validation: any governance operation is refused before attribution
+   defects in other patches, then every patch must satisfy the proposer floor.
    Violations fail with `proposal_record.authority_rejected`, so a
    model-originated submission can only create a proposal record and never
    touches active state. Every create carries placement whose embedded

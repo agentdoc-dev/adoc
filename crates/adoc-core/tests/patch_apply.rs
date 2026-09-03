@@ -283,6 +283,26 @@ fn apply_rewrites_exactly_the_body_span_byte_for_byte() {
 }
 
 #[test]
+fn apply_accepts_unicode_whitespace_body() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+    let base_hash = workspace.content_hash(&artifact, "billing.credits");
+
+    let result = workspace.apply(&artifact, replace_body_patch(&base_hash, "\u{a0}"));
+
+    assert!(result.applied, "diagnostics: {:?}", result.diagnostics);
+    assert_eq!(
+        result.post_check.error_count, 0,
+        "post-check diagnostics: {:?}",
+        result.post_check.diagnostics
+    );
+    assert_eq!(
+        fs::read_to_string(workspace.page_path()).expect("read written page"),
+        PAGE_TEXT.replace("Original body line.", "\u{a0}")
+    );
+}
+
+#[test]
 fn reapplying_without_rebuild_refuses_on_source_drift_and_writes_nothing() {
     let workspace = Workspace::new(PAGE_TEXT);
     let artifact = workspace.build();

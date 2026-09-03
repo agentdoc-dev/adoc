@@ -664,30 +664,37 @@ fn governance_operation_precedes_patch_content_validation() {
 fn governance_operation_precedes_other_patches_set_level_validation() {
     let mut create = create_patch("billing.proposed");
     create["changes"]["placement"]["after"] = json!("billing.proposed");
+    let mut unattributed_create = create.clone();
+    unattributed_create
+        .as_object_mut()
+        .expect("patch is an object")
+        .remove("proposer");
     let revoke = json!({
         "schema_version": "adoc.patch.v0", "op": "revoke", "target": "billing.credits",
         "base_hash": D, "changes": {}, "reason": "revoke",
         "proposer": {"type": "agent", "id": "agentdoc-action/claude-code"}
     });
 
-    let error = build_proposal_record(
-        bindings(),
-        vec![
-            patch_input("finding-001", "docs/billing.adoc", "billing.kb", &create),
-            patch_input("finding-002", "docs/billing.adoc", "billing.kb", &revoke),
-        ],
-        None,
-    )
-    .expect_err("governance authority is categorical across the proposal set");
+    for create in [create, unattributed_create] {
+        let error = build_proposal_record(
+            bindings(),
+            vec![
+                patch_input("finding-001", "docs/billing.adoc", "billing.kb", &create),
+                patch_input("finding-002", "docs/billing.adoc", "billing.kb", &revoke),
+            ],
+            None,
+        )
+        .expect_err("governance authority is categorical across the proposal set");
 
-    assert_eq!(
-        error.diagnostic_code().as_str(),
-        "proposal_record.authority_rejected"
-    );
-    assert!(
-        error.to_string().contains("changes governance state"),
-        "{error}"
-    );
+        assert_eq!(
+            error.diagnostic_code().as_str(),
+            "proposal_record.authority_rejected"
+        );
+        assert!(
+            error.to_string().contains("changes governance state"),
+            "{error}"
+        );
+    }
 }
 
 #[test]
@@ -1222,6 +1229,24 @@ fn two_patch_logical_update_binds_the_exact_head_hash() {
 }
 
 #[test]
+fn unicode_whitespace_body_is_proposable() {
+    let input =
+        |patch: &Value| patch_input("finding-002", "docs/billing.adoc", "billing.kb", patch);
+    let mut status_only = update_patch("billing.credits", D, "billing");
+    status_only["changes"] = json!({"fields": {"status": "draft"}});
+
+    build_proposal_record(
+        bindings(),
+        vec![
+            input(&status_only),
+            input(&replace_body_patch("billing.credits", D, "\u{a0}")),
+        ],
+        None,
+    )
+    .expect("source Body treats only ASCII edge whitespace as blank");
+}
+
+#[test]
 fn one_target_edit_uses_one_exact_head_coordinate() {
     for (body_path, body_page) in [
         ("docs/other.adoc", "billing.kb"),
@@ -1500,6 +1525,8 @@ fn unparsed_impacts_metadata_is_proposable() {
 fn intrinsically_invalid_edits_are_rejected() {
     let mut blank_reason = update_patch("billing.credits", D, "billing");
     blank_reason["reason"] = json!("  ");
+    let mut unicode_blank_reason = update_patch("billing.credits", D, "billing");
+    unicode_blank_reason["reason"] = json!("\u{a0}");
     let mut invalid_key = update_patch("billing.credits", D, "billing");
     invalid_key["changes"]["fields"] = json!({"Bad-Key": "value", "status": "draft"});
     let mut unknown_field = update_patch("billing.credits", D, "billing");
@@ -1519,6 +1546,7 @@ fn intrinsically_invalid_edits_are_rejected() {
 
     for patches in [
         vec![blank_reason],
+        vec![unicode_blank_reason],
         vec![invalid_key],
         vec![unknown_field],
         vec![relation],

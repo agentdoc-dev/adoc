@@ -222,14 +222,15 @@ impl ProposalRecord {
             });
         }
         // Authority is categorical across the set and precedes entry or
-        // placement validation: governance operations keep their specific
-        // refusal, while every other operation must first be attributed.
+        // placement validation. Governance refusal is more specific than
+        // another patch's missing attribution, regardless of input order.
         for patch in &patches {
             if patch.document.intent.changes_governance_state() {
                 enforce_floors(&patch.document)?;
-            } else {
-                enforce_proposer_floor(&patch.document)?;
             }
+        }
+        for patch in &patches {
+            enforce_proposer_floor(&patch.document)?;
         }
         let created_targets: BTreeSet<&str> = patches
             .iter()

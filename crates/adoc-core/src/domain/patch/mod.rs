@@ -234,7 +234,7 @@ impl PatchValidator<'_> {
         if !self.require_matching_base_hash(&object, base_hash) {
             return;
         }
-        if body.trim().is_empty() {
+        if trim_ascii_edges(body).is_empty() {
             return;
         }
         if let Some(kind) = BlockKind::from_fence_word(&object.kind) {
@@ -655,6 +655,8 @@ impl PatchValidator<'_> {
 /// unapplyable.
 pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
+    // Patch reason is proposal metadata, not a source value object. Keep its
+    // intentionally stricter Unicode-whitespace blank check.
     if patch.reason.trim().is_empty() {
         diagnostics.push(
             Diagnostic::error(
@@ -666,7 +668,7 @@ pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnost
     }
     match &patch.intent {
         PatchIntent::ReplaceBody { body, .. } => {
-            if body.trim().is_empty() {
+            if trim_ascii_edges(body).is_empty() {
                 diagnostics.push(validation_error(
                     &patch.target,
                     "replace_body requires a non-empty changes.body value",
@@ -753,7 +755,7 @@ pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnost
                     .diagnostics,
                 );
             }
-            if !body.trim().is_empty() {
+            if !trim_ascii_edges(body).is_empty() {
                 diagnostics.extend(
                     guard_body_lines(body)
                         .into_iter()
