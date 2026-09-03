@@ -104,10 +104,11 @@ API.
    `content_bindings` records the exact-head hash the first patch carries.
    Every patch editing one target carries the same exact-head
    `placement_path` and `page_id`; conflicting coordinates fail with
-   `proposal_record.patch_invalid`. Cross-target page-to-path coherence
-   depends on the repository graph and is an exact-head preflight obligation
-   on the E5.1 Cloud consumer, checked by its ingestion tests against `adoc`
-   output.
+   `proposal_record.patch_invalid`. Which exact-head path a page occupies is
+   graph knowledge—a page may declare an explicit identity, so its path is not
+   derivable from the page ID—and cross-target page-to-path coherence is an
+   exact-head preflight obligation on the E5.1 Cloud consumer, checked by its
+   ingestion tests against `adoc` output.
    Application order is fixed by the operations, not by the digest-ordered
    `patches` array. A second patch of one operation for one target fails
    with `proposal_record.patch_invalid`.

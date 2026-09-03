@@ -209,8 +209,10 @@ fn published_schema_rejects_text_the_domain_rejects() {
     for (pointer, invalid) in [
         ("/bindings/change_request/id", " ticket-1 "),
         ("/bindings/change_request/id", "ticket\0"),
+        ("/bindings/change_request/id", "ticket-1\n"),
         ("/patches/0/target", " billing.credits "),
         ("/patches/0/target", "billing"),
+        ("/patches/0/target", "billing.credits\n"),
         ("/patches/0/page_id", "billing"),
     ] {
         let mut instance = canonical.clone();
@@ -220,6 +222,10 @@ fn published_schema_rejects_text_the_domain_rejects() {
             "schema accepted {invalid:?} at {pointer}"
         );
     }
+
+    let mut trailing_line_terminator = canonical.clone();
+    trailing_line_terminator["proposal_set_digest"] = json!(format!("{A}\n"));
+    assert!(!validator.is_valid(&trailing_line_terminator));
 
     let mut missing_proposer = canonical.clone();
     missing_proposer["patches"][0]["patch"]
@@ -1467,6 +1473,24 @@ fn update_evidence_syntax_waits_for_exact_head_kind() {
         )
         .expect("the graph-independent record cannot know whether the target parses evidence_ref");
     }
+}
+
+#[test]
+fn update_impacts_syntax_waits_for_exact_head_kind() {
+    let mut patch = update_patch("billing.credits", D, "billing");
+    patch["changes"]["fields"] = json!({"status": "draft", "impacts": "../outside"});
+
+    build_proposal_record(
+        bindings(),
+        vec![patch_input(
+            "finding-002",
+            "docs/billing.adoc",
+            "billing.kb",
+            &patch,
+        )],
+        None,
+    )
+    .expect("the graph-independent record cannot know whether the target parses impacts");
 }
 
 // Review round 5 (PR #194): creates carry no base_hash, so two creates of one

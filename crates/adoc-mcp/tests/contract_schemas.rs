@@ -496,12 +496,14 @@ fn patch_input_schema_preflights_object_ids() {
         "/changes/placement/page_id",
         "/changes/placement/after",
     ] {
-        let mut invalid = patch.clone();
-        *invalid.pointer_mut(pointer).expect("field exists") = json!("Billing");
-        assert!(
-            !schema_accepts("patch-input.json", &invalid),
-            "schema accepted malformed Object ID at {pointer}"
-        );
+        for value in ["Billing", "billing.created\n"] {
+            let mut invalid = patch.clone();
+            *invalid.pointer_mut(pointer).expect("field exists") = json!(value);
+            assert!(
+                !schema_accepts("patch-input.json", &invalid),
+                "schema accepted malformed Object ID at {pointer}"
+            );
+        }
     }
 
     let malformed_supersedes = json!({

@@ -1674,6 +1674,28 @@ mod tests {
     }
 
     #[test]
+    fn impacts_parsing_kind_set_matches_the_typed_aggregates() {
+        let kinds: Vec<_> = BlockKind::ALL
+            .iter()
+            .copied()
+            .filter(|kind| kind.parses_impacts())
+            .collect();
+
+        assert_eq!(
+            kinds,
+            [
+                BlockKind::Claim,
+                BlockKind::Decision,
+                BlockKind::Constraint,
+                BlockKind::Policy,
+                BlockKind::Procedure,
+                BlockKind::Example,
+                BlockKind::Api,
+            ]
+        );
+    }
+
+    #[test]
     fn graph_relation_kind_all_lists_every_supported_relation_field_in_source_order() {
         use crate::domain::graph::GraphRelationKind;
 
