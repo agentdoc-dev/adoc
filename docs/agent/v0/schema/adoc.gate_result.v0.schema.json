@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.gate_result.v0.schema.json",
+  "title": "AgentDoc Gate Result",
+  "description": "E5.3 deterministic four-mode gate conclusion over validated typed facts. Cloud owns evaluation; this contract carries no timestamps or explanatory prose.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "head_sha",
+    "policy_version",
+    "input_digests",
+    "effective_mode",
+    "result",
+    "reasons"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "adoc.gate_result.v0" },
+    "head_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "policy_version": { "$ref": "#/$defs/text" },
+    "input_digests": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/digest" },
+      "uniqueItems": true
+    },
+    "configured_mode": { "type": "string" },
+    "effective_mode": {
+      "oneOf": [{ "$ref": "#/$defs/mode" }, { "type": "null" }]
+    },
+    "result": { "enum": ["pass", "block"] },
+    "reasons": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "gate.approval_invalidated",
+          "gate.approval_missing",
+          "gate.assessment_missing",
+          "gate.assessment_stale",
+          "gate.audit_persistence_failed",
+          "gate.cloud_unavailable",
+          "gate.mode_unknown",
+          "gate.promotion_unapproved",
+          "gate.proposal_hash_mismatch",
+          "gate.proposal_missing",
+          "gate.provider_failed_no_fallback",
+          "gate.semantic_invalid"
+        ]
+      },
+      "uniqueItems": true
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "result": { "const": "block" } } },
+      "then": { "properties": { "reasons": { "minItems": 1 } } }
+    },
+    {
+      "if": { "not": { "required": ["configured_mode"] } },
+      "then": { "properties": { "effective_mode": { "const": "advisory" } } }
+    },
+    {
+      "if": {
+        "required": ["configured_mode"],
+        "properties": {
+          "configured_mode": {
+            "not": {
+              "enum": [
+                "advisory",
+                "assessment_required",
+                "proposal_required",
+                "approval_required"
+              ]
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "effective_mode": { "type": "null" },
+          "result": { "const": "block" },
+          "reasons": {
+            "const": ["gate.mode_unknown"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "reasons": { "contains": { "const": "gate.mode_unknown" } }
+        }
+      },
+      "then": {
+        "required": ["configured_mode"],
+        "properties": {
+          "configured_mode": {
+            "not": { "$ref": "#/$defs/mode" }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "configured_mode": { "const": "advisory" } }, "required": ["configured_mode"] },
+      "then": { "properties": { "effective_mode": { "const": "advisory" } } }
+    },
+    {
+      "if": { "properties": { "configured_mode": { "const": "assessment_required" } }, "required": ["configured_mode"] },
+      "then": { "properties": { "effective_mode": { "const": "assessment_required" } } }
+    },
+    {
+      "if": { "properties": { "configured_mode": { "const": "proposal_required" } }, "required": ["configured_mode"] },
+      "then": { "properties": { "effective_mode": { "const": "proposal_required" } } }
+    },
+    {
+      "if": { "properties": { "configured_mode": { "const": "approval_required" } }, "required": ["configured_mode"] },
+      "then": { "properties": { "effective_mode": { "const": "approval_required" } } }
+    }
+  ],
+  "$defs": {
+    "mode": {
+      "enum": [
+        "advisory",
+        "assessment_required",
+        "proposal_required",
+        "approval_required"
+      ]
+    },
+    "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^\\u0000-\\u001f\\u0020\\u007f-\\u009f\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000](?:[^\\u0000-\\u001f\\u007f-\\u009f]*[^\\u0000-\\u001f\\u0020\\u007f-\\u009f\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000])?$"
+    }
+  }
+}

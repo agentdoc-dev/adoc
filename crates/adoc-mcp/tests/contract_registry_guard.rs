@@ -604,6 +604,54 @@ fn e5_2_cloud_approval_codes_are_registered_exactly() {
 }
 
 #[test]
+fn e5_3_gate_result_and_closed_reason_set_are_shipped() {
+    let doc = registry();
+    let shipped = anchored_ids(&doc, "registry:envelopes-shipped-adoc");
+    let planned = anchored_ids(&doc, "registry:envelopes-planned");
+    assert!(shipped.contains("adoc.gate_result.v0"));
+    assert!(!planned.contains("adoc.gate_result.v0"));
+
+    let reasons = anchored_ids(&doc, "registry:gate-codes");
+    let gate_result_reasons = BTreeSet::from([
+        "gate.approval_invalidated".to_string(),
+        "gate.approval_missing".to_string(),
+        "gate.assessment_missing".to_string(),
+        "gate.assessment_stale".to_string(),
+        "gate.audit_persistence_failed".to_string(),
+        "gate.cloud_unavailable".to_string(),
+        "gate.mode_unknown".to_string(),
+        "gate.proposal_hash_mismatch".to_string(),
+        "gate.proposal_missing".to_string(),
+        "gate.provider_failed_no_fallback".to_string(),
+        "gate.promotion_unapproved".to_string(),
+        "gate.semantic_invalid".to_string(),
+    ]);
+    assert!(
+        gate_result_reasons.is_subset(&reasons),
+        "E5.3 gate-result reasons are missing: {:?}",
+        gate_result_reasons.difference(&reasons).collect::<Vec<_>>()
+    );
+    for reason in &gate_result_reasons {
+        let row = doc
+            .lines()
+            .find(|line| line.trim_start().starts_with(&format!("| `{reason}` |")))
+            .expect("gate reason row");
+        assert!(row.contains("| shipped | E5.3 |"), "unshipped row: {row}");
+    }
+    let shipped_e5_3: BTreeSet<_> = reasons
+        .iter()
+        .filter(|reason| {
+            doc.lines()
+                .find(|line| line.trim_start().starts_with(&format!("| `{reason}` |")))
+                .is_some_and(|row| row.contains("| shipped | E5.3 |"))
+        })
+        .cloned()
+        .collect();
+    assert_eq!(shipped_e5_3, gate_result_reasons);
+    assert!(reasons.contains("gate.check_publish_failed"));
+}
+
+#[test]
 fn e4_5_cloud_capability_trust_codes_are_registered_exactly() {
     let registered = anchored_ids(&registry(), "registry:cloud-codes");
     for code in [

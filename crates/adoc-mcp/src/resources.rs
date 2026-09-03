@@ -497,6 +497,14 @@ const RESOURCES: &[AgentResource] = &[
         contents: include_str!("../../../docs/agent/v0/schema/adoc.proposal.v0.schema.json"),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.gate_result.v0.schema.json",
+        name: "schema-adoc-gate-result-v0-json",
+        title: "AgentDoc Gate Result JSON Schema",
+        description: "JSON Schema for deterministic four-mode gate conclusions.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!("../../../docs/agent/v0/schema/adoc.gate_result.v0.schema.json"),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/agentdoc.connector_capabilities.v0.schema.json",
         name: "schema-agentdoc-connector-capabilities-v0-json",
         title: "Connector Capability Manifest JSON Schema",

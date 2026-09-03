@@ -7,8 +7,9 @@
 use serde_json::Value;
 
 use crate::domain::proposal::{
-    PROPOSAL_SCHEMA_VERSION, ParsedProposalPatch, ProposalBindings, ProposalPatchInput,
-    ProposalRecord, ProposalRecordError, RawProposalRecord, canonical_patch_bytes,
+    PROPOSAL_SCHEMA_VERSION, ParsedProposalPatch, ProposalBindings, ProposalDispositionInput,
+    ProposalPatchInput, ProposalRecord, ProposalRecordError, RawProposalRecord,
+    canonical_patch_bytes,
 };
 use crate::infrastructure::artifact::read_patch_document_value;
 
@@ -18,7 +19,24 @@ pub fn build_proposal_record(
     patches: Vec<ProposalPatchInput>,
     supersedes: Option<String>,
 ) -> Result<ProposalRecord, ProposalRecordError> {
-    let parsed = patches
+    ProposalRecord::assemble(bindings, parse_patches(patches)?, Vec::new(), supersedes)
+}
+
+/// Assemble a canonical proposal record with human-authorized per-finding
+/// no-change evidence. The patch-set digest remains patch-only.
+pub fn build_proposal_record_with_dispositions(
+    bindings: ProposalBindings,
+    patches: Vec<ProposalPatchInput>,
+    dispositions: Vec<ProposalDispositionInput>,
+    supersedes: Option<String>,
+) -> Result<ProposalRecord, ProposalRecordError> {
+    ProposalRecord::assemble(bindings, parse_patches(patches)?, dispositions, supersedes)
+}
+
+fn parse_patches(
+    patches: Vec<ProposalPatchInput>,
+) -> Result<Vec<ParsedProposalPatch>, ProposalRecordError> {
+    patches
         .into_iter()
         .map(|input| {
             let patch: Value = serde_json::from_slice(&input.patch_bytes).map_err(|error| {
@@ -31,8 +49,7 @@ pub fn build_proposal_record(
             })?;
             parse_patch(input, patch)
         })
-        .collect::<Result<Vec<_>, _>>()?;
-    ProposalRecord::assemble(bindings, parsed, supersedes)
+        .collect()
 }
 
 /// Read `adoc.proposal.v0` bytes and re-derive every digest and ordering;
@@ -67,7 +84,7 @@ pub fn validate_proposal_record(bytes: &[u8]) -> Result<ProposalRecord, Proposal
             parse_patch(input, patch.patch)
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let rebuilt = ProposalRecord::assemble(raw.bindings, parsed, raw.supersedes)?;
+    let rebuilt = ProposalRecord::assemble(raw.bindings, parsed, raw.dispositions, raw.supersedes)?;
     let mismatch = |what: &str| ProposalRecordError::InvalidDocument {
         message: format!("{what} does not match its canonical derivation"),
     };
@@ -140,9 +157,10 @@ impl ProposalRecord {
         &self,
         patches: Vec<ProposalPatchInput>,
     ) -> Result<ProposalRecord, ProposalRecordError> {
-        build_proposal_record(
+        build_proposal_record_with_dispositions(
             self.bindings().clone(),
             patches,
+            self.dispositions().to_vec(),
             Some(self.proposal_set_digest().to_string()),
         )
     }

@@ -39,7 +39,9 @@ pub use application::migrate::{
 pub use application::patch::{
     PATCH_CHECK_SCHEMA_VERSION, PatchCheckResult, PatchInput, PatchJsonInput, PatchParseError,
 };
-pub use application::proposal::{build_proposal_record, validate_proposal_record};
+pub use application::proposal::{
+    build_proposal_record, build_proposal_record_with_dispositions, validate_proposal_record,
+};
 pub use application::retrieval::{
     RETRIEVAL_SCHEMA_VERSION, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult,
     RetrievalSession, SearchFilters, SearchQuery, SearchRecordScope, SearchResult, WhyResult,
@@ -72,6 +74,10 @@ pub use domain::external_work::{
     WorkResultInput, WorkRuntime, WorkSource, WorkloadAuthorization, build_work_request,
     build_work_result, validate_work_request, validate_work_result,
 };
+pub use domain::gate_result::{
+    GATE_RESULT_SCHEMA_VERSION, GateMode, GateOutcome, GateReason, GateResult, GateResultError,
+    validate_gate_result,
+};
 pub use domain::graph::{
     GraphDirection, GraphRelationKind, GraphTraversalEdge, GraphTraversalNode, GraphTraversalQuery,
     GraphTraversalResult, ProseBlockKind,
@@ -86,7 +92,8 @@ pub use domain::project_config::{
 };
 pub use domain::proposal::{
     ContentBinding, PROPOSAL_SCHEMA_VERSION, ProposalBindings, ProposalChangeRequest,
-    ProposalPatch, ProposalPatchInput, ProposalRecord, ProposalRecordError,
+    ProposalDispositionInput, ProposalDispositionKind, ProposalPatch, ProposalPatchInput,
+    ProposalRecord, ProposalRecordError,
 };
 pub use domain::retrieval::{
     ProseRecord, RetrievalEntry, RetrievalMatch, RetrievalRecord, RetrievalRelations,

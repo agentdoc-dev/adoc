@@ -1,4 +1,5 @@
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -51,9 +52,32 @@ fn schema(name: &str) -> serde_json::Value {
         .expect("schema is json")
 }
 
+struct AgentSchemaRetriever;
+
+impl jsonschema::Retrieve for AgentSchemaRetriever {
+    fn retrieve(
+        &self,
+        uri: &jsonschema::Uri<String>,
+    ) -> Result<serde_json::Value, Box<dyn std::error::Error + Send + Sync>> {
+        let name = uri
+            .as_str()
+            .strip_prefix("adoc://agent/v0/schema/")
+            .filter(|name| !name.contains('/'))
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, uri.as_str().to_string()))?;
+        Ok(schema(name))
+    }
+}
+
+fn validator_for(schema: &serde_json::Value) -> jsonschema::Validator {
+    jsonschema::options()
+        .with_retriever(AgentSchemaRetriever)
+        .build(schema)
+        .expect("schema compiles")
+}
+
 fn assert_valid(schema_name: &str, instance: &serde_json::Value) {
     let schema = schema(schema_name);
-    let validator = jsonschema::validator_for(&schema).expect("schema compiles");
+    let validator = validator_for(&schema);
     let errors = validator
         .iter_errors(instance)
         .map(|error| error.to_string())
@@ -68,9 +92,7 @@ fn assert_valid(schema_name: &str, instance: &serde_json::Value) {
 
 fn schema_accepts(schema_name: &str, instance: &serde_json::Value) -> bool {
     let schema = schema(schema_name);
-    jsonschema::validator_for(&schema)
-        .expect("schema compiles")
-        .is_valid(instance)
+    validator_for(&schema).is_valid(instance)
 }
 
 #[test]
@@ -89,10 +111,20 @@ fn cloud_operation_contracts_round_trip_and_reject_the_registered_unknown_versio
         "agentdoc.cloud.egress_policy.v0",
     ] {
         let file = format!("{id}.schema.json");
-        let fixture = json!({
-            "schema_version": id,
-            "payload": { "fixture": "round-trip" }
-        });
+        let payload = if id == "agentdoc.cloud.gate_decision.v0" {
+            json!({
+                "schema_version": "adoc.gate_result.v0",
+                "head_sha": "0123456789abcdef0123456789abcdef01234567",
+                "policy_version": "gate-policy-v1",
+                "input_digests": [],
+                "effective_mode": "advisory",
+                "result": "pass",
+                "reasons": []
+            })
+        } else {
+            json!({ "fixture": "round-trip" })
+        };
+        let fixture = json!({ "schema_version": id, "payload": payload });
         let bytes = serde_json::to_vec(&fixture).expect("fixture serializes");
         let round_trip: serde_json::Value =
             serde_json::from_slice(&bytes).expect("fixture deserializes");
@@ -109,6 +141,17 @@ fn cloud_operation_contracts_round_trip_and_reject_the_registered_unknown_versio
         "agentdoc.cloud.assessment_submission.v0.schema.json",
         &unsupported
     ));
+}
+
+#[test]
+fn cloud_gate_decision_wraps_the_shared_gate_result_contract() {
+    let gate = schema("agentdoc.cloud.gate_decision.v0.schema.json");
+    assert_eq!(
+        gate.pointer("/properties/payload/$ref"),
+        Some(&json!(
+            "adoc://agent/v0/schema/adoc.gate_result.v0.schema.json"
+        ))
+    );
 }
 
 #[test]
