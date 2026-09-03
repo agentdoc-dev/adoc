@@ -221,6 +221,11 @@ impl ProposalRecord {
                 message: "a proposal record needs at least one patch".to_string(),
             });
         }
+        for patch in &patches {
+            if matches!(&patch.document.intent, PatchIntent::CreateObject { .. }) {
+                enforce_proposer_floor(&patch.document)?;
+            }
+        }
         let created_targets: BTreeSet<&str> = patches
             .iter()
             .filter_map(|patch| match &patch.document.intent {
@@ -593,11 +598,28 @@ fn assemble_patch(
     })
 }
 
-fn enforce_floors(document: &PatchDocument) -> Result<(), ProposalRecordError> {
-    let reject = |reason: String| ProposalRecordError::AuthorityRejected {
+fn authority_rejected(document: &PatchDocument, reason: String) -> ProposalRecordError {
+    ProposalRecordError::AuthorityRejected {
         target: document.target.clone(),
         reason,
-    };
+    }
+}
+
+fn enforce_proposer_floor(document: &PatchDocument) -> Result<(), ProposalRecordError> {
+    if document.proposer.as_ref().is_none_or(|proposer| {
+        proposer.proposer_type != AGENT_PROPOSER_TYPE || !is_semantic_context_text(&proposer.id)
+    }) {
+        return Err(authority_rejected(
+            document,
+            "every proposal patch must declare an agent proposer with a non-empty identifier"
+                .to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn enforce_floors(document: &PatchDocument) -> Result<(), ProposalRecordError> {
+    let reject = |reason: String| authority_rejected(document, reason);
     let reject_governance = || {
         reject(format!(
             "operation {} changes governance state",
@@ -607,14 +629,7 @@ fn enforce_floors(document: &PatchDocument) -> Result<(), ProposalRecordError> {
     if document.intent.changes_governance_state() {
         return Err(reject_governance());
     }
-    if document.proposer.as_ref().is_none_or(|proposer| {
-        proposer.proposer_type != AGENT_PROPOSER_TYPE || !is_semantic_context_text(&proposer.id)
-    }) {
-        return Err(reject(
-            "every proposal patch must declare an agent proposer with a non-empty identifier"
-                .to_string(),
-        ));
-    }
+    enforce_proposer_floor(document)?;
     let fields = match &document.intent {
         PatchIntent::CreateObject {
             kind,

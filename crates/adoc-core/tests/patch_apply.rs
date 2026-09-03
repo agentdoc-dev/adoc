@@ -821,7 +821,11 @@ fn apply_reports_invalid_evidence_refs_once() {
     let artifact = workspace.build();
     let base_hash = workspace.content_hash(&artifact, "billing.credits");
 
-    for evidence_ref in ["not-an-object-id", "source.one,,source.two"] {
+    for evidence_ref in [
+        "not-an-object-id",
+        "source.one,,source.two",
+        "\u{a0}source.one\u{a0}",
+    ] {
         let result = workspace.apply(
             &artifact,
             serde_json::json!({

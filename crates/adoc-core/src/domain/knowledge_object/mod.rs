@@ -16,6 +16,10 @@ use crate::domain::value_objects::visibility::{
 use crate::domain::values::{Body, NonEmpty, trim_ascii_edges};
 
 pub(super) const IMPACTS_FIELD: &str = "impacts";
+pub(crate) const IMPACTS_LIST_HELP: &str =
+    "Use `[path/one, path/two]` or one repository-relative path for impacts.";
+const RELATION_LIST_HELP: &str =
+    "Relation arrays must use `[object.id, other.id]`; each target must also be a valid Object ID.";
 pub(crate) const APPROVED_BY_FIELD: &str = "approved_by";
 /// E1.1.T3 (ADR-0058 §3): the authored per-object visibility classification.
 pub(crate) const VISIBILITY_FIELD: &str = "visibility";
@@ -314,7 +318,14 @@ pub(super) fn content_range_for_list_field(
     value_span: &SourceSpan,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<(usize, usize)> {
-    relation_content_range(parsed, key, value, value_span, diagnostics)
+    relation_content_range(
+        parsed,
+        key,
+        value,
+        value_span,
+        diagnostics,
+        RELATION_LIST_HELP,
+    )
 }
 
 /// V5.8 TB2/TB3: the `evidence_ref:` field name, shared by `claim` and
@@ -445,9 +456,14 @@ fn parse_relation_targets(
         return Vec::new();
     }
 
-    let Some((content_start, content_end)) =
-        relation_content_range(parsed, key, value, value_span, diagnostics)
-    else {
+    let Some((content_start, content_end)) = relation_content_range(
+        parsed,
+        key,
+        value,
+        value_span,
+        diagnostics,
+        RELATION_LIST_HELP,
+    ) else {
         return Vec::new();
     };
 
@@ -477,6 +493,7 @@ fn relation_content_range(
     value: &str,
     value_span: &SourceSpan,
     diagnostics: &mut Vec<Diagnostic>,
+    help: &str,
 ) -> Option<(usize, usize)> {
     match list_content_range(value) {
         Ok(range) => Some((range.start, range.end)),
@@ -484,7 +501,10 @@ fn relation_content_range(
             diagnostics.push(
                 Diagnostic::error(
                     DiagnosticCode::IdInvalid,
-                    format!("malformed relation array in `{key}` for `{}`", parsed.id_text),
+                    format!(
+                        "malformed relation array in `{key}` for `{}`",
+                        parsed.id_text
+                    ),
                 )
                 .with_span(relation_segment_span(
                     value_span,
@@ -493,7 +513,7 @@ fn relation_content_range(
                     trimmed_end,
                 ))
                 .with_object_id(&parsed.id_text)
-                .with_help("Relation arrays must use `[object.id, other.id]`; each target must also be a valid Object ID."),
+                .with_help(help),
             );
             None
         }
@@ -521,13 +541,10 @@ pub(crate) fn list_items(value: &str) -> Option<Vec<&str>> {
     let range = list_content_range(value).ok()?;
     let mut result = Vec::new();
     for (start, end, is_last) in list_segments(value, range) {
-        let item = value[start..end].trim();
-        if item.is_empty() {
-            if !is_last {
-                return None;
-            }
-        } else {
-            result.push(item);
+        match trim_segment(&value[start..end]) {
+            Some((item, _, _)) => result.push(item),
+            None if !is_last => return None,
+            None => {}
         }
     }
     (!result.is_empty()).then_some(result)
@@ -618,7 +635,7 @@ fn push_relation_segment(
     }
 }
 
-fn trim_segment(value: &str) -> Option<(&str, usize, usize)> {
+pub(crate) fn trim_segment(value: &str) -> Option<(&str, usize, usize)> {
     let start = value
         .char_indices()
         .find(|(_, character)| !character.is_ascii_whitespace())
@@ -649,9 +666,14 @@ pub(super) fn extract_impacts(
         .cloned()
         .unwrap_or_else(|| parsed.span.clone());
 
-    let Some((content_start, content_end)) =
-        relation_content_range(parsed, IMPACTS_FIELD, &value, &value_span, diagnostics)
-    else {
+    let Some((content_start, content_end)) = relation_content_range(
+        parsed,
+        IMPACTS_FIELD,
+        &value,
+        &value_span,
+        diagnostics,
+        IMPACTS_LIST_HELP,
+    ) else {
         // Malformed `[...]` already reported by relation_content_range.
         return None;
     };
@@ -806,8 +828,14 @@ where
         .cloned()
         .unwrap_or_else(|| parsed.span.clone());
 
-    let (content_start, content_end) =
-        relation_content_range(parsed, field_name, &value, &value_span, diagnostics)?;
+    let (content_start, content_end) = relation_content_range(
+        parsed,
+        field_name,
+        &value,
+        &value_span,
+        diagnostics,
+        RELATION_LIST_HELP,
+    )?;
 
     let content = &value[content_start..content_end];
     if content
@@ -891,8 +919,14 @@ pub(super) fn extract_approved_by(
         .cloned()
         .unwrap_or_else(|| parsed.span.clone());
 
-    let (content_start, content_end) =
-        relation_content_range(parsed, APPROVED_BY_FIELD, &value, &value_span, diagnostics)?;
+    let (content_start, content_end) = relation_content_range(
+        parsed,
+        APPROVED_BY_FIELD,
+        &value,
+        &value_span,
+        diagnostics,
+        RELATION_LIST_HELP,
+    )?;
 
     let content = &value[content_start..content_end];
     if content
@@ -1673,26 +1707,88 @@ mod tests {
         );
     }
 
-    #[test]
-    fn impacts_parsing_kind_set_matches_the_typed_aggregates() {
-        let kinds: Vec<_> = BlockKind::ALL
-            .iter()
-            .copied()
-            .filter(|kind| kind.parses_impacts())
-            .collect();
+    fn parsed_block_for_kind(kind: BlockKind) -> ParsedTypedBlock {
+        let fields = match kind {
+            BlockKind::Claim => &[("status", "draft")][..],
+            BlockKind::Decision => &[("status", "proposed")][..],
+            BlockKind::Glossary => &[][..],
+            BlockKind::Warning | BlockKind::Constraint => &[("severity", "high")][..],
+            BlockKind::Policy => &[
+                ("status", "active"),
+                ("owner", "security-lead"),
+                ("approved_by", "security-lead"),
+                ("effective_at", "2026-04-01"),
+            ][..],
+            BlockKind::Procedure => &[("status", "draft")][..],
+            BlockKind::Example => &[("lang", "rust")][..],
+            BlockKind::AgentInstruction => &[
+                ("scope", "docs/**"),
+                ("trust", "team"),
+                ("allowed_actions", "read"),
+                ("forbidden_actions", "write"),
+            ][..],
+            BlockKind::Contradiction => &[
+                ("severity", "high"),
+                ("status", "unresolved"),
+                ("claims", "[billing.one, billing.two]"),
+            ][..],
+            BlockKind::Source => &[("kind", "source_code"), ("path", "src/test.rs")][..],
+            BlockKind::Api => &[("status", "draft"), ("method", "GET"), ("path", "/test")][..],
+            BlockKind::Observation => &[("status", "observed")][..],
+            BlockKind::Question => &[("status", "open")][..],
+            BlockKind::Task => &[("status", "open"), ("owner", "docs")][..],
+        };
+        let mut parsed = parsed_block_with_fields(fields);
+        parsed.kind_word = kind.as_str().to_string();
+        if kind == BlockKind::Procedure {
+            parsed.body_text = "1. Check the documentation.".to_string();
+            parsed.body_inlines = ParsedTypedBlock::test_body_inlines_from_text(&parsed.body_text);
+        }
+        parsed
+    }
 
-        assert_eq!(
-            kinds,
-            [
-                BlockKind::Claim,
-                BlockKind::Decision,
-                BlockKind::Constraint,
-                BlockKind::Policy,
-                BlockKind::Procedure,
-                BlockKind::Example,
-                BlockKind::Api,
-            ]
-        );
+    #[test]
+    fn kind_capabilities_match_typed_parser_behavior() {
+        use crate::domain::services::resolve_pending_block::resolve_pending_block;
+
+        for kind in BlockKind::ALL.iter().copied() {
+            let mut parsed = parsed_block_for_kind(kind);
+            parsed
+                .raw_fields
+                .insert(IMPACTS_FIELD.to_string(), "docs/a.rs".to_string());
+            parsed
+                .raw_fields
+                .insert(EVIDENCE_REF_FIELD.to_string(), "source.one".to_string());
+            let mut diagnostics = Vec::new();
+            let object = resolve_pending_block(parsed, &mut diagnostics)
+                .unwrap_or_else(|| panic!("{kind:?} did not resolve: {diagnostics:?}"));
+            assert!(diagnostics.is_empty(), "{kind:?}: {diagnostics:?}");
+            let has_evidence_refs = match &object {
+                KnowledgeObject::Claim(value) => !value.evidence_refs().is_empty(),
+                KnowledgeObject::Decision(value) => !value.evidence_refs().is_empty(),
+                KnowledgeObject::Api(value) => !value.evidence_refs().is_empty(),
+                KnowledgeObject::Observation(value) => !value.evidence_refs().is_empty(),
+                _ => false,
+            };
+
+            assert_eq!(
+                !object.impacts().is_empty(),
+                kind.parses_impacts(),
+                "{kind:?}"
+            );
+            assert_eq!(has_evidence_refs, kind.resolves_evidence_refs(), "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn malformed_impacts_uses_path_list_remediation() {
+        let mut parsed = parsed_block_with_fields(&[(IMPACTS_FIELD, "[docs/a.rs")]);
+        let mut diagnostics = Vec::new();
+
+        assert!(extract_impacts(&mut parsed, &mut diagnostics).is_none());
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::IdInvalid);
+        assert_eq!(diagnostics[0].help.as_deref(), Some(IMPACTS_LIST_HELP));
     }
 
     #[test]

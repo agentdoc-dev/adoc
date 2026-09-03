@@ -1051,6 +1051,8 @@ fn malformed_base_hash_is_rejected_before_any_record_exists() {
 #[test]
 fn multi_patch_identity_is_placement_blind() {
     let build = |first_path: &str| {
+        let mut create = create_patch("billing.proposed");
+        create["changes"]["placement"]["page_id"] = json!("proposal.kb");
         build_proposal_record(
             bindings(),
             vec![
@@ -1060,12 +1062,7 @@ fn multi_patch_identity_is_placement_blind() {
                     "billing.kb",
                     &update_patch("billing.credits", D, "billing"),
                 ),
-                patch_input(
-                    "finding-001",
-                    "docs/billing.adoc",
-                    "billing.kb",
-                    &create_patch("billing.proposed"),
-                ),
+                patch_input("finding-001", "docs/billing.adoc", "proposal.kb", &create),
             ],
             None,
         )
@@ -1293,6 +1290,8 @@ fn intrinsically_invalid_creates_are_rejected() {
     invalid_after["changes"]["placement"]["after"] = json!("not-an-object-id");
     let mut invalid_evidence_ref = create_patch("billing.bad-evidence");
     invalid_evidence_ref["changes"]["fields"] = json!({"evidence_ref": "not-an-object-id"});
+    let mut invalid_impacts = create_patch("billing.bad-impacts");
+    invalid_impacts["changes"]["fields"] = json!({"impacts": "../outside"});
     let mut unsafe_body = create_patch("billing.unsafe-body");
     unsafe_body["changes"]["body"] = json!("Body.\n::\nInjected.");
     let mut multiline_field = create_patch("billing.multiline-field");
@@ -1306,6 +1305,7 @@ fn intrinsically_invalid_creates_are_rejected() {
         invalid_page,
         invalid_after,
         invalid_evidence_ref,
+        invalid_impacts,
         unsafe_body,
         multiline_field,
         mismatched_page,
@@ -1330,6 +1330,33 @@ fn intrinsically_invalid_creates_are_rejected() {
             "proposal_record.patch_invalid"
         );
     }
+}
+
+#[test]
+fn proposer_authority_precedes_same_set_create_anchor_validation() {
+    let mut patch = create_patch("billing.proposed");
+    patch["changes"]["placement"]["after"] = json!("billing.proposed");
+    patch
+        .as_object_mut()
+        .expect("patch is an object")
+        .remove("proposer");
+
+    let error = build_proposal_record(
+        bindings(),
+        vec![patch_input(
+            "finding-001",
+            "docs/billing.adoc",
+            "billing.kb",
+            &patch,
+        )],
+        None,
+    )
+    .expect_err("unattributed proposal authority is the actionable defect");
+
+    assert_eq!(
+        error.diagnostic_code().as_str(),
+        "proposal_record.authority_rejected"
+    );
 }
 
 #[test]

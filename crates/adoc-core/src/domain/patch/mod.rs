@@ -9,8 +9,9 @@ use crate::domain::knowledge_object::draft::{
     KnowledgeObjectDraft, validate_draft, validate_existing_draft,
 };
 use crate::domain::knowledge_object::{
-    BlockKind, EVIDENCE_REF_FIELD, IMPACTS_FIELD, closed_schema_field_error, is_allowed_field_key,
-    is_relation_field, list_content_range, list_items, list_segments, shared_field_value_error,
+    BlockKind, EVIDENCE_REF_FIELD, IMPACTS_FIELD, IMPACTS_LIST_HELP, closed_schema_field_error,
+    is_allowed_field_key, is_relation_field, list_content_range, list_items, list_segments,
+    shared_field_value_error, trim_segment,
 };
 use crate::domain::obligation::ProofObligation;
 use crate::domain::source_edit::planner::{field_value_line_break_diagnostic, guard_body_lines};
@@ -897,8 +898,8 @@ fn evidence_ref_syntax_diagnostics(object_id: &str, value: &str) -> Vec<Diagnost
         ];
     };
     for (start, end, is_last) in list_segments(value, range) {
-        let target = value[start..end].trim();
-        if target.is_empty() {
+        let target = trim_segment(&value[start..end]).map(|(target, _, _)| target);
+        if target.is_none() {
             if !is_last {
                 diagnostics.push(
                     Diagnostic::error(
@@ -909,15 +910,14 @@ fn evidence_ref_syntax_diagnostics(object_id: &str, value: &str) -> Vec<Diagnost
                     .with_help(OBJECT_ID_GRAMMAR_HELP),
                 );
             }
-        } else if ObjectId::new(target.to_string()).is_err() {
+        } else if let Some(target) = target
+            && ObjectId::new(target.to_string()).is_err()
+        {
             diagnostics.push(invalid_object_id_diagnostic(target, "evidence_ref target"));
         }
     }
     diagnostics
 }
-
-const IMPACTS_LIST_HELP: &str =
-    "Use `[path/one, path/two]` or one repository-relative path for impacts.";
 
 fn impacts_value_diagnostics(object_id: &str, value: &str) -> Vec<Diagnostic> {
     let Ok(range) = list_content_range(value) else {
