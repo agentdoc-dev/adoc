@@ -152,6 +152,23 @@ fn cloud_gate_decision_wraps_the_shared_gate_result_contract() {
             "adoc://agent/v0/schema/adoc.gate_result.v0.schema.json"
         ))
     );
+
+    let contradictory = json!({
+        "schema_version": "agentdoc.cloud.gate_decision.v0",
+        "payload": {
+            "schema_version": "adoc.gate_result.v0",
+            "head_sha": "0123456789abcdef0123456789abcdef01234567",
+            "policy_version": "gate-policy-v1",
+            "input_digests": [],
+            "effective_mode": "advisory",
+            "result": "pass",
+            "reasons": ["gate.assessment_missing"]
+        }
+    });
+    assert!(
+        !validator_for(&gate).is_valid(&contradictory),
+        "the transport must enforce its registered gate-result dependency"
+    );
 }
 
 #[test]

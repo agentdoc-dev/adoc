@@ -20,6 +20,7 @@
     "policy_version": { "$ref": "#/$defs/text" },
     "input_digests": {
       "type": "array",
+      "description": "Ascending-sorted by the exact digest wire string, with no duplicates.",
       "items": { "$ref": "#/$defs/digest" },
       "uniqueItems": true
     },
@@ -30,6 +31,7 @@
     "result": { "enum": ["pass", "block"] },
     "reasons": {
       "type": "array",
+      "description": "Ascending-sorted by the exact gate reason wire string, with no duplicates.",
       "items": {
         "enum": [
           "gate.approval_invalidated",
