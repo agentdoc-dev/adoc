@@ -221,6 +221,9 @@ impl ProposalRecord {
                 message: "a proposal record needs at least one patch".to_string(),
             });
         }
+        // The set-level anchor rule below runs before per-patch floors, so an
+        // unattributed create is refused for its authority defect rather than
+        // for a placement rule it was never entitled to reach.
         for patch in &patches {
             if matches!(&patch.document.intent, PatchIntent::CreateObject { .. }) {
                 enforce_proposer_floor(&patch.document)?;

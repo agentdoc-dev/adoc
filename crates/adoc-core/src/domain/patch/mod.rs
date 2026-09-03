@@ -332,9 +332,13 @@ impl PatchValidator<'_> {
                 continue;
             }
             if key == IMPACTS_FIELD && kind.parses_impacts() {
-                let diagnostics = impacts_value_diagnostics(target.as_str(), &value);
-                if !diagnostics.is_empty() {
-                    self.diagnostics.extend(diagnostics);
+                let impacts_diagnostics = impacts_value_diagnostics(target.as_str(), &value);
+                if !impacts_diagnostics.is_empty() {
+                    for diagnostic in impacts_diagnostics {
+                        if !self.diagnostics.contains(&diagnostic) {
+                            self.diagnostics.push(diagnostic);
+                        }
+                    }
                     continue;
                 }
             }
@@ -933,8 +937,8 @@ fn impacts_value_diagnostics(object_id: &str, value: &str) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     let mut has_path = false;
     for (start, end, is_last) in list_segments(value, range) {
-        let path = value[start..end].trim();
-        if path.is_empty() {
+        let path = trim_segment(&value[start..end]).map(|(path, _, _)| path);
+        if path.is_none() {
             if !is_last {
                 diagnostics.push(
                     Diagnostic::error(
@@ -945,7 +949,7 @@ fn impacts_value_diagnostics(object_id: &str, value: &str) -> Vec<Diagnostic> {
                     .with_help(DiagnosticCode::SchemaImpactsInvalidPath.default_help()),
                 );
             }
-        } else {
+        } else if let Some(path) = path {
             has_path = true;
             if let Err(error) = RelPath::try_new(path) {
                 diagnostics.push(
@@ -1504,5 +1508,10 @@ mod tests {
             assert_eq!(diagnostics[0].code, code);
             assert_eq!(diagnostics[0].help.as_deref(), Some(help));
         }
+
+        assert!(
+            impacts_value_diagnostics("billing.credits", "[\u{a0}/tmp]").is_empty(),
+            "patch validation uses the source parser's ASCII-only edge trimming"
+        );
     }
 }
