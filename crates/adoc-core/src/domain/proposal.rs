@@ -523,7 +523,15 @@ fn assemble_patch(
             ),
         });
     }
-    if contains_null(&patch) {
+    // Entry metadata must identify the record location and target before
+    // patch-domain errors can be attributed. A categorical governance
+    // rejection then outranks content diagnostics; other operations retain
+    // `patch_invalid` for digest-visible null and noncanonical bytes.
+    let governance_operation = matches!(
+        &document.intent,
+        PatchIntent::Supersede { .. } | PatchIntent::Revoke { .. }
+    );
+    if !governance_operation && contains_null(&patch) {
         return Err(ProposalRecordError::PatchInvalid {
             message: format!(
                 "patch for '{}' carries a null member; omit the key instead",
@@ -531,7 +539,7 @@ fn assemble_patch(
             ),
         });
     }
-    if canonical_patch_bytes(&patch)? != input.patch_bytes {
+    if !governance_operation && canonical_patch_bytes(&patch)? != input.patch_bytes {
         return Err(ProposalRecordError::PatchInvalid {
             message: format!(
                 "patch bytes for '{}' are not sorted compact JSON with one trailing newline",
