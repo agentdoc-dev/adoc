@@ -221,12 +221,13 @@ impl ProposalRecord {
                 message: "a proposal record needs at least one patch".to_string(),
             });
         }
-        // Attribution is the first per-patch floor for every operation the
-        // record can carry, so an unattributed patch is refused for its
-        // authority defect before entry validation. Governance operations are
-        // categorically closed and keep their more specific refusal below.
+        // Authority is categorical across the set and precedes entry or
+        // placement validation: governance operations keep their specific
+        // refusal, while every other operation must first be attributed.
         for patch in &patches {
-            if !patch.document.intent.changes_governance_state() {
+            if patch.document.intent.changes_governance_state() {
+                enforce_floors(&patch.document)?;
+            } else {
                 enforce_proposer_floor(&patch.document)?;
             }
         }

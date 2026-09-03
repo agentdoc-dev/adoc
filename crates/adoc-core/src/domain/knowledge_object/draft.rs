@@ -46,7 +46,7 @@ use crate::domain::value_objects::scope::Scope;
 use crate::domain::value_objects::severity::Severity;
 use crate::domain::value_objects::trust::Trust;
 use crate::domain::value_objects::url::Url;
-use crate::domain::values::NonEmptyText;
+use crate::domain::values::{NonEmptyText, trim_ascii_edges};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct KnowledgeObjectDraft<'a> {
@@ -453,7 +453,7 @@ impl DraftValidator<'_> {
             _ => {}
         }
         if let Some(path) = self.draft.fields.get(API_PATH_FIELD)
-            && !path.trim().starts_with('/')
+            && !trim_ascii_edges(path).starts_with('/')
         {
             self.error(format!("api has invalid path `{path}`"));
         }

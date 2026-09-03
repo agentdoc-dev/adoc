@@ -661,6 +661,36 @@ fn governance_operation_precedes_patch_content_validation() {
 }
 
 #[test]
+fn governance_operation_precedes_other_patches_set_level_validation() {
+    let mut create = create_patch("billing.proposed");
+    create["changes"]["placement"]["after"] = json!("billing.proposed");
+    let revoke = json!({
+        "schema_version": "adoc.patch.v0", "op": "revoke", "target": "billing.credits",
+        "base_hash": D, "changes": {}, "reason": "revoke",
+        "proposer": {"type": "agent", "id": "agentdoc-action/claude-code"}
+    });
+
+    let error = build_proposal_record(
+        bindings(),
+        vec![
+            patch_input("finding-001", "docs/billing.adoc", "billing.kb", &create),
+            patch_input("finding-002", "docs/billing.adoc", "billing.kb", &revoke),
+        ],
+        None,
+    )
+    .expect_err("governance authority is categorical across the proposal set");
+
+    assert_eq!(
+        error.diagnostic_code().as_str(),
+        "proposal_record.authority_rejected"
+    );
+    assert!(
+        error.to_string().contains("changes governance state"),
+        "{error}"
+    );
+}
+
+#[test]
 fn proposal_record_rejects_noncanonical_reason_text() {
     let mut patch = update_patch("billing.credits", D, "billing");
     patch["reason"] = json!("assessment finding\n");
@@ -1292,6 +1322,9 @@ fn intrinsically_invalid_creates_are_rejected() {
     invalid_evidence_ref["changes"]["fields"] = json!({"evidence_ref": "not-an-object-id"});
     let mut invalid_impacts = create_patch("billing.bad-impacts");
     invalid_impacts["changes"]["fields"] = json!({"impacts": "../outside"});
+    let mut invalid_api_path = create_patch("billing.bad-api-path");
+    invalid_api_path["changes"]["kind"] = json!("api");
+    invalid_api_path["changes"]["fields"] = json!({"method": "GET", "path": "\u{a0}/foo"});
     let mut unsafe_body = create_patch("billing.unsafe-body");
     unsafe_body["changes"]["body"] = json!("Body.\n::\nInjected.");
     let mut multiline_field = create_patch("billing.multiline-field");
@@ -1306,6 +1339,7 @@ fn intrinsically_invalid_creates_are_rejected() {
         invalid_after,
         invalid_evidence_ref,
         invalid_impacts,
+        invalid_api_path,
         unsafe_body,
         multiline_field,
         mismatched_page,

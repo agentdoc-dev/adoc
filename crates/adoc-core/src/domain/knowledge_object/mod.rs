@@ -309,25 +309,6 @@ pub(super) fn extract_relations(
     relations
 }
 
-/// Public-within-crate-module access to `relation_content_range` for
-/// sibling modules that need to unwrap bracket/scalar list syntax.
-pub(super) fn content_range_for_list_field(
-    parsed: &ParsedTypedBlock,
-    key: &str,
-    value: &str,
-    value_span: &SourceSpan,
-    diagnostics: &mut Vec<Diagnostic>,
-) -> Option<(usize, usize)> {
-    relation_content_range(
-        parsed,
-        key,
-        value,
-        value_span,
-        diagnostics,
-        EVIDENCE_REF_LIST_HELP,
-    )
-}
-
 /// V5.8 TB2/TB3: the `evidence_ref:` field name, shared by `claim` and
 /// `decision`. Each entry names a `source` Knowledge Object by ID; the
 /// workspace validator checks the reference resolves.
@@ -357,9 +338,14 @@ pub(crate) fn parse_evidence_refs(
         .cloned()
         .unwrap_or_else(|| parsed.span.clone());
 
-    let Some((content_start, content_end)) =
-        content_range_for_list_field(parsed, EVIDENCE_REF_FIELD, &value, &value_span, diagnostics)
-    else {
+    let Some((content_start, content_end)) = relation_content_range(
+        parsed,
+        EVIDENCE_REF_FIELD,
+        &value,
+        &value_span,
+        diagnostics,
+        EVIDENCE_REF_LIST_HELP,
+    ) else {
         return Vec::new();
     };
 
