@@ -2,15 +2,17 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use adoc_core::{
-    PROPOSAL_SCHEMA_VERSION, ProposalBindings, ProposalPatchInput, build_proposal_record,
+    PROPOSAL_SCHEMA_VERSION, ProposalBindings, ProposalDispositionInput, ProposalPatchInput,
+    build_proposal_record_with_dispositions,
 };
 use serde::Deserialize;
 
 use crate::commands::artifact_paths::{ensure_distinct_paths, remove_stale, write_atomic};
 
-/// CLI-private producer input: the bindings plus one entry per patch file.
-/// It carries identifiers and exact-head placement only — never branch names
-/// or titles — so any producer yields the same canonical record bytes.
+/// CLI-private producer input: bindings, patch files, optional supersedes, and
+/// receipted no-change dispositions. It carries identifiers and exact-head
+/// placement only — never branch names or titles — so any producer yields the
+/// same canonical record bytes.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ProposalRecordInput {
@@ -18,6 +20,8 @@ struct ProposalRecordInput {
     #[serde(default)]
     supersedes: Option<String>,
     patches: Vec<PatchEntry>,
+    #[serde(default)]
+    dispositions: Vec<ProposalDispositionInput>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -95,7 +99,12 @@ pub(crate) fn proposal_record(input: PathBuf, out: PathBuf) -> i32 {
             patch_bytes,
         });
     }
-    let record = match build_proposal_record(parsed.bindings, patches, parsed.supersedes) {
+    let record = match build_proposal_record_with_dispositions(
+        parsed.bindings,
+        patches,
+        parsed.dispositions,
+        parsed.supersedes,
+    ) {
         Ok(record) => record,
         Err(error) => {
             return fail(&format!("[{}] {error}", error.diagnostic_code().as_str()));

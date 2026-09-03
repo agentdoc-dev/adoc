@@ -159,6 +159,14 @@ fn published_schema_accepts_a_receipted_no_change_disposition() {
             .expect("schema compiles")
             .is_valid(&instance)
     );
+
+    let mut duplicated = instance;
+    duplicated["dispositions"] = json!([disposition("finding-002"), disposition("finding-002")]);
+    assert!(
+        !jsonschema::validator_for(&schema())
+            .expect("schema compiles")
+            .is_valid(&duplicated)
+    );
 }
 
 #[test]
@@ -209,6 +217,28 @@ fn proposal_dispositions_are_canonical_and_require_a_receipt_digest() {
 }
 
 #[test]
+fn one_finding_cannot_have_both_a_patch_and_no_change_disposition() {
+    let error = build_proposal_record_with_dispositions(
+        bindings(),
+        vec![patch_input(
+            "finding-001",
+            "docs/billing.adoc",
+            "billing.kb",
+            &create_patch("billing.proposed"),
+        )],
+        vec![disposition("finding-001")],
+        None,
+    )
+    .expect_err("one finding needs exactly one proposal disposition");
+
+    assert!(matches!(
+        error,
+        ProposalRecordError::BindingInvalid { ref field }
+            if field == "dispositions.finding_id"
+    ));
+}
+
+#[test]
 fn patch_revision_preserves_accepted_no_change_dispositions() {
     let original = build_proposal_record_with_dispositions(
         bindings(),
@@ -233,6 +263,17 @@ fn patch_revision_preserves_accepted_no_change_dispositions() {
         .expect("revision builds");
 
     assert_eq!(revised.dispositions(), original.dispositions());
+
+    assert!(matches!(
+        original.revise(vec![patch_input(
+            "finding-002",
+            "docs/billing.adoc",
+            "billing.kb",
+            &create_patch("billing.contradiction"),
+        )]),
+        Err(ProposalRecordError::BindingInvalid { ref field })
+            if field == "dispositions.finding_id"
+    ));
 }
 
 #[test]
@@ -258,6 +299,12 @@ fn wire_validation_rejects_noncanonical_disposition_arrays() {
         .expect("dispositions")
         .swap(0, 1);
     assert!(validate_proposal_record(&serde_json::to_vec(&unsorted).expect("serializes")).is_err());
+
+    let mut overlapping: Value = serde_json::from_str(&canonical).expect("proposal is JSON");
+    overlapping["dispositions"][0]["finding_id"] = json!("finding-001");
+    assert!(
+        validate_proposal_record(&serde_json::to_vec(&overlapping).expect("serializes")).is_err()
+    );
 
     let mut explicitly_empty: Value = serde_json::from_str(&canonical).expect("proposal is JSON");
     explicitly_empty["dispositions"] = json!([]);

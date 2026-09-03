@@ -723,7 +723,7 @@ pub(crate) enum Commands {
         about = "Build the canonical adoc.proposal.v0 record from exact patch files and their bindings."
     )]
     ProposalRecord {
-        /// Producer input: bindings, optional superseded digest, and one entry per patch file.
+        /// Producer input: bindings, patch files, and optional supersedes/dispositions.
         #[arg(long, value_name = "INPUT_JSON")]
         input: PathBuf,
         #[arg(long, value_name = "RECORD_JSON")]

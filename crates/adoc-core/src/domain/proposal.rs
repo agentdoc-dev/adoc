@@ -288,6 +288,16 @@ impl ProposalRecord {
             .into_iter()
             .map(|patch| assemble_patch(patch, &mut sequences))
             .collect::<Result<Vec<_>, _>>()?;
+        let patch_finding_ids = patches
+            .iter()
+            .map(|patch| patch.finding_id())
+            .collect::<BTreeSet<_>>();
+        if dispositions
+            .iter()
+            .any(|entry| patch_finding_ids.contains(entry.finding_id.as_str()))
+        {
+            return Err(binding_invalid("dispositions.finding_id"));
+        }
         let mut content_bindings = Vec::new();
         for (object_id, sequence) in sequences {
             if let Some(content_hash) = sequence.head_hash(&object_id)? {
