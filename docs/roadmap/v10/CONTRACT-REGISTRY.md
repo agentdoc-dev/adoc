@@ -467,6 +467,8 @@ The closed E2.4 state vocabulary retained when an authorization decision cannot 
 
 Operation labels and typed failure codes owned by the private Cloud service. New Cloud wire codes register here before they ship: `workspace.bootstrap` names the identity-bootstrap operation, the E2.1 `workspace.*` failures cover repository registration and tenant isolation, and `governance.decision_binding_missing` belongs to the E1.3 reconciliation-decision route.
 
+The E5.2 `approval.proposal_hash_mismatch` and `approval.invalidated_proposal_changed` codes describe approval-command and approval-record outcomes. The E5.3 `gate.*` codes consume those approval outcomes; neither pair is a respelling of `gate.proposal_hash_mismatch` or `gate.approval_invalidated`.
+
 <!-- registry:cloud-codes -->
 | code | status | meaning |
 | --- | --- | --- |

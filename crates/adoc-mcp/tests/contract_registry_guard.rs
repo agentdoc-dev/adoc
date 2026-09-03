@@ -561,6 +561,9 @@ fn e5_2_cloud_approval_codes_are_registered_exactly() {
     assert!(scope_row.contains("declared object scope"));
     assert!(scope_row.contains("proposal's affected object set"));
     assert!(scope_row.contains("does not exact-match"));
+    assert!(registry.contains(
+        "The E5.3 `gate.*` codes consume those approval outcomes; neither pair is a respelling"
+    ));
 }
 
 #[test]
