@@ -1,6 +1,6 @@
 mod support;
 
-use adoc_core::semantic_prompt_digest;
+use adoc_core::{semantic_prompt_digest, validate_semantic_executor_request};
 use serde_json::{Value, json};
 use support::{TestWorkspace, adoc_command, stderr, stdout};
 
@@ -213,8 +213,84 @@ fn semantic_executor_cli_builds_context_and_records_completed_or_failed_validati
     assert!(output.status.success(), "{}", stderr(&output));
     assert!(stdout(&output).contains("\"outcome\": \"completed\""));
     assert!(workspace.root.join("validated.json").is_file());
+    assert!(
+        !workspace.root.join("validated-request.json").exists(),
+        "the optional request artifact stays omitted by default"
+    );
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args([
+            "semantic-executor",
+            "--request",
+            "request.json",
+            "--assessment",
+            "assessment.json",
+            "--receipt",
+            "receipt.json",
+            "--validated-assessment",
+            "validated.json",
+            "--validated-request",
+            "validated-request.json",
+        ])
+        .output()
+        .expect("executor command with validated request runs");
+    assert!(output.status.success(), "{}", stderr(&output));
+    let emitted = std::fs::read(workspace.root.join("validated-request.json"))
+        .expect("validated request exists");
+    let validated = validate_semantic_executor_request(
+        &std::fs::read(workspace.root.join("request.json")).expect("request exists"),
+    )
+    .expect("request validates");
+    assert_eq!(
+        emitted,
+        validated.to_digest_bytes().expect("digest bytes serialize")
+    );
+    let receipt: Value = serde_json::from_slice(
+        &std::fs::read(workspace.root.join("receipt.json")).expect("receipt exists"),
+    )
+    .expect("receipt JSON");
+    let expected =
+        adoc_core::fail_semantic_execution(&validated, "provider_failed").expect("receipt builds");
+    let expected: Value =
+        serde_json::from_str(&expected.to_canonical_json().expect("receipt serializes"))
+            .expect("receipt JSON");
+    assert_eq!(receipt["request_digest"], expected["request_digest"]);
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args([
+            "semantic-executor",
+            "--request",
+            "request.json",
+            "--assessment",
+            "assessment.json",
+            "--receipt",
+            "request-write-failed-receipt.json",
+            "--validated-assessment",
+            "request-write-failed-assessment.json",
+            "--validated-request",
+            "missing/validated-request.json",
+        ])
+        .output()
+        .expect("failed validated-request write runs");
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        !workspace
+            .root
+            .join("request-write-failed-receipt.json")
+            .exists()
+    );
+    assert!(
+        !workspace
+            .root
+            .join("request-write-failed-assessment.json")
+            .exists()
+    );
 
     workspace.write("invalid-request.json", "{");
+    workspace.write("never-invalid-request.json", "stale assessment");
+    workspace.write("never-invalid-validated-request.json", "stale request");
     let output = adoc_command()
         .current_dir(&workspace.root)
         .args([
@@ -227,6 +303,8 @@ fn semantic_executor_cli_builds_context_and_records_completed_or_failed_validati
             "receipt.json",
             "--validated-assessment",
             "never-invalid-request.json",
+            "--validated-request",
+            "never-invalid-validated-request.json",
         ])
         .output()
         .expect("invalid request command runs");
@@ -235,8 +313,17 @@ fn semantic_executor_cli_builds_context_and_records_completed_or_failed_validati
         !workspace.root.join("receipt.json").exists(),
         "a prior success receipt must not survive request validation"
     );
+    assert!(!workspace.root.join("never-invalid-request.json").exists());
+    assert!(
+        !workspace
+            .root
+            .join("never-invalid-validated-request.json")
+            .exists()
+    );
 
     std::fs::create_dir(workspace.root.join("blocked-receipt")).expect("blocked receipt directory");
+    workspace.write("never-blocked.json", "stale assessment");
+    workspace.write("never-blocked-request.json", "stale request");
     let output = adoc_command()
         .current_dir(&workspace.root)
         .args([
@@ -249,11 +336,15 @@ fn semantic_executor_cli_builds_context_and_records_completed_or_failed_validati
             "blocked-receipt",
             "--validated-assessment",
             "never-blocked.json",
+            "--validated-request",
+            "never-blocked-request.json",
         ])
         .output()
         .expect("blocked cleanup command runs");
     assert_eq!(output.status.code(), Some(2));
     assert!(stderr(&output).contains("could not remove stale output"));
+    assert!(!workspace.root.join("never-blocked.json").exists());
+    assert!(!workspace.root.join("never-blocked-request.json").exists());
 
     let mut wrong_identity = assessment(
         request["context"]["context_digest"]
@@ -333,17 +424,49 @@ fn semantic_executor_cli_builds_context_and_records_completed_or_failed_validati
             "--assessment",
             "assessment.json",
             "--failure-code",
-            "provider_timeout",
+            "provider_failed",
             "--receipt",
             "timeout.json",
             "--validated-assessment",
             "never-timeout.json",
+            "--validated-request",
+            "provider-failed-request.json",
         ])
         .output()
         .expect("executor failure command runs");
     assert_eq!(output.status.code(), Some(2));
     let timeout =
         std::fs::read_to_string(workspace.root.join("timeout.json")).expect("timeout receipt");
-    assert!(timeout.contains("\"failure_code\": \"provider_timeout\""));
+    assert!(timeout.contains("\"failure_code\": \"provider_failed\""));
     assert!(!workspace.root.join("never-timeout.json").exists());
+    assert_eq!(
+        std::fs::read(workspace.root.join("provider-failed-request.json"))
+            .expect("failed receipt publishes its validated request"),
+        validated.to_digest_bytes().expect("digest bytes serialize")
+    );
+    let timeout: Value = serde_json::from_str(&timeout).expect("failure receipt JSON");
+    assert_eq!(timeout["request_digest"], expected["request_digest"]);
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args([
+            "semantic-executor",
+            "--request",
+            "request.json",
+            "--assessment",
+            "assessment.json",
+            "--failure-code",
+            "provider_failed",
+            "--receipt",
+            "missing/provider-failed.json",
+            "--validated-assessment",
+            "never-provider-failed.json",
+            "--validated-request",
+            "orphan-request.json",
+        ])
+        .output()
+        .expect("failed paired publication runs");
+    assert_eq!(output.status.code(), Some(2));
+    assert!(!workspace.root.join("orphan-request.json").exists());
+    assert!(!workspace.root.join("never-provider-failed.json").exists());
 }

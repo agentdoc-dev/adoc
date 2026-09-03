@@ -314,6 +314,7 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                     failure_code,
                     receipt,
                     validated_assessment,
+                    validated_request,
                     reviewing_principal_id,
                     requesting_principal_id,
                 } => semantic_executor(
@@ -322,6 +323,7 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                     failure_code,
                     receipt,
                     validated_assessment,
+                    validated_request,
                     reviewing_principal_id,
                     requesting_principal_id,
                 ),
