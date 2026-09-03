@@ -1158,6 +1158,44 @@ fn two_patch_logical_update_binds_the_exact_head_hash() {
         .expect("round-trips");
 }
 
+#[test]
+fn one_target_edit_uses_one_exact_head_coordinate() {
+    for (body_path, body_page) in [
+        ("docs/other.adoc", "billing.kb"),
+        ("docs/billing.adoc", "billing.other"),
+    ] {
+        let error = build_proposal_record(
+            bindings(),
+            vec![
+                patch_input(
+                    "finding-002",
+                    "docs/billing.adoc",
+                    "billing.kb",
+                    &update_patch("billing.credits", D, "billing"),
+                ),
+                patch_input(
+                    "finding-002",
+                    body_path,
+                    body_page,
+                    &replace_body_patch("billing.credits", B, "Re-hashed body."),
+                ),
+            ],
+            None,
+        )
+        .expect_err("one exact-head object cannot have conflicting coordinates");
+
+        assert!(matches!(error, ProposalRecordError::PatchInvalid { .. }));
+        assert_eq!(
+            error.diagnostic_code().as_str(),
+            "proposal_record.patch_invalid"
+        );
+        assert!(
+            error.to_string().contains("conflicting coordinates"),
+            "{error}"
+        );
+    }
+}
+
 // Review round 2 (PR #194): the record cannot see an object's current
 // lifecycle, so every existing-object edit must carry its downgrade — an
 // `update_fields` setting a reviewable status. Otherwise a verified object

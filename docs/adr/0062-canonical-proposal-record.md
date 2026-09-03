@@ -102,6 +102,9 @@ API.
    object, so it never judges the second hash — that is the apply-time
    check in the Action sandbox and Cloud's exact-head preflight.
    `content_bindings` records the exact-head hash the first patch carries.
+   Every patch editing one target carries the same exact-head
+   `placement_path` and `page_id`; conflicting coordinates fail with
+   `proposal_record.patch_invalid`.
    Application order is fixed by the operations, not by the digest-ordered
    `patches` array. A second patch of one operation for one target fails
    with `proposal_record.patch_invalid`.

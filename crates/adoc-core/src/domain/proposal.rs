@@ -374,6 +374,7 @@ struct TargetSequence {
     created: bool,
     update_fields: Option<String>,
     replace_body: Option<String>,
+    coordinates: Option<(String, String)>,
     /// The record cannot see the object's current lifecycle, so the edit
     /// itself must carry the ADR-0054 §3 downgrade: an `update_fields`
     /// setting a reviewable status.
@@ -381,7 +382,13 @@ struct TargetSequence {
 }
 
 impl TargetSequence {
-    fn bind(&mut self, intent: &PatchIntent, target: &str) -> Result<(), ProposalRecordError> {
+    fn bind(
+        &mut self,
+        intent: &PatchIntent,
+        target: &str,
+        placement_path: &str,
+        page_id: &str,
+    ) -> Result<(), ProposalRecordError> {
         if matches!(intent, PatchIntent::CreateObject { .. }) {
             if self.created || self.update_fields.is_some() || self.replace_body.is_some() {
                 return Err(ProposalRecordError::PatchInvalid {
@@ -425,6 +432,15 @@ impl TargetSequence {
                     intent.operation().as_str()
                 ),
             });
+        }
+        if let Some((bound_path, bound_page)) = &self.coordinates {
+            if bound_path != placement_path || bound_page != page_id {
+                return Err(ProposalRecordError::PatchInvalid {
+                    message: format!("patches for '{target}' carry conflicting coordinates"),
+                });
+            }
+        } else {
+            self.coordinates = Some((placement_path.to_string(), page_id.to_string()));
         }
         *slot = Some(base_hash.to_string());
         Ok(())
@@ -550,10 +566,12 @@ fn assemble_patch(
             message: diagnostic.message.clone(),
         });
     }
-    sequences
-        .entry(document.target.clone())
-        .or_default()
-        .bind(&document.intent, &document.target)?;
+    sequences.entry(document.target.clone()).or_default().bind(
+        &document.intent,
+        &document.target,
+        &input.placement_path,
+        &input.page_id,
+    )?;
     Ok(ProposalPatch {
         finding_id: input.finding_id,
         placement_path: input.placement_path,
