@@ -478,6 +478,11 @@ fn assemble_patch(
         document,
         patch,
     } = parsed;
+    // Governance operations are categorically closed, so no other defect in
+    // their proposal entry or patch content has actionable remediation.
+    if document.intent.changes_governance_state() {
+        enforce_floors(&document)?;
+    }
     if !is_semantic_context_text(&input.finding_id) {
         return Err(ProposalRecordError::PatchInvalid {
             message: "patch finding_id is missing or invalid".to_string(),
@@ -523,15 +528,7 @@ fn assemble_patch(
             ),
         });
     }
-    // Entry metadata must identify the record location and target before
-    // patch-domain errors can be attributed. A categorical governance
-    // rejection then outranks content diagnostics; other operations retain
-    // `patch_invalid` for digest-visible null and noncanonical bytes.
-    let governance_operation = matches!(
-        &document.intent,
-        PatchIntent::Supersede { .. } | PatchIntent::Revoke { .. }
-    );
-    if !governance_operation && contains_null(&patch) {
+    if contains_null(&patch) {
         return Err(ProposalRecordError::PatchInvalid {
             message: format!(
                 "patch for '{}' carries a null member; omit the key instead",
@@ -539,7 +536,7 @@ fn assemble_patch(
             ),
         });
     }
-    if !governance_operation && canonical_patch_bytes(&patch)? != input.patch_bytes {
+    if canonical_patch_bytes(&patch)? != input.patch_bytes {
         return Err(ProposalRecordError::PatchInvalid {
             message: format!(
                 "patch bytes for '{}' are not sorted compact JSON with one trailing newline",
@@ -607,10 +604,7 @@ fn enforce_floors(document: &PatchDocument) -> Result<(), ProposalRecordError> {
             document.intent.operation().as_str()
         ))
     };
-    if matches!(
-        &document.intent,
-        PatchIntent::Supersede { .. } | PatchIntent::Revoke { .. }
-    ) {
+    if document.intent.changes_governance_state() {
         return Err(reject_governance());
     }
     if document.proposer.as_ref().is_none_or(|proposer| {
@@ -675,6 +669,10 @@ fn enforce_floors(document: &PatchDocument) -> Result<(), ProposalRecordError> {
 }
 
 impl PatchIntent {
+    fn changes_governance_state(&self) -> bool {
+        matches!(self, Self::Supersede { .. } | Self::Revoke { .. })
+    }
+
     fn base_hash(&self) -> Option<&str> {
         match self {
             Self::ReplaceBody { base_hash, .. }

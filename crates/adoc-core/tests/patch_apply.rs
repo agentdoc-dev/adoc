@@ -1306,6 +1306,30 @@ fn apply_refuses_invalid_impacts_on_update_and_create_before_write() {
 }
 
 #[test]
+fn apply_allows_unparsed_impacts_metadata_on_task() {
+    let workspace = Workspace::new(TASK_PAGE_TEXT);
+    let artifact = workspace.build();
+    let patch = serde_json::json!({
+        "schema_version": "adoc.patch.v0",
+        "op": "update_fields",
+        "target": "billing.follow-up",
+        "base_hash": workspace.content_hash(&artifact, "billing.follow-up"),
+        "changes": { "fields": { "status": "open", "impacts": "/outside" } },
+        "reason": "Retain task metadata without interpreting it as a path"
+    });
+
+    let result = workspace.apply(&artifact, patch);
+
+    assert!(result.applied, "diagnostics: {:?}", result.diagnostics);
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    assert!(
+        fs::read_to_string(workspace.page_path())
+            .expect("read")
+            .contains("impacts: /outside")
+    );
+}
+
+#[test]
 fn apply_resolves_create_evidence_refs_before_write() {
     for (target, evidence_ref, code) in [
         (

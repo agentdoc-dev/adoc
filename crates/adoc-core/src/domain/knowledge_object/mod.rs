@@ -1060,6 +1060,20 @@ impl BlockKind {
             Self::Claim | Self::Decision | Self::Api | Self::Observation
         )
     }
+
+    /// Kinds whose typed aggregate parses `impacts` as repository paths.
+    pub(crate) const fn parses_impacts(self) -> bool {
+        matches!(
+            self,
+            Self::Claim
+                | Self::Decision
+                | Self::Constraint
+                | Self::Policy
+                | Self::Procedure
+                | Self::Example
+                | Self::Api
+        )
+    }
 }
 
 /// Kind name strings for every supported typed block, in `BlockKind::ALL`

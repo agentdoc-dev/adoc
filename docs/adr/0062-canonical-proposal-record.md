@@ -112,13 +112,13 @@ API.
 8. Every embedded patch passes the graph-independent half of `adoc patch
    --check` before the record exists: draft requirements, field key and shared
    value rules, source-splice-safe body and field text, create-object
-   evidence-reference list syntax, impacts list syntax and source-parser
-   repository-relative path validity (distinct from §6's scanner-strict page
-   paths), placement ID syntax, and required create placement. Graph
-   existence, target-kind field and value compatibility, evidence-reference
-   syntax and resolution for updates, placement resolution, and post-apply
-   source validity remain exact-head
-   preflight concerns. Because `update_fields` only inserts or replaces
+   evidence-reference list syntax plus impacts list/path syntax for create
+   kinds that parse those fields (the impacts path grammar is distinct from
+   §6's scanner-strict page paths), placement ID syntax, and required create
+   placement. Graph existence, target-kind field and value compatibility,
+   evidence-reference syntax and resolution for updates, impacts syntax for
+   updates, placement resolution, and post-apply source validity remain
+   exact-head preflight concerns. Because `update_fields` only inserts or replaces
    fields, exact-head preflight also refuses an edit whose reviewable
    prospective state would require removing an existing field. This includes
    an answered question carrying authority-owned `resolved_by` and an API

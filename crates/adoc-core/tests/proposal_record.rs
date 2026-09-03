@@ -603,29 +603,55 @@ fn model_path_cannot_touch_active_state() {
 
 #[test]
 fn governance_operation_precedes_patch_content_validation() {
-    let patch = json!({
+    let null_patch = json!({
         "schema_version": "adoc.patch.v0", "op": "revoke", "target": "billing.credits",
         "base_hash": D, "changes": {}, "reason": "revoke\n", "proposer": null
     });
-    let error = build_proposal_record(
-        bindings(),
-        vec![patch_input(
+    let malformed_target = json!({
+        "schema_version": "adoc.patch.v0", "op": "revoke", "target": "credits",
+        "base_hash": D, "changes": {}, "reason": "revoke",
+        "proposer": {"type": "agent", "id": "agentdoc-action/claude-code"}
+    });
+    let canonical_patch = json!({
+        "schema_version": "adoc.patch.v0", "op": "revoke", "target": "billing.credits",
+        "base_hash": D, "changes": {}, "reason": "revoke",
+        "proposer": {"type": "agent", "id": "agentdoc-action/claude-code"}
+    });
+    let mut noncanonical_bytes = patch_input(
+        "finding-009",
+        "docs/billing.adoc",
+        "billing.kb",
+        &canonical_patch,
+    );
+    noncanonical_bytes.patch_bytes =
+        serde_json::to_vec_pretty(&canonical_patch).expect("patch serializes");
+
+    for input in [
+        patch_input(
             "finding-009",
             "docs/billing.adoc",
             "billing.kb",
-            &patch,
-        )],
-        None,
-    )
-    .expect_err("governance operation is never proposable");
-    assert!(
-        error.to_string().contains("changes governance state"),
-        "{error}"
-    );
-    assert_eq!(
-        error.diagnostic_code().as_str(),
-        "proposal_record.authority_rejected"
-    );
+            &null_patch,
+        ),
+        patch_input(
+            "finding-009",
+            "docs/billing.adoc",
+            "billing.kb",
+            &malformed_target,
+        ),
+        noncanonical_bytes,
+    ] {
+        let error = build_proposal_record(bindings(), vec![input], None)
+            .expect_err("governance operation is never proposable");
+        assert!(
+            error.to_string().contains("changes governance state"),
+            "{error}"
+        );
+        assert_eq!(
+            error.diagnostic_code().as_str(),
+            "proposal_record.authority_rejected"
+        );
+    }
 }
 
 #[test]
@@ -1352,6 +1378,29 @@ fn bracketed_evidence_refs_are_intrinsically_valid() {
         None,
     )
     .expect("source-compatible bracketed evidence_ref is proposable");
+}
+
+#[test]
+fn unparsed_impacts_metadata_is_proposable() {
+    let mut patch = create_patch("billing.follow-up");
+    patch["changes"]["kind"] = json!("task");
+    patch["changes"]["status"] = json!("open");
+    patch["changes"]["fields"] = json!({
+        "owner": "support-ops",
+        "impacts": "/outside"
+    });
+
+    build_proposal_record(
+        bindings(),
+        vec![patch_input(
+            "finding-001",
+            "docs/billing.adoc",
+            "billing.kb",
+            &patch,
+        )],
+        None,
+    )
+    .expect("task retains impacts as metadata instead of parsing repository paths");
 }
 
 #[test]

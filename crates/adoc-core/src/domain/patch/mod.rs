@@ -330,6 +330,13 @@ impl PatchValidator<'_> {
             {
                 continue;
             }
+            if key == IMPACTS_FIELD && kind.parses_impacts() {
+                let diagnostics = impacts_value_diagnostics(target.as_str(), &value);
+                if !diagnostics.is_empty() {
+                    self.diagnostics.extend(diagnostics);
+                    continue;
+                }
+            }
             let old = object.fields.get(&key).cloned();
             self.diffs
                 .push(option_value_diff(format!("fields.{key}"), old, Some(value)));
@@ -700,8 +707,6 @@ pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnost
                 };
                 if let Some(message) = message {
                     diagnostics.push(validation_error(&patch.target, message));
-                } else if key == IMPACTS_FIELD {
-                    diagnostics.extend(impacts_value_diagnostics(&patch.target, value));
                 } else if let Some(diagnostic) = shared_field_value_error(key, value) {
                     diagnostics.push(diagnostic.with_object_id(&patch.target));
                 }
@@ -756,8 +761,7 @@ pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnost
                 diagnostics.extend(evidence_ref_syntax_diagnostics(&patch.target, value));
             }
             if let Some(value) = fields.get(IMPACTS_FIELD)
-                && BlockKind::from_fence_word(kind)
-                    .is_some_and(|kind| is_allowed_field_key(kind, IMPACTS_FIELD))
+                && BlockKind::from_fence_word(kind).is_some_and(BlockKind::parses_impacts)
                 && !value.trim().is_empty()
                 && field_value_line_break_diagnostic(IMPACTS_FIELD, value).is_none()
             {
