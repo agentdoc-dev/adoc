@@ -16,6 +16,7 @@ use crate::domain::knowledge_object::{
 use crate::domain::obligation::ProofObligation;
 use crate::domain::source_edit::planner::{field_value_line_break_diagnostic, guard_body_lines};
 use crate::domain::value_objects::rel_path::RelPath;
+use crate::domain::values::trim_ascii_edges;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PatchDocument {
@@ -292,7 +293,7 @@ impl PatchValidator<'_> {
                 || is_update_structural_field(&key)
                 || is_relation_field(&key)
                 || !is_allowed_on_any_kind(&key)
-                || value.trim().is_empty()
+                || trim_ascii_edges(&value).is_empty()
                 || field_value_line_break_diagnostic(&key, &value).is_some()
             {
                 continue;
@@ -702,7 +703,7 @@ pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnost
                         .with_help(DiagnosticCode::SchemaUnknownField.default_help()),
                     );
                     continue;
-                } else if value.trim().is_empty() {
+                } else if trim_ascii_edges(value).is_empty() {
                     Some(format!("field `{key}` requires a non-empty value"))
                 } else if let Some(diagnostic) = field_value_line_break_diagnostic(key, value) {
                     diagnostics.push(diagnostic.with_object_id(&patch.target));
@@ -767,7 +768,7 @@ pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnost
             }
             if let Some(value) = fields.get(IMPACTS_FIELD)
                 && BlockKind::from_fence_word(kind).is_some_and(BlockKind::parses_impacts)
-                && !value.trim().is_empty()
+                && !trim_ascii_edges(value).is_empty()
                 && field_value_line_break_diagnostic(IMPACTS_FIELD, value).is_none()
             {
                 diagnostics.extend(impacts_value_diagnostics(&patch.target, value));
@@ -854,7 +855,7 @@ fn prospective_draft_diagnostics(
             && is_valid_field_key(key)
             && !is_relation_field(key)
             && is_allowed_field_key(kind, key)
-            && !value.trim().is_empty()
+            && !trim_ascii_edges(value).is_empty()
             && field_value_line_break_diagnostic(key, value).is_none()
         {
             fields.insert(key.clone(), value.clone());
@@ -862,7 +863,8 @@ fn prospective_draft_diagnostics(
     }
     let changed_status = |key| {
         changes.get(key).filter(|value| {
-            !value.trim().is_empty() && field_value_line_break_diagnostic(key, value).is_none()
+            !trim_ascii_edges(value).is_empty()
+                && field_value_line_break_diagnostic(key, value).is_none()
         })
     };
     let status = if kind == BlockKind::Glossary || !is_allowed_field_key(kind, "status") {

@@ -1580,6 +1580,24 @@ fn update_impacts_syntax_waits_for_exact_head_kind() {
     .expect("the graph-independent record cannot know whether the target parses impacts");
 }
 
+#[test]
+fn unicode_whitespace_field_value_is_proposable() {
+    let mut patch = update_patch("billing.credits", D, "billing");
+    patch["changes"]["fields"] = json!({"status": "draft", "owner": "\u{a0}"});
+
+    build_proposal_record(
+        bindings(),
+        vec![patch_input(
+            "finding-002",
+            "docs/billing.adoc",
+            "billing.kb",
+            &patch,
+        )],
+        None,
+    )
+    .expect("update matches the source parser's ASCII-only blank-value rule");
+}
+
 // Review round 5 (PR #194): creates carry no base_hash, so two creates of one
 // target — or a create beside an edit of the same target — used to bypass the
 // per-target sequence; sequential application would refuse the set.

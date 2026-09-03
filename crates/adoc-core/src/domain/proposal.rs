@@ -488,11 +488,6 @@ fn assemble_patch(
         document,
         patch,
     } = parsed;
-    // Governance operations are categorically closed, so no other defect in
-    // their proposal entry or patch content has actionable remediation.
-    if document.intent.changes_governance_state() {
-        enforce_floors(&document)?;
-    }
     if !is_semantic_context_text(&input.finding_id) {
         return Err(ProposalRecordError::PatchInvalid {
             message: "patch finding_id is missing or invalid".to_string(),
