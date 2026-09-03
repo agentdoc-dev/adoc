@@ -537,6 +537,25 @@ fn e5_1_proposal_record_is_shipped_by_its_contract_owner() {
 }
 
 #[test]
+fn e5_2_cloud_approval_codes_are_registered_exactly() {
+    let registered: BTreeSet<_> = anchored_ids(&registry(), "registry:cloud-codes")
+        .into_iter()
+        .filter(|code| code.starts_with("approval."))
+        .collect();
+    let expected = BTreeSet::from([
+        "approval.ineligible_approver".to_string(),
+        "approval.proposal_hash_mismatch".to_string(),
+        "approval.scope_mismatch".to_string(),
+        "approval.policy_version_stale".to_string(),
+        "approval.invalidated_proposal_changed".to_string(),
+        "approval.concurrent_write_rejected".to_string(),
+        "approval.model_identity_rejected".to_string(),
+    ]);
+
+    assert_eq!(registered, expected);
+}
+
+#[test]
 fn e4_5_cloud_capability_trust_codes_are_registered_exactly() {
     let registered = anchored_ids(&registry(), "registry:cloud-codes");
     for code in [
