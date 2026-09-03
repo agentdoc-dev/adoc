@@ -248,6 +248,44 @@ fn blocking_result_always_names_a_registered_reason() {
 }
 
 #[test]
+fn passing_result_never_names_a_blocking_reason() {
+    assert!(
+        GateResult::new(
+            HEAD.to_string(),
+            "gate-policy-v1".to_string(),
+            vec![],
+            Some("advisory".to_string()),
+            GateOutcome::Pass,
+            vec![GateReason::SemanticInvalid],
+        )
+        .is_err(),
+        "domain must reject a pass with a blocking reason"
+    );
+
+    let contradictory_pass = json!({
+        "schema_version": "adoc.gate_result.v0",
+        "head_sha": HEAD,
+        "policy_version": "gate-policy-v1",
+        "input_digests": [],
+        "configured_mode": "advisory",
+        "effective_mode": "advisory",
+        "result": "pass",
+        "reasons": ["gate.semantic_invalid"]
+    });
+    assert!(
+        validate_gate_result(&serde_json::to_vec(&contradictory_pass).expect("serializes"))
+            .is_err(),
+        "wire validation must reject a pass with a blocking reason"
+    );
+    assert!(
+        !jsonschema::validator_for(&schema())
+            .expect("schema compiles")
+            .is_valid(&contradictory_pass),
+        "published schema must reject a pass with a blocking reason"
+    );
+}
+
+#[test]
 fn validated_result_exposes_only_typed_gate_facts() {
     for (mode, effective) in [
         ("advisory", GateMode::Advisory),

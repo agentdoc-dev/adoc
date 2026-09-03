@@ -125,7 +125,9 @@ impl GateResult {
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect();
-        if result == GateOutcome::Block && reasons.is_empty() {
+        if (result == GateOutcome::Pass && !reasons.is_empty())
+            || (result == GateOutcome::Block && reasons.is_empty())
+        {
             return Err(invalid_field("reasons"));
         }
         if (effective_mode.is_none()

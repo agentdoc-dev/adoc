@@ -52,7 +52,8 @@
   "allOf": [
     {
       "if": { "properties": { "result": { "const": "block" } } },
-      "then": { "properties": { "reasons": { "minItems": 1 } } }
+      "then": { "properties": { "reasons": { "minItems": 1 } } },
+      "else": { "properties": { "reasons": { "maxItems": 0 } } }
     },
     {
       "if": { "not": { "required": ["configured_mode"] } },
