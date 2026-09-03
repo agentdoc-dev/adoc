@@ -603,10 +603,11 @@ fn model_path_cannot_touch_active_state() {
 
 #[test]
 fn governance_operation_precedes_missing_proposer() {
-    let patch = json!({
+    let mut patch = json!({
         "schema_version": "adoc.patch.v0", "op": "revoke", "target": "billing.credits",
         "base_hash": D, "changes": {}, "reason": "revoke"
     });
+    patch["reason"] = json!("revoke\n");
     let error = build_proposal_record(
         bindings(),
         vec![patch_input(
@@ -621,6 +622,10 @@ fn governance_operation_precedes_missing_proposer() {
     assert!(
         error.to_string().contains("changes governance state"),
         "{error}"
+    );
+    assert_eq!(
+        error.diagnostic_code().as_str(),
+        "proposal_record.authority_rejected"
     );
 }
 

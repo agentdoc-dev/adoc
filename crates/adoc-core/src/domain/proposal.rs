@@ -369,6 +369,9 @@ fn binding_invalid(field: &str) -> ProposalRecordError {
 /// object, so it binds the exact-head hash the first patch carries and
 /// leaves the second hash to the apply-time check. Application order is
 /// fixed by the operations, not by the digest-ordered record.
+/// Patches for one target also share one exact-head path/page coordinate;
+/// `finding_id` remains per patch because separate findings may contribute
+/// the field and body halves of one logical edit.
 #[derive(Default)]
 struct TargetSequence {
     created: bool,
@@ -475,15 +478,10 @@ fn assemble_patch(
         document,
         patch,
     } = parsed;
-    for (field, value) in [
-        ("finding_id", &input.finding_id),
-        ("reason", &document.reason),
-    ] {
-        if !is_semantic_context_text(value) {
-            return Err(ProposalRecordError::PatchInvalid {
-                message: format!("patch {field} is missing or invalid"),
-            });
-        }
+    if !is_semantic_context_text(&input.finding_id) {
+        return Err(ProposalRecordError::PatchInvalid {
+            message: "patch finding_id is missing or invalid".to_string(),
+        });
     }
     if LogicalPath::parse(&input.placement_path).is_err() {
         return Err(ProposalRecordError::PatchInvalid {
@@ -542,6 +540,11 @@ fn assemble_patch(
         });
     }
     enforce_floors(&document)?;
+    if !is_semantic_context_text(&document.reason) {
+        return Err(ProposalRecordError::PatchInvalid {
+            message: "patch reason is missing or invalid".to_string(),
+        });
+    }
     // The generic patch reader trims ASCII status edges (V6.5.3), but a
     // proposal's published schema checks the raw floor with `const`. Reject
     // only after the authority floor has retained its more specific error.

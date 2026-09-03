@@ -104,7 +104,8 @@ API.
    `content_bindings` records the exact-head hash the first patch carries.
    Every patch editing one target carries the same exact-head
    `placement_path` and `page_id`; conflicting coordinates fail with
-   `proposal_record.patch_invalid`.
+   `proposal_record.patch_invalid`. Cross-target page-to-path coherence
+   depends on the repository graph and remains an exact-head preflight check.
    Application order is fixed by the operations, not by the digest-ordered
    `patches` array. A second patch of one operation for one target fails
    with `proposal_record.patch_invalid`.
