@@ -104,11 +104,12 @@ API.
    `content_bindings` records the exact-head hash the first patch carries.
    Every patch editing one target carries the same exact-head
    `placement_path` and `page_id`; conflicting coordinates fail with
-   `proposal_record.patch_invalid`. The record intentionally does not
-   cross-check coordinates for different targets; both their internal
-   consistency and exact-head correctness are settled by the E5.1 Cloud
-   consumer's graph preflight. Exact-head correctness cannot be derived from
-   IDs alone because a page may declare an identity unrelated to its path.
+   `proposal_record.patch_invalid`. Because `content_bindings` carries only
+   `object_id` and `content_hash`, a consumer reads a target's coordinate from
+   any one of its patch entries; the within-target rule makes that read
+   unambiguous. No equivalent record read depends on comparing different
+   targets, so the record intentionally leaves both cross-target consistency
+   and exact-head correctness to the E5.1 Cloud consumer's graph preflight.
    Cloud ingestion tests check this boundary against `adoc` output.
    Application order is fixed by the operations, not by the digest-ordered
    `patches` array. A second patch of one operation for one target fails

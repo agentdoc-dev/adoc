@@ -1360,6 +1360,32 @@ fn proposer_authority_precedes_same_set_create_anchor_validation() {
 }
 
 #[test]
+fn proposer_authority_precedes_entry_validation_for_updates() {
+    let mut patch = update_patch("billing.credits", D, "billing");
+    patch
+        .as_object_mut()
+        .expect("patch is an object")
+        .remove("proposer");
+
+    let error = build_proposal_record(
+        bindings(),
+        vec![patch_input(
+            "finding-002",
+            "docs/billing.adoc",
+            "billing",
+            &patch,
+        )],
+        None,
+    )
+    .expect_err("unattributed proposal authority is the actionable defect");
+
+    assert_eq!(
+        error.diagnostic_code().as_str(),
+        "proposal_record.authority_rejected"
+    );
+}
+
+#[test]
 fn proposal_record_rejects_normalized_create_status_bytes() {
     for (status, expected_code, expected_message) in [
         (

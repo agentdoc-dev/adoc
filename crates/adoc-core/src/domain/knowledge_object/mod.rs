@@ -324,7 +324,7 @@ pub(super) fn content_range_for_list_field(
         value,
         value_span,
         diagnostics,
-        RELATION_LIST_HELP,
+        EVIDENCE_REF_LIST_HELP,
     )
 }
 
@@ -332,6 +332,8 @@ pub(super) fn content_range_for_list_field(
 /// `decision`. Each entry names a `source` Knowledge Object by ID; the
 /// workspace validator checks the reference resolves.
 pub(crate) const EVIDENCE_REF_FIELD: &str = "evidence_ref";
+pub(crate) const EVIDENCE_REF_LIST_HELP: &str =
+    "Use `[source.one, source.two]` or one Object ID for evidence_ref.";
 
 /// Parse the `evidence_ref:` field into a deduplicated list of
 /// [`Evidence::ObjectRef`] entries. Accepts both scalar (`evidence_ref: id.one`)
@@ -1789,6 +1791,20 @@ mod tests {
         assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
         assert_eq!(diagnostics[0].code, DiagnosticCode::IdInvalid);
         assert_eq!(diagnostics[0].help.as_deref(), Some(IMPACTS_LIST_HELP));
+    }
+
+    #[test]
+    fn malformed_evidence_ref_uses_object_list_remediation() {
+        let mut parsed = parsed_block_with_fields(&[(EVIDENCE_REF_FIELD, "[source.one")]);
+        let mut diagnostics = Vec::new();
+
+        assert!(parse_evidence_refs(&mut parsed, &mut diagnostics).is_empty());
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::IdInvalid);
+        assert_eq!(
+            diagnostics[0].help.as_deref(),
+            Some("Use `[source.one, source.two]` or one Object ID for evidence_ref.")
+        );
     }
 
     #[test]

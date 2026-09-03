@@ -221,11 +221,12 @@ impl ProposalRecord {
                 message: "a proposal record needs at least one patch".to_string(),
             });
         }
-        // The set-level anchor rule below runs before per-patch floors, so an
-        // unattributed create is refused for its authority defect rather than
-        // for a placement rule it was never entitled to reach.
+        // Attribution is the first per-patch floor for every operation the
+        // record can carry, so an unattributed patch is refused for its
+        // authority defect before entry validation. Governance operations are
+        // categorically closed and keep their more specific refusal below.
         for patch in &patches {
-            if matches!(&patch.document.intent, PatchIntent::CreateObject { .. }) {
+            if !patch.document.intent.changes_governance_state() {
                 enforce_proposer_floor(&patch.document)?;
             }
         }

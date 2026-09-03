@@ -9,9 +9,9 @@ use crate::domain::knowledge_object::draft::{
     KnowledgeObjectDraft, validate_draft, validate_existing_draft,
 };
 use crate::domain::knowledge_object::{
-    BlockKind, EVIDENCE_REF_FIELD, IMPACTS_FIELD, IMPACTS_LIST_HELP, closed_schema_field_error,
-    is_allowed_field_key, is_relation_field, list_content_range, list_items, list_segments,
-    shared_field_value_error, trim_segment,
+    BlockKind, EVIDENCE_REF_FIELD, EVIDENCE_REF_LIST_HELP, IMPACTS_FIELD, IMPACTS_LIST_HELP,
+    closed_schema_field_error, is_allowed_field_key, is_relation_field, list_content_range,
+    list_items, list_segments, shared_field_value_error, trim_segment,
 };
 use crate::domain::obligation::ProofObligation;
 use crate::domain::source_edit::planner::{field_value_line_break_diagnostic, guard_body_lines};
@@ -898,26 +898,23 @@ fn evidence_ref_syntax_diagnostics(object_id: &str, value: &str) -> Vec<Diagnost
                 "evidence_ref has a malformed bracket-list value",
             )
             .with_object_id(object_id)
-            .with_help(OBJECT_ID_GRAMMAR_HELP),
+            .with_help(EVIDENCE_REF_LIST_HELP),
         ];
     };
     for (start, end, is_last) in list_segments(value, range) {
-        let target = trim_segment(&value[start..end]).map(|(target, _, _)| target);
-        if target.is_none() {
-            if !is_last {
-                diagnostics.push(
-                    Diagnostic::error(
-                        DiagnosticCode::IdInvalid,
-                        "evidence_ref contains an empty Object ID segment",
-                    )
-                    .with_object_id(object_id)
-                    .with_help(OBJECT_ID_GRAMMAR_HELP),
-                );
+        match trim_segment(&value[start..end]) {
+            None if !is_last => diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode::IdInvalid,
+                    "evidence_ref contains an empty Object ID segment",
+                )
+                .with_object_id(object_id)
+                .with_help(OBJECT_ID_GRAMMAR_HELP),
+            ),
+            Some((target, _, _)) if ObjectId::new(target.to_string()).is_err() => {
+                diagnostics.push(invalid_object_id_diagnostic(target, "evidence_ref target"));
             }
-        } else if let Some(target) = target
-            && ObjectId::new(target.to_string()).is_err()
-        {
-            diagnostics.push(invalid_object_id_diagnostic(target, "evidence_ref target"));
+            None | Some(_) => {}
         }
     }
     diagnostics
@@ -937,30 +934,29 @@ fn impacts_value_diagnostics(object_id: &str, value: &str) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     let mut has_path = false;
     for (start, end, is_last) in list_segments(value, range) {
-        let path = trim_segment(&value[start..end]).map(|(path, _, _)| path);
-        if path.is_none() {
-            if !is_last {
-                diagnostics.push(
-                    Diagnostic::error(
-                        DiagnosticCode::SchemaImpactsInvalidPath,
-                        "impacts contains an empty path segment",
-                    )
-                    .with_object_id(object_id)
-                    .with_help(DiagnosticCode::SchemaImpactsInvalidPath.default_help()),
-                );
+        match trim_segment(&value[start..end]) {
+            None if !is_last => diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode::SchemaImpactsInvalidPath,
+                    "impacts contains an empty path segment",
+                )
+                .with_object_id(object_id)
+                .with_help(DiagnosticCode::SchemaImpactsInvalidPath.default_help()),
+            ),
+            Some((path, _, _)) => {
+                has_path = true;
+                if let Err(error) = RelPath::try_new(path) {
+                    diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode::SchemaImpactsInvalidPath,
+                            format!("invalid `impacts` path `{path}`: {error}"),
+                        )
+                        .with_object_id(object_id)
+                        .with_help(DiagnosticCode::SchemaImpactsInvalidPath.default_help()),
+                    );
+                }
             }
-        } else if let Some(path) = path {
-            has_path = true;
-            if let Err(error) = RelPath::try_new(path) {
-                diagnostics.push(
-                    Diagnostic::error(
-                        DiagnosticCode::SchemaImpactsInvalidPath,
-                        format!("invalid `impacts` path `{path}`: {error}"),
-                    )
-                    .with_object_id(object_id)
-                    .with_help(DiagnosticCode::SchemaImpactsInvalidPath.default_help()),
-                );
-            }
+            None => {}
         }
     }
     if !has_path && diagnostics.is_empty() {
@@ -1512,6 +1508,18 @@ mod tests {
         assert!(
             impacts_value_diagnostics("billing.credits", "[\u{a0}/tmp]").is_empty(),
             "patch validation uses the source parser's ASCII-only edge trimming"
+        );
+    }
+
+    #[test]
+    fn malformed_evidence_ref_uses_object_list_remediation() {
+        let diagnostics = evidence_ref_syntax_diagnostics("billing.credits", "[source.one");
+
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::IdInvalid);
+        assert_eq!(
+            diagnostics[0].help.as_deref(),
+            Some("Use `[source.one, source.two]` or one Object ID for evidence_ref.")
         );
     }
 }
