@@ -560,6 +560,7 @@ fn e5_2_cloud_approval_codes_are_registered_exactly() {
         .expect("approval scope-mismatch row");
     assert!(scope_row.contains("declared object scope"));
     assert!(scope_row.contains("proposal's affected object set"));
+    assert!(scope_row.contains("does not exact-match"));
 }
 
 #[test]
