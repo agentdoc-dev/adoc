@@ -373,8 +373,8 @@ Contract codes for the four-mode gate evaluator (E5.3; check publication E5.4). 
 | `gate.assessment_missing` | planned | E5.3 | `assessment_required` without a valid complete deterministic + semantic assessment |
 | `gate.semantic_invalid` | planned | E5.3 | semantic assessment present but invalid/incomplete |
 | `gate.proposal_missing` | planned | E5.3 | materially affected finding without a proposal or accepted no-change disposition |
-| `gate.proposal_hash_mismatch` | planned | E5.3 | approval bound to a proposal digest that no longer matches |
-| `gate.approval_invalidated` | planned | E5.3 | semantic content change invalidated a prior approval |
+| `gate.proposal_hash_mismatch` | planned | E5.3 | gate-time surface that consumes the `approval.proposal_hash_mismatch` outcome; distinct code, not a respelling; the approval-bound proposal digest no longer matches the current proposal digest |
+| `gate.approval_invalidated` | planned | E5.3 | gate-time surface that consumes the `approval.invalidated_proposal_changed` outcome; distinct code, not a respelling; semantic content change invalidated a prior approval |
 | `gate.cloud_unavailable` | planned | E5.3 | required Cloud decision input unavailable — blocks, never defaults |
 | `gate.audit_persistence_failed` | planned | E5.3 | decision audit record could not be persisted — blocks; gate-level surface consuming the operation-level `audit.persistence_failed` (E1.4.T4), explicit mapping per the note above the diagnostic-codes table |
 | `gate.mode_unknown` | planned | E5.3 | unknown gate mode string is a configuration error, never a fallback |
@@ -467,8 +467,6 @@ The closed E2.4 state vocabulary retained when an authorization decision cannot 
 
 Operation labels and typed failure codes owned by the private Cloud service. New Cloud wire codes register here before they ship: `workspace.bootstrap` names the identity-bootstrap operation, the E2.1 `workspace.*` failures cover repository registration and tenant isolation, and `governance.decision_binding_missing` belongs to the E1.3 reconciliation-decision route.
 
-The E5.2 `approval.proposal_hash_mismatch` and `approval.invalidated_proposal_changed` codes describe approval-command and approval-record outcomes. The E5.3 `gate.*` codes consume those approval outcomes; neither pair is a respelling of `gate.proposal_hash_mismatch` or `gate.approval_invalidated`.
-
 <!-- registry:cloud-codes -->
 | code | status | meaning |
 | --- | --- | --- |
@@ -480,10 +478,10 @@ The E5.2 `approval.proposal_hash_mismatch` and `approval.invalidated_proposal_ch
 | `governance.proposal_invalid` | planned (E5.1) | Cloud proposal-command route rejects an `adoc.proposal.v0` payload that fails the pinned schema or graph-independent patch rules, whose patch or proposal-set digests do not re-derive from the embedded patch bytes, whose patches are out of canonical order, whose create placement or per-target sequence violates ADR-0062 §6–§7, or that would mint authority (ADR-0053 §2–§3, ADR-0054 §3 floors); remediation names the failing rule or derivation |
 | `governance.proposal_conflict` | planned (E5.1) | a proposal command names a proposal-set digest already recorded in the Workspace whose stored digest-ordered patch set differs from the delivered one (a re-derivation guard, unreachable without tampering or a digest collision); the stored record is immutable and the delivery is rejected, never merged. Bindings and per-patch finding/placement metadata are not digest-covered (ADR-0062 §2): a same-digest delivery that differs only there — a source-placement move or a new head on the same change request — is acknowledged as `ingest.duplicate_delivery` and the first-stored record stays authoritative (MILESTONES §E5.1: idempotent by proposal-set digest, one record) |
 | `approval.ineligible_approver` | planned (E5.2) | authenticated principal is not eligible to approve the proposal under the current authorization and independence policy |
-| `approval.proposal_hash_mismatch` | planned (E5.2) | approval command does not bind the exact current proposal digest |
-| `approval.scope_mismatch` | planned (E5.2) | approval command's declared object scope does not exact-match the proposal's affected object set |
+| `approval.proposal_hash_mismatch` | planned (E5.2) | approval-command counterpart of `gate.proposal_hash_mismatch`: the command does not bind the exact current proposal digest |
+| `approval.scope_mismatch` | planned (E5.2) | approval command's declared complete affected-object `(object_id, content_hash)` tuple set does not exact-match the proposal's complete affected-object tuple set |
 | `approval.policy_version_stale` | planned (E5.2) | approval command binds a policy version other than the current version evaluated by Cloud |
-| `approval.invalidated_proposal_changed` | planned (E5.2) | semantic proposal content changed after approval, so the approval is invalidated monotonically |
+| `approval.invalidated_proposal_changed` | planned (E5.2) | approval-record counterpart of `gate.approval_invalidated`: semantic proposal content changed after approval, so the approval is invalidated monotonically |
 | `approval.concurrent_write_rejected` | planned (E5.2) | expected approval record version or digest does not match the current record, preventing last-write-wins |
 | `approval.model_identity_rejected` | planned (E5.2) | provider or model identity was presented as an approver principal and is ineligible for approval |
 | `authority.scope_invalid` | planned (E4.3) | connector-authority scope is malformed, references a nonexistent connector, or skips a hierarchy level |

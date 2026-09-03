@@ -539,6 +539,8 @@ fn e5_1_proposal_record_is_shipped_by_its_contract_owner() {
 #[test]
 fn e5_2_cloud_approval_codes_are_registered_exactly() {
     let registry = registry();
+    let cloud_block =
+        support::doc_scan::anchored_block(&registry, REGISTRY, "registry:cloud-codes");
     let registered: BTreeSet<_> = anchored_ids(&registry, "registry:cloud-codes")
         .into_iter()
         .filter(|code| code.starts_with("approval."))
@@ -554,16 +556,34 @@ fn e5_2_cloud_approval_codes_are_registered_exactly() {
     ]);
 
     assert_eq!(registered, expected);
-    let scope_row = registry
+    let scope_row = cloud_block
         .lines()
-        .find(|line| line.contains("`approval.scope_mismatch`"))
+        .find(|line| {
+            line.trim().split('|').nth(1).map(str::trim) == Some("`approval.scope_mismatch`")
+        })
         .expect("approval scope-mismatch row");
-    assert!(scope_row.contains("declared object scope"));
-    assert!(scope_row.contains("proposal's affected object set"));
+    assert!(scope_row.contains("complete affected-object `(object_id, content_hash)` tuple set"));
     assert!(scope_row.contains("does not exact-match"));
-    assert!(registry.contains(
-        "The E5.3 `gate.*` codes consume those approval outcomes; neither pair is a respelling"
-    ));
+
+    let gate_block = support::doc_scan::anchored_block(&registry, REGISTRY, "registry:gate-codes");
+    for (gate_code, approval_code) in [
+        (
+            "`gate.proposal_hash_mismatch`",
+            "`approval.proposal_hash_mismatch`",
+        ),
+        (
+            "`gate.approval_invalidated`",
+            "`approval.invalidated_proposal_changed`",
+        ),
+    ] {
+        let gate_row = gate_block
+            .lines()
+            .find(|line| line.trim().split('|').nth(1).map(str::trim) == Some(gate_code))
+            .unwrap_or_else(|| panic!("{gate_code} row"));
+        assert!(gate_row.contains(approval_code));
+        assert!(gate_row.contains("consumes"));
+        assert!(gate_row.contains("distinct code, not a respelling"));
+    }
 }
 
 #[test]
