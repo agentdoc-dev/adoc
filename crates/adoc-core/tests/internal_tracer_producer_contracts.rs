@@ -499,9 +499,10 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
         serde_json::to_vec(&qualification_json).expect("qualification serializes");
     let qualification =
         validate_executor_qualification(&qualification_bytes).expect("qualification validates");
+    let evaluated_task_digest = TASK;
     let eligibility = qualification.evaluate(
         &current_executor,
-        TASK,
+        evaluated_task_digest,
         &ExecutorQualificationExpectedBindings {
             qualification_id: "internal-synthetic-codex".to_string(),
             record_digest: digest(&qualification_bytes),
@@ -519,6 +520,15 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
         eligibility.authority(),
         ExecutorAuthority::GateAuthoritative
     );
+    let ExecutorConfiguration::Model {
+        executor_digest,
+        model_digest,
+        config_digest,
+        ..
+    } = &current_executor
+    else {
+        panic!("internal synthetic executor is a model")
+    };
 
     let request = validate_semantic_executor_request(
         &serde_json::to_vec(&json!({
@@ -531,11 +541,11 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
                 "model": "gpt-5.6-codex",
                 "endpoint_class": "public_provider",
                 "endpoint_id": "openai",
-                "executor_digest": EXECUTOR,
-                "model_digest": MODEL,
-                "config_digest": CONFIG
+                "executor_digest": executor_digest,
+                "model_digest": model_digest,
+                "config_digest": config_digest
             },
-            "task_digest": TASK,
+            "task_digest": evaluated_task_digest,
             "prompt": {
                 "contract_version": "semantic-assessment-task-v1",
                 "digest": prompt_digest,
@@ -547,6 +557,10 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
         .expect("request serializes"),
     )
     .expect("request validates");
+    assert_eq!(request.adapter().executor_digest, *executor_digest);
+    assert_eq!(request.adapter().model_digest, *model_digest);
+    assert_eq!(request.adapter().config_digest, *config_digest);
+    assert_eq!(request.task_digest(), evaluated_task_digest);
     let semantic = validate_semantic_assessment(
         &serde_json::to_vec(&semantic_assessment(
             &context_digest,
