@@ -4,14 +4,15 @@
 use std::{fmt::Write as _, process::Command};
 
 use adoc_core::{
-    AssessmentCompleteness, AssessmentOutcome, CapabilityPolicy, CapabilityPolicyRule,
-    ChangeAssessmentInput, CitationContentProjection, CitationHandle, CompileInput, ContextClass,
-    ContextRequirement, DiffHunkCitation, ExactRevision, ExecutorAuthority, ExecutorConfiguration,
-    ExecutorQualificationExpectedBindings, GraphCitationObject, LocalProjectContext,
-    ModelConfiguration, PatchApplyInput, ProposalBindings, ProposalChangeRequest,
-    ProposalPatchInput, SEMANTIC_EXECUTOR_RECEIPT_SCHEMA_VERSION, SemanticContextOutcome,
+    AssessmentCompleteness, AssessmentOutcome, BuildEmbeddingMode, BuildInput, CapabilityPolicy,
+    CapabilityPolicyRule, ChangeAssessmentInput, CitationContentProjection, CitationHandle,
+    CompileInput, ContextClass, ContextRequirement, DiffHunkCitation, ExactRevision,
+    ExecutorAuthority, ExecutorConfiguration, ExecutorQualificationExpectedBindings,
+    GraphCitationObject, LocalProjectContext, ModelConfiguration, PatchApplyInput,
+    ProposalBindings, ProposalChangeRequest, ProposalPatchInput,
+    SEMANTIC_EXECUTOR_RECEIPT_SCHEMA_VERSION, SemanticContextOutcome,
     SemanticContextValidationBasis, UnavailabilityOutcome, UnavailabilityReason,
-    apply_patch_for_date, assess_changes_from_git, build_proposal_record,
+    apply_patch_for_date, assess_changes_from_git, build_project_workspace, build_proposal_record,
     build_semantic_context_from_document, compile_project_workspace_with_anchor_root_for_date,
     complete_semantic_execution, parse_patch_from_value, semantic_context_content_digest,
     semantic_prompt_digest, validate_executor_qualification, validate_semantic_assessment,
@@ -304,6 +305,31 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
         head_ref: Some(base.clone()),
         evaluation_date: NaiveDate::from_ymd_opt(2026, 9, 30).expect("date"),
     });
+    let build_graph = || {
+        let docs_root = repo.root_path().join("docs");
+        let result = build_project_workspace(
+            BuildInput {
+                root: docs_root.clone(),
+                embeddings: BuildEmbeddingMode::Skipped,
+                prior_search_artifact_path: None,
+            },
+            LocalProjectContext {
+                project_root: repo.root_path(),
+                docs_root,
+            },
+        );
+        assert!(
+            !result.has_errors(),
+            "graph build: {:?}",
+            result.diagnostics
+        );
+        serde_json::from_str::<Value>(&result.artifacts.expect("graph artifacts").graph_json)
+            .expect("graph JSON")
+    };
+    let baseline_source_digest = digest(
+        &std::fs::read(repo.root.path().join("docs/billing.adoc")).expect("baseline source"),
+    );
+    let baseline_graph_document = build_graph();
     repo.git(&["mv", "docs/billing.adoc", "docs/renamed-billing.adoc"]);
     repo.git(&["commit", "-m", "move billing docs"]);
     let moved = repo.git(&["rev-parse", "HEAD"]);
@@ -313,6 +339,7 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
         head_ref: Some(moved.clone()),
         evaluation_date: NaiveDate::from_ymd_opt(2026, 9, 30).expect("date"),
     });
+    let moved_graph_document = build_graph();
     repo.write(
         "docs/renamed-billing.adoc",
         concat!(
@@ -370,19 +397,62 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
         placement_object_set, baseline_object_set,
         "placement-only changes preserve semantic object-set identity"
     );
-    let baseline_graph = baseline_assessment
+    let baseline_graph_digest = baseline_assessment
         .knowledge_snapshot
         .graph_sha256
         .as_deref()
         .expect("baseline graph digest");
-    let placement_graph = placement_assessment
+    let placement_graph_digest = placement_assessment
         .knowledge_snapshot
         .graph_sha256
         .as_deref()
         .expect("placement graph digest");
     assert_ne!(
-        placement_graph, baseline_graph,
+        placement_graph_digest, baseline_graph_digest,
         "placement changes remain visible in the exact graph artifact"
+    );
+    let baseline_graph_object = baseline_graph_document["nodes"]
+        .as_array()
+        .expect("baseline graph nodes")
+        .iter()
+        .find(|node| node["id"] == "billing.policy")
+        .expect("baseline billing.policy graph node");
+    let moved_graph_object = moved_graph_document["nodes"]
+        .as_array()
+        .expect("moved graph nodes")
+        .iter()
+        .find(|node| node["id"] == "billing.policy")
+        .expect("moved billing.policy graph node");
+    let baseline_binding = &baseline_graph_object["source_binding"];
+    let moved_binding = &moved_graph_object["source_binding"];
+    assert_eq!(
+        baseline_binding["path"].as_str().expect("baseline path"),
+        "docs/billing.adoc"
+    );
+    let moved_binding_path = moved_binding["path"]
+        .as_str()
+        .expect("moved path")
+        .to_string();
+    assert_eq!(moved_binding_path, "docs/renamed-billing.adoc");
+    assert_eq!(
+        baseline_graph_object["content_hash"]
+            .as_str()
+            .expect("baseline content hash"),
+        moved_graph_object["content_hash"]
+            .as_str()
+            .expect("moved content hash")
+    );
+    assert_eq!(
+        baseline_binding["source_revision_digest"]
+            .as_str()
+            .expect("baseline source revision digest"),
+        baseline_source_digest
+    );
+    assert_eq!(
+        moved_binding["source_revision_digest"]
+            .as_str()
+            .expect("moved source revision digest"),
+        baseline_source_digest
     );
     let placement_changes = placement_assessment
         .knowledge_changes
@@ -420,8 +490,6 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
         .find(|object| object.id == "billing.policy")
         .expect("billing.policy assessed");
     let assessed_content_hash = assessed_object.content_hash.clone();
-    let placement_path = assessed_object.source.path.clone();
-    assert_eq!(placement_path, "docs/renamed-billing.adoc");
     let promotion_change = assessment
         .knowledge_changes
         .value
@@ -805,7 +873,7 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
         patch_bytes.push(b'\n');
         ProposalPatchInput {
             finding_id: assessment_finding_id.to_string(),
-            placement_path: placement_path.clone(),
+            placement_path: moved_binding_path.clone(),
             page_id: "team.billing".to_string(),
             patch_bytes,
         }
@@ -838,7 +906,7 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
     let proposal_patches = proposal_json["patches"]
         .as_array()
         .expect("proposal patches");
-    assert_eq!(proposal_patches[0]["placement_path"], placement_path);
+    assert_eq!(proposal_patches[0]["placement_path"], moved_binding_path);
     assert!(
         proposal_patches
             .iter()
