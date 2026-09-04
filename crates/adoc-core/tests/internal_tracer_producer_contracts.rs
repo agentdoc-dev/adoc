@@ -582,6 +582,9 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
             .expect("semantic serializes for candidate translation"),
     )
     .expect("semantic JSON");
+    let assessment_finding_id = semantic_json["findings"][0]["finding_id"]
+        .as_str()
+        .expect("assessment finding ID");
     let candidate_body = semantic_json["findings"][0]["candidate_updates"][0]["body"]
         .as_str()
         .expect("candidate body");
@@ -667,7 +670,7 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
         let mut patch_bytes = serde_json::to_vec(patch).expect("patch serializes");
         patch_bytes.push(b'\n');
         ProposalPatchInput {
-            finding_id: "finding-001".to_string(),
+            finding_id: assessment_finding_id.to_string(),
             placement_path: "docs/billing.adoc".to_string(),
             page_id: "team.billing".to_string(),
             patch_bytes,
@@ -698,10 +701,17 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
     let proposal_json: Value =
         serde_json::from_str(&proposal.to_canonical_json().expect("proposal serializes"))
             .expect("proposal JSON");
-    assert_eq!(proposal_json["patches"][0]["page_id"], "team.billing");
-    let body_patch = proposal_json["patches"]
+    let proposal_patches = proposal_json["patches"]
         .as_array()
-        .expect("proposal patches")
+        .expect("proposal patches");
+    assert!(
+        proposal_patches
+            .iter()
+            .all(|patch| patch["finding_id"] == assessment_finding_id),
+        "every proposal patch binds the assessment finding ID"
+    );
+    assert_eq!(proposal_patches[0]["page_id"], "team.billing");
+    let body_patch = proposal_patches
         .iter()
         .find(|patch| patch["operation"] == "replace_body")
         .expect("candidate body is translated to a replace_body patch");
