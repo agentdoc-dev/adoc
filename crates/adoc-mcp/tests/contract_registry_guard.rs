@@ -566,6 +566,17 @@ fn e5_2_cloud_approval_codes_are_registered_exactly() {
     assert!(scope_row.contains("`create_object` targets"));
     assert!(scope_row.contains("does not exact-match"));
 
+    let proposal_hash_approval_row = cloud_block
+        .lines()
+        .find(|line| {
+            line.trim().split('|').nth(1).map(str::trim)
+                == Some("`approval.proposal_hash_mismatch`")
+        })
+        .expect("approval proposal-hash-mismatch row");
+    assert!(proposal_hash_approval_row.contains("no approval record is created"));
+    assert!(proposal_hash_approval_row.contains("distinct from `gate.proposal_hash_mismatch`"));
+    assert!(proposal_hash_approval_row.contains("already-recorded approval at gate time"));
+
     let gate_block = support::doc_scan::anchored_block(&registry, REGISTRY, "registry:gate-codes");
     let proposal_hash_row = gate_block
         .lines()
