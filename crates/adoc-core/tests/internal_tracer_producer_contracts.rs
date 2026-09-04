@@ -5,16 +5,17 @@ use std::{fmt::Write as _, process::Command};
 
 use adoc_core::{
     AssessmentCompleteness, AssessmentOutcome, CapabilityPolicy, CapabilityPolicyRule,
-    ChangeAssessmentInput, CitationContentProjection, CitationHandle, ContextClass,
+    ChangeAssessmentInput, CitationContentProjection, CitationHandle, CompileInput, ContextClass,
     ContextRequirement, DiffHunkCitation, ExactRevision, ExecutorAuthority, ExecutorConfiguration,
-    ExecutorQualificationExpectedBindings, GraphCitationObject, ModelConfiguration,
-    ProposalBindings, ProposalChangeRequest, ProposalPatchInput,
-    SEMANTIC_EXECUTOR_RECEIPT_SCHEMA_VERSION, SemanticContextOutcome,
+    ExecutorQualificationExpectedBindings, GraphCitationObject, LocalProjectContext,
+    ModelConfiguration, PatchApplyInput, ProposalBindings, ProposalChangeRequest,
+    ProposalPatchInput, SEMANTIC_EXECUTOR_RECEIPT_SCHEMA_VERSION, SemanticContextOutcome,
     SemanticContextValidationBasis, UnavailabilityOutcome, UnavailabilityReason,
-    assess_changes_from_git, build_proposal_record, build_semantic_context_from_document,
-    complete_semantic_execution, semantic_context_content_digest, semantic_prompt_digest,
-    validate_executor_qualification, validate_semantic_assessment, validate_semantic_context,
-    validate_semantic_executor_request,
+    apply_patch_for_date, assess_changes_from_git, build_proposal_record,
+    build_semantic_context_from_document, compile_project_workspace_with_anchor_root_for_date,
+    complete_semantic_execution, parse_patch_from_value, semantic_context_content_digest,
+    semantic_prompt_digest, validate_executor_qualification, validate_semantic_assessment,
+    validate_semantic_context, validate_semantic_executor_request,
 };
 use chrono::NaiveDate;
 use serde_json::{Value, json};
@@ -133,6 +134,7 @@ fn context_input(
     hunk_digest: &str,
     hunk_content: &str,
     content_hash: &str,
+    object_body: &str,
     base: &str,
     head: &str,
 ) -> Value {
@@ -179,7 +181,7 @@ fn context_input(
             "class_id": "changed_knowledge",
             "scope_ref": "repo:agentdoc/internal-synthetic",
             "handle": {"kind": "knowledge_object", "object_id": "billing.policy", "semantic_hash": content_hash},
-            "content": {"body": "Credits settle after payment."},
+            "content": {"body": object_body},
             "truncated": false
         }],
         "unavailability": []
@@ -314,12 +316,13 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
         Some(head.as_str())
     );
     let assessment_digest = digest(&canonical_bytes(&assessment));
-    let graph_digest = assessment
+    let assessed_graph_digest = assessment
         .knowledge_snapshot
         .graph_sha256
         .as_deref()
-        .expect("assessment graph digest");
-    let content_hash = assessment
+        .expect("assessment graph digest")
+        .to_string();
+    let assessed_content_hash = assessment
         .objects
         .value
         .as_ref()
@@ -329,14 +332,52 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
         .expect("billing.policy assessed")
         .content_hash
         .clone();
+    let head_graph = compile_project_workspace_with_anchor_root_for_date(
+        CompileInput {
+            root: repo.root_path().join("docs"),
+        },
+        LocalProjectContext {
+            project_root: repo.root_path(),
+            docs_root: repo.root_path().join("docs"),
+        },
+        repo.root_path(),
+        NaiveDate::from_ymd_opt(2026, 9, 30).expect("date"),
+    )
+    .artifacts
+    .expect("exact-head graph compiles")
+    .graph_json;
+    let head_graph_json: Value = serde_json::from_str(&head_graph).expect("graph JSON");
+    let graph_object = head_graph_json["nodes"]
+        .as_array()
+        .expect("graph nodes")
+        .iter()
+        .find(|node| node["id"] == "billing.policy")
+        .expect("billing.policy graph object");
+    let graph_digest = digest(head_graph.as_bytes());
+    assert_eq!(graph_digest, assessed_graph_digest);
+    let content_hash = graph_object["content_hash"]
+        .as_str()
+        .expect("graph content hash")
+        .to_string();
+    assert_eq!(content_hash, assessed_content_hash);
+    let object_body = graph_object["body"]
+        .as_str()
+        .expect("graph object body")
+        .to_string();
+    let has_source_binding = graph_object["source_binding"].is_object();
+    let evidence_count = graph_object["evidence"]
+        .as_array()
+        .expect("graph evidence")
+        .len();
 
     let context = build_semantic_context_from_document(
         &serde_json::to_vec(&context_input(
             &assessment_digest,
-            graph_digest,
+            &graph_digest,
             &hunk_digest,
             &hunk_content,
             &content_hash,
+            &object_body,
             &base,
             &head,
         ))
@@ -345,6 +386,10 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
     .expect("context builds");
     let context_canonical = context.to_canonical_json().expect("context serializes");
     let context_json: Value = serde_json::from_str(&context_canonical).expect("context JSON");
+    assert_eq!(
+        context_json["items"][1]["content"]["body"],
+        graph_object["body"]
+    );
     assert_eq!(
         context_json["basis"]["assessment_digest"],
         assessment_digest
@@ -401,14 +446,13 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
             context_classes: vec![context_class],
             authorized_scope: vec![scope.clone()],
             capability_policy,
-            graph_artifact_digest: Some(graph_digest.to_string()),
+            graph_artifact_digest: Some(graph_digest),
             managed_revision_digest: None,
             graph_objects: vec![GraphCitationObject {
                 object_id: "billing.policy".to_string(),
                 semantic_hash: content_hash.clone(),
-                has_source_binding: true,
-                // `source: src/billing.rs` projects to one inline evidence entry.
-                evidence_count: 1,
+                has_source_binding,
+                evidence_count,
             }],
             diff_hunks: vec![DiffHunkCitation {
                 changed_source_id: "src/billing.rs".to_string(),
@@ -436,7 +480,7 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
                     class_id: "changed_knowledge".to_string(),
                     scope_ref: scope,
                     content_digest: semantic_context_content_digest(&json!({
-                        "body": "Credits settle after payment."
+                        "body": object_body
                     })),
                     truncated_content_digests: Vec::new(),
                 },
@@ -514,6 +558,15 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
         request.context(),
     )
     .expect("semantic assessment validates");
+    let semantic_json: Value = serde_json::from_str(
+        &semantic
+            .to_canonical_json()
+            .expect("semantic serializes for candidate translation"),
+    )
+    .expect("semantic JSON");
+    let candidate_body = semantic_json["findings"][0]["candidate_updates"][0]["body"]
+        .as_str()
+        .expect("candidate body");
     let semantic_assessment_digest = digest(
         semantic
             .to_canonical_json()
@@ -531,17 +584,50 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
     );
     assert_eq!(receipt.context_digest(), context_digest);
 
-    let patch = json!({
+    let update_patch = json!({
         "schema_version": "adoc.patch.v0",
         "op": "update_fields",
         "target": "billing.policy",
         "base_hash": content_hash,
-        "changes": {"fields": {"owner": "billing-platform", "status": "draft"}},
+        "changes": {"fields": {"status": "draft"}},
         "reason": format!("AgentDoc assessment {assessment_digest} finding finding-001."),
         "proposer": {"type": "agent", "id": "agentdoc-action/codex/internal-synthetic"}
     });
-    let mut patch_bytes = serde_json::to_vec(&patch).expect("patch serializes");
-    patch_bytes.push(b'\n');
+    repo.write("dist/docs.graph.json", &head_graph);
+    let applied_update = apply_patch_for_date(
+        PatchApplyInput {
+            graph_artifact_path: repo.root_path().join("dist/docs.graph.json"),
+            docs_root: repo.root_path().join("docs"),
+            project_root: repo.root_path(),
+            interface: "internal-synthetic-tracer".to_string(),
+        },
+        parse_patch_from_value(update_patch.clone()).expect("update patch parses"),
+        NaiveDate::from_ymd_opt(2026, 9, 30).expect("date"),
+    );
+    assert!(applied_update.applied, "status-floor patch applies");
+    let body_base_hash = applied_update
+        .object
+        .after_content_hash
+        .expect("status-floor patch re-derives the body patch base hash");
+    let replace_body_patch = json!({
+        "schema_version": "adoc.patch.v0",
+        "op": "replace_body",
+        "target": "billing.policy",
+        "base_hash": body_base_hash,
+        "changes": {"body": candidate_body},
+        "reason": format!("AgentDoc assessment {assessment_digest} finding finding-001."),
+        "proposer": {"type": "agent", "id": "agentdoc-action/codex/internal-synthetic"}
+    });
+    let patch_input = |patch: &Value| {
+        let mut patch_bytes = serde_json::to_vec(patch).expect("patch serializes");
+        patch_bytes.push(b'\n');
+        ProposalPatchInput {
+            finding_id: "finding-001".to_string(),
+            placement_path: "docs/billing.adoc".to_string(),
+            page_id: "team.billing".to_string(),
+            patch_bytes,
+        }
+    };
     let proposal = build_proposal_record(
         ProposalBindings {
             base_revision: revision(&base),
@@ -554,12 +640,7 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
             semantic_context_digest: context_digest.clone(),
             semantic_assessment_digest: semantic_assessment_digest.clone(),
         },
-        vec![ProposalPatchInput {
-            finding_id: "finding-001".to_string(),
-            placement_path: "docs/billing.adoc".to_string(),
-            page_id: "team.billing".to_string(),
-            patch_bytes,
-        }],
+        vec![patch_input(&update_patch), patch_input(&replace_body_patch)],
         None,
     )
     .expect("proposal builds");
@@ -573,4 +654,11 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
         serde_json::from_str(&proposal.to_canonical_json().expect("proposal serializes"))
             .expect("proposal JSON");
     assert_eq!(proposal_json["patches"][0]["page_id"], "team.billing");
+    let body_patch = proposal_json["patches"]
+        .as_array()
+        .expect("proposal patches")
+        .iter()
+        .find(|patch| patch["operation"] == "replace_body")
+        .expect("candidate body is translated to a replace_body patch");
+    assert_eq!(body_patch["patch"]["changes"]["body"], candidate_body);
 }
