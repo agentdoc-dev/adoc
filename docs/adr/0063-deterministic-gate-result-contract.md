@@ -40,8 +40,15 @@ cross-repository contract checks unreliable.
    Every blocking result names at least one reason; a silent block is invalid.
    Every passing result names none because each registered reason denotes a
    blocker; nonblocking advisory diagnostics belong in semantic or check
-   annotations rather than this gate result. `gate.check_publish_failed`
-   belongs to E5.4 publication and cannot appear in this record.
+   annotations rather than this gate result. Known-mode reason admission follows
+   the cumulative mode ladder: `assessment_required` admits assessment,
+   provider, semantic, Cloud-unavailability, and audit-persistence failures;
+   `proposal_required` additionally admits proposal-missing and proposal-hash
+   mismatch; `approval_required` additionally admits approval-missing,
+   approval-invalidated, and unapproved-promotion failures. Operational
+   Cloud/audit failures apply to every required mode. `gate.mode_unknown` is
+   exclusive to an unknown configured mode. `gate.check_publish_failed` belongs
+   to E5.4 publication and cannot appear in this record.
 5. `agentdoc.cloud.gate_decision.v0.payload` references this shared contract.
    Consumers resolve the published AgentDoc schema rather than copying it.
 

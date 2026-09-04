@@ -65,6 +65,27 @@ pub enum GateReason {
     SemanticInvalid,
 }
 
+impl GateReason {
+    fn is_allowed_for(self, mode: GateMode) -> bool {
+        match self {
+            Self::AssessmentMissing
+            | Self::AssessmentStale
+            | Self::AuditPersistenceFailed
+            | Self::CloudUnavailable
+            | Self::ProviderFailedNoFallback
+            | Self::SemanticInvalid => true,
+            Self::ProposalHashMismatch | Self::ProposalMissing => matches!(
+                mode,
+                GateMode::ProposalRequired | GateMode::ApprovalRequired
+            ),
+            Self::ApprovalInvalidated | Self::ApprovalMissing | Self::PromotionUnapproved => {
+                mode == GateMode::ApprovalRequired
+            }
+            Self::ModeUnknown => false,
+        }
+    }
+}
+
 /// A validated result. Wire bytes cannot bypass [`GateResult::new`] or
 /// [`validate_gate_result`] because fields are private and this type does not
 /// implement `Deserialize`.
@@ -141,6 +162,11 @@ impl GateResult {
             || (effective_mode.is_some() && reasons.contains(&GateReason::ModeUnknown))
         {
             return Err(GateResultError::InvalidUnknownMode);
+        }
+        if effective_mode
+            .is_some_and(|mode| reasons.iter().any(|reason| !reason.is_allowed_for(mode)))
+        {
+            return Err(invalid_field("reasons"));
         }
         if effective_mode == Some(GateMode::Advisory) && result != GateOutcome::Pass {
             return Err(invalid_field("result"));

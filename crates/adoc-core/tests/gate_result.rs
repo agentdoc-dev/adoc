@@ -11,6 +11,20 @@ use serde_json::{Value, json};
 const HEAD: &str = "0123456789abcdef0123456789abcdef01234567";
 const A: &str = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const B: &str = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const ALL_REASONS: [GateReason; 12] = [
+    GateReason::ApprovalInvalidated,
+    GateReason::ApprovalMissing,
+    GateReason::AssessmentMissing,
+    GateReason::AssessmentStale,
+    GateReason::AuditPersistenceFailed,
+    GateReason::CloudUnavailable,
+    GateReason::ModeUnknown,
+    GateReason::PromotionUnapproved,
+    GateReason::ProposalHashMismatch,
+    GateReason::ProposalMissing,
+    GateReason::ProviderFailedNoFallback,
+    GateReason::SemanticInvalid,
+];
 
 fn schema() -> Value {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -21,22 +35,7 @@ fn schema() -> Value {
 
 #[test]
 fn every_reason_variant_matches_the_published_enum_in_canonical_order() {
-    const ALL: [GateReason; 12] = [
-        GateReason::ApprovalInvalidated,
-        GateReason::ApprovalMissing,
-        GateReason::AssessmentMissing,
-        GateReason::AssessmentStale,
-        GateReason::AuditPersistenceFailed,
-        GateReason::CloudUnavailable,
-        GateReason::ModeUnknown,
-        GateReason::PromotionUnapproved,
-        GateReason::ProposalHashMismatch,
-        GateReason::ProposalMissing,
-        GateReason::ProviderFailedNoFallback,
-        GateReason::SemanticInvalid,
-    ];
-
-    for reason in ALL {
+    for reason in ALL_REASONS {
         match reason {
             GateReason::ApprovalInvalidated
             | GateReason::ApprovalMissing
@@ -53,7 +52,7 @@ fn every_reason_variant_matches_the_published_enum_in_canonical_order() {
         }
     }
 
-    let wire = serde_json::to_value(ALL).expect("reasons serialize");
+    let wire = serde_json::to_value(ALL_REASONS).expect("reasons serialize");
     let mut ascending = wire.clone();
     ascending
         .as_array_mut()
@@ -62,6 +61,73 @@ fn every_reason_variant_matches_the_published_enum_in_canonical_order() {
 
     assert_eq!(wire, ascending);
     assert_eq!(wire, schema()["properties"]["reasons"]["items"]["enum"]);
+}
+
+#[test]
+fn blocking_reasons_follow_the_cumulative_mode_tiers() {
+    fn is_allowed(mode: GateMode, reason: GateReason) -> bool {
+        match reason {
+            GateReason::AssessmentMissing
+            | GateReason::AssessmentStale
+            | GateReason::AuditPersistenceFailed
+            | GateReason::CloudUnavailable
+            | GateReason::ProviderFailedNoFallback
+            | GateReason::SemanticInvalid => true,
+            GateReason::ProposalHashMismatch | GateReason::ProposalMissing => matches!(
+                mode,
+                GateMode::ProposalRequired | GateMode::ApprovalRequired
+            ),
+            GateReason::ApprovalInvalidated
+            | GateReason::ApprovalMissing
+            | GateReason::PromotionUnapproved => mode == GateMode::ApprovalRequired,
+            GateReason::ModeUnknown => false,
+        }
+    }
+
+    let validator = jsonschema::validator_for(&schema()).expect("schema compiles");
+    for (wire_mode, mode) in [
+        ("assessment_required", GateMode::AssessmentRequired),
+        ("proposal_required", GateMode::ProposalRequired),
+        ("approval_required", GateMode::ApprovalRequired),
+    ] {
+        for reason in ALL_REASONS {
+            let expected = is_allowed(mode, reason);
+            let domain = GateResult::new(
+                HEAD.to_string(),
+                "gate-policy-v1".to_string(),
+                vec![],
+                Some(wire_mode.to_string()),
+                GateOutcome::Block,
+                vec![reason],
+            );
+            assert_eq!(
+                domain.is_ok(),
+                expected,
+                "domain admission drift for {wire_mode} and {reason:?}"
+            );
+
+            let instance = json!({
+                "schema_version": "adoc.gate_result.v0",
+                "head_sha": HEAD,
+                "policy_version": "gate-policy-v1",
+                "input_digests": [],
+                "configured_mode": wire_mode,
+                "effective_mode": wire_mode,
+                "result": "block",
+                "reasons": [reason]
+            });
+            assert_eq!(
+                validate_gate_result(&serde_json::to_vec(&instance).expect("serializes")).is_ok(),
+                expected,
+                "wire admission drift for {wire_mode} and {reason:?}"
+            );
+            assert_eq!(
+                validator.is_valid(&instance),
+                expected,
+                "schema admission drift for {wire_mode} and {reason:?}"
+            );
+        }
+    }
 }
 
 #[test]

@@ -67,6 +67,70 @@
       "then": { "properties": { "result": { "const": "pass" } } }
     },
     {
+      "if": { "properties": { "effective_mode": { "const": "assessment_required" } } },
+      "then": {
+        "properties": {
+          "reasons": {
+            "items": {
+              "enum": [
+                "gate.assessment_missing",
+                "gate.assessment_stale",
+                "gate.audit_persistence_failed",
+                "gate.cloud_unavailable",
+                "gate.provider_failed_no_fallback",
+                "gate.semantic_invalid"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "effective_mode": { "const": "proposal_required" } } },
+      "then": {
+        "properties": {
+          "reasons": {
+            "items": {
+              "enum": [
+                "gate.assessment_missing",
+                "gate.assessment_stale",
+                "gate.audit_persistence_failed",
+                "gate.cloud_unavailable",
+                "gate.proposal_hash_mismatch",
+                "gate.proposal_missing",
+                "gate.provider_failed_no_fallback",
+                "gate.semantic_invalid"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "effective_mode": { "const": "approval_required" } } },
+      "then": {
+        "properties": {
+          "reasons": {
+            "items": {
+              "enum": [
+                "gate.approval_invalidated",
+                "gate.approval_missing",
+                "gate.assessment_missing",
+                "gate.assessment_stale",
+                "gate.audit_persistence_failed",
+                "gate.cloud_unavailable",
+                "gate.promotion_unapproved",
+                "gate.proposal_hash_mismatch",
+                "gate.proposal_missing",
+                "gate.provider_failed_no_fallback",
+                "gate.semantic_invalid"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
       "if": {
         "properties": {
           "effective_mode": {
