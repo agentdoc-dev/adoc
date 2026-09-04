@@ -407,7 +407,8 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
                 object_id: "billing.policy".to_string(),
                 semantic_hash: content_hash.clone(),
                 has_source_binding: true,
-                evidence_count: 0,
+                // `source: src/billing.rs` projects to one inline evidence entry.
+                evidence_count: 1,
             }],
             diff_hunks: vec![DiffHunkCitation {
                 changed_source_id: "src/billing.rs".to_string(),
