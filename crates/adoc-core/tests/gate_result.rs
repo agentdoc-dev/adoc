@@ -20,6 +20,51 @@ fn schema() -> Value {
 }
 
 #[test]
+fn every_reason_variant_matches_the_published_enum_in_canonical_order() {
+    const ALL: [GateReason; 12] = [
+        GateReason::ApprovalInvalidated,
+        GateReason::ApprovalMissing,
+        GateReason::AssessmentMissing,
+        GateReason::AssessmentStale,
+        GateReason::AuditPersistenceFailed,
+        GateReason::CloudUnavailable,
+        GateReason::ModeUnknown,
+        GateReason::PromotionUnapproved,
+        GateReason::ProposalHashMismatch,
+        GateReason::ProposalMissing,
+        GateReason::ProviderFailedNoFallback,
+        GateReason::SemanticInvalid,
+    ];
+
+    for reason in ALL {
+        match reason {
+            GateReason::ApprovalInvalidated
+            | GateReason::ApprovalMissing
+            | GateReason::AssessmentMissing
+            | GateReason::AssessmentStale
+            | GateReason::AuditPersistenceFailed
+            | GateReason::CloudUnavailable
+            | GateReason::ModeUnknown
+            | GateReason::PromotionUnapproved
+            | GateReason::ProposalHashMismatch
+            | GateReason::ProposalMissing
+            | GateReason::ProviderFailedNoFallback
+            | GateReason::SemanticInvalid => {}
+        }
+    }
+
+    let wire = serde_json::to_value(ALL).expect("reasons serialize");
+    let mut ascending = wire.clone();
+    ascending
+        .as_array_mut()
+        .expect("reasons are an array")
+        .sort_by(|left, right| left.as_str().cmp(&right.as_str()));
+
+    assert_eq!(wire, ascending);
+    assert_eq!(wire, schema()["properties"]["reasons"]["items"]["enum"]);
+}
+
+#[test]
 fn same_facts_same_conclusion_bytes() {
     let first = GateResult::new(
         HEAD.to_string(),
@@ -94,23 +139,6 @@ fn record_matches_the_published_closed_schema() {
         .collect();
 
     assert!(errors.is_empty(), "schema validation failed: {errors:#?}");
-    assert_eq!(
-        schema()["properties"]["reasons"]["items"]["enum"],
-        json!([
-            "gate.approval_invalidated",
-            "gate.approval_missing",
-            "gate.assessment_missing",
-            "gate.assessment_stale",
-            "gate.audit_persistence_failed",
-            "gate.cloud_unavailable",
-            "gate.mode_unknown",
-            "gate.promotion_unapproved",
-            "gate.proposal_hash_mismatch",
-            "gate.proposal_missing",
-            "gate.provider_failed_no_fallback",
-            "gate.semantic_invalid"
-        ])
-    );
     assert_eq!(
         instance["reasons"],
         json!([
