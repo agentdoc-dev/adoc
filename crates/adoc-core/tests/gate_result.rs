@@ -131,6 +131,48 @@ fn blocking_reasons_follow_the_cumulative_mode_tiers() {
 }
 
 #[test]
+fn approval_invalidation_suppresses_proposal_integrity_mismatch() {
+    let reasons = vec![
+        GateReason::ApprovalInvalidated,
+        GateReason::ProposalHashMismatch,
+    ];
+    assert_eq!(
+        GateResult::new(
+            HEAD.to_string(),
+            "gate-policy-v1".to_string(),
+            vec![A.to_string()],
+            Some("approval_required".to_string()),
+            GateOutcome::Block,
+            reasons,
+        ),
+        Err(GateResultError::InvalidField {
+            field: "reasons".to_string()
+        })
+    );
+
+    let instance = json!({
+        "schema_version": "adoc.gate_result.v0",
+        "head_sha": HEAD,
+        "policy_version": "gate-policy-v1",
+        "input_digests": [A],
+        "configured_mode": "approval_required",
+        "effective_mode": "approval_required",
+        "result": "block",
+        "reasons": [
+            "gate.approval_invalidated",
+            "gate.proposal_hash_mismatch"
+        ]
+    });
+    let bytes = serde_json::to_vec(&instance).expect("serializes");
+    assert!(validate_gate_result(&bytes).is_err());
+    assert!(
+        !jsonschema::validator_for(&schema())
+            .expect("schema compiles")
+            .is_valid(&instance)
+    );
+}
+
+#[test]
 fn same_facts_same_conclusion_bytes() {
     let first = GateResult::new(
         HEAD.to_string(),
@@ -185,7 +227,6 @@ fn record_matches_the_published_closed_schema() {
             GateReason::PromotionUnapproved,
             GateReason::ProviderFailedNoFallback,
             GateReason::ProposalMissing,
-            GateReason::ProposalHashMismatch,
             GateReason::CloudUnavailable,
             GateReason::AuditPersistenceFailed,
             GateReason::AssessmentStale,
@@ -215,7 +256,6 @@ fn record_matches_the_published_closed_schema() {
             "gate.audit_persistence_failed",
             "gate.cloud_unavailable",
             "gate.promotion_unapproved",
-            "gate.proposal_hash_mismatch",
             "gate.proposal_missing",
             "gate.provider_failed_no_fallback",
             "gate.semantic_invalid"

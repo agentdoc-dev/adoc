@@ -168,6 +168,11 @@ impl GateResult {
         {
             return Err(invalid_field("reasons"));
         }
+        if reasons.contains(&GateReason::ApprovalInvalidated)
+            && reasons.contains(&GateReason::ProposalHashMismatch)
+        {
+            return Err(invalid_field("reasons"));
+        }
         if effective_mode == Some(GateMode::Advisory) && result != GateOutcome::Pass {
             return Err(invalid_field("result"));
         }

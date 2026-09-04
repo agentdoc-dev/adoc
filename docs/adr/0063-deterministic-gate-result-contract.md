@@ -47,8 +47,11 @@ cross-repository contract checks unreliable.
    mismatch; `approval_required` additionally admits approval-missing,
    approval-invalidated, and unapproved-promotion failures. Operational
    Cloud/audit failures apply to every required mode. `gate.mode_unknown` is
-   exclusive to an unknown configured mode. `gate.check_publish_failed` belongs
-   to E5.4 publication and cannot appear in this record.
+   exclusive to an unknown configured mode. When approval invalidation and
+   stored-proposal integrity failure are both present, invalidation takes
+   precedence: `gate.approval_invalidated` is emitted and
+   `gate.proposal_hash_mismatch` is not. `gate.check_publish_failed` belongs to
+   E5.4 publication and cannot appear in this record.
 5. `agentdoc.cloud.gate_decision.v0.payload` references this shared contract.
    Consumers resolve the published AgentDoc schema rather than copying it.
 

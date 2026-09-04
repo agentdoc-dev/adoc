@@ -133,6 +133,20 @@
     {
       "if": {
         "properties": {
+          "reasons": { "contains": { "const": "gate.approval_invalidated" } }
+        }
+      },
+      "then": {
+        "properties": {
+          "reasons": {
+            "not": { "contains": { "const": "gate.proposal_hash_mismatch" } }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
           "effective_mode": {
             "enum": [
               "assessment_required",
