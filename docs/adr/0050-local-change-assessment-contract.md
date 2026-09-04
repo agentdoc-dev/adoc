@@ -86,11 +86,13 @@ The schema version is `adoc.change_assessment.v0`. The stable top-level sections
 - `summary` and validation attribution counts;
 - one classified record per changed path;
 - body-free implicated head `objects` and body-free `knowledge_changes`, including deletion tombstones;
+- additive-optional `authority_promotions` for crossings into authoritative kind/status pairs;
 - `policy_changes`, assessment-specific reviewers and proof obligations;
 - lifecycle, contradiction, anchor, and validation signals;
 - stable diagnostics.
 
 Unavailable sections are represented explicitly and are never replaced by a misleading empty collection. Collections are ordered deterministically by their identifying fields.
+For `adoc.change_assessment.v0` wire compatibility with older producers, `authority_promotions` may be absent; absence means promotion facts were not evaluated and must never be read as an available empty set.
 
 The envelope contains no timestamp, GitHub repository or actor, raw diff, object body, prompt, or model data. It has no self digest. V9.2.2 hashes the exact final serialized bytes.
 
