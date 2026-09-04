@@ -63,6 +63,10 @@
       "else": { "properties": { "reasons": { "maxItems": 0 } } }
     },
     {
+      "if": { "properties": { "effective_mode": { "const": "advisory" } } },
+      "then": { "properties": { "result": { "const": "pass" } } }
+    },
+    {
       "if": {
         "properties": {
           "effective_mode": {

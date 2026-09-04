@@ -26,8 +26,10 @@ cross-repository contract checks unreliable.
    input digests because no validated evidence may exist.
 3. Effective modes are closed to `advisory`, `assessment_required`,
    `proposal_required`, and `approval_required`. An absent configured mode
-   derives `advisory`. A known configured mode derives itself. Configured text
-   is preserved verbatim but is limited to 128 Unicode scalar values and may
+   derives `advisory`. A known configured mode derives itself. An effective
+   `advisory` mode is pass-only; blocking diagnostics remain annotations outside
+   this result. Configured text is preserved verbatim but is limited to 128
+   Unicode scalar values and may
    contain no C0 or C1 control character. Any other admitted present string,
    including blank or non-canonical configuration text, derives no effective
    mode and must block with only `gate.mode_unknown`; it never falls back.

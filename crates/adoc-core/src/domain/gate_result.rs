@@ -142,6 +142,9 @@ impl GateResult {
         {
             return Err(GateResultError::InvalidUnknownMode);
         }
+        if effective_mode == Some(GateMode::Advisory) && result != GateOutcome::Pass {
+            return Err(invalid_field("result"));
+        }
         if result == GateOutcome::Pass
             && matches!(
                 effective_mode,

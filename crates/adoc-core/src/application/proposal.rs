@@ -55,15 +55,17 @@ fn parse_patches(
 /// Read `adoc.proposal.v0` bytes and re-derive every digest and ordering;
 /// any field that does not match its canonical derivation fails closed.
 pub fn validate_proposal_record(bytes: &[u8]) -> Result<ProposalRecord, ProposalRecordError> {
+    // Deserialize the closed record before normalizing to `Value` so duplicate
+    // record or disposition members fail. The embedded patch intentionally
+    // remains a `Value`; its normalized form is canonicalized and validated below.
+    let raw: RawProposalRecord =
+        serde_json::from_slice(bytes).map_err(|error| ProposalRecordError::InvalidDocument {
+            message: error.to_string(),
+        })?;
     let received: Value =
         serde_json::from_slice(bytes).map_err(|error| ProposalRecordError::InvalidDocument {
             message: error.to_string(),
         })?;
-    let raw: RawProposalRecord = serde_json::from_value(received.clone()).map_err(|error| {
-        ProposalRecordError::InvalidDocument {
-            message: error.to_string(),
-        }
-    })?;
     if raw.schema_version != PROPOSAL_SCHEMA_VERSION {
         return Err(ProposalRecordError::UnsupportedVersion {
             version: raw.schema_version,

@@ -322,6 +322,47 @@ fn wire_validation_rejects_noncanonical_disposition_arrays() {
     );
 }
 
+#[test]
+fn wire_validation_rejects_duplicate_top_level_members_before_normalization() {
+    let record = build_proposal_record_with_dispositions(
+        bindings(),
+        vec![patch_input(
+            "finding-001",
+            "docs/billing.adoc",
+            "billing.kb",
+            &create_patch("billing.proposed"),
+        )],
+        vec![disposition("finding-002")],
+        None,
+    )
+    .expect("proposal builds");
+    let canonical = record.to_canonical_json().expect("proposal serializes");
+
+    let duplicated_dispositions = canonical.replacen(
+        "\"dispositions\": [",
+        "\"dispositions\": [],\n  \"dispositions\": [",
+        1,
+    );
+    let digest_member = format!(
+        "\"proposal_set_digest\": \"{}\"",
+        record.proposal_set_digest()
+    );
+    let duplicated_digest = canonical.replacen(
+        &digest_member,
+        &format!("\"proposal_set_digest\": \"{A}\",\n  {digest_member}"),
+        1,
+    );
+
+    for (member, document) in [
+        ("dispositions", duplicated_dispositions),
+        ("proposal_set_digest", duplicated_digest),
+    ] {
+        validate_proposal_record(document.as_bytes()).expect_err(&format!(
+            "duplicate {member} members must not be normalized"
+        ));
+    }
+}
+
 fn sha256(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     let mut hex = String::from("sha256:");

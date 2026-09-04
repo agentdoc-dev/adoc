@@ -400,6 +400,57 @@ fn passing_result_never_names_a_blocking_reason() {
 }
 
 #[test]
+fn advisory_mode_is_pass_only() {
+    for configured_mode in [None, Some("advisory".to_string())] {
+        assert_eq!(
+            GateResult::new(
+                HEAD.to_string(),
+                "gate-policy-v1".to_string(),
+                vec![],
+                configured_mode.clone(),
+                GateOutcome::Block,
+                vec![GateReason::SemanticInvalid],
+            ),
+            Err(GateResultError::InvalidField {
+                field: "result".to_string(),
+            }),
+            "effective advisory mode cannot block"
+        );
+
+        let mut advisory_block = json!({
+            "schema_version": "adoc.gate_result.v0",
+            "head_sha": HEAD,
+            "policy_version": "gate-policy-v1",
+            "input_digests": [],
+            "configured_mode": configured_mode,
+            "effective_mode": "advisory",
+            "result": "block",
+            "reasons": ["gate.semantic_invalid"]
+        });
+        if advisory_block["configured_mode"].is_null() {
+            advisory_block
+                .as_object_mut()
+                .expect("gate result object")
+                .remove("configured_mode");
+        }
+
+        assert_eq!(
+            validate_gate_result(&serde_json::to_vec(&advisory_block).expect("serializes")),
+            Err(GateResultError::InvalidField {
+                field: "result".to_string(),
+            }),
+            "wire validation cannot turn advisory diagnostics into a block"
+        );
+        assert!(
+            !jsonschema::validator_for(&schema())
+                .expect("schema compiles")
+                .is_valid(&advisory_block),
+            "published schema must reject advisory blocks"
+        );
+    }
+}
+
+#[test]
 fn strict_mode_pass_requires_validated_input_evidence() {
     for mode in [
         "assessment_required",
@@ -514,19 +565,34 @@ fn strict_mode_pass_requires_validated_input_evidence() {
 
 #[test]
 fn validated_result_exposes_only_typed_gate_facts() {
-    for (mode, effective) in [
-        ("advisory", GateMode::Advisory),
-        ("assessment_required", GateMode::AssessmentRequired),
-        ("proposal_required", GateMode::ProposalRequired),
-        ("approval_required", GateMode::ApprovalRequired),
+    for (mode, effective, result, reasons) in [
+        ("advisory", GateMode::Advisory, GateOutcome::Pass, vec![]),
+        (
+            "assessment_required",
+            GateMode::AssessmentRequired,
+            GateOutcome::Block,
+            vec![GateReason::SemanticInvalid],
+        ),
+        (
+            "proposal_required",
+            GateMode::ProposalRequired,
+            GateOutcome::Block,
+            vec![GateReason::SemanticInvalid],
+        ),
+        (
+            "approval_required",
+            GateMode::ApprovalRequired,
+            GateOutcome::Block,
+            vec![GateReason::SemanticInvalid],
+        ),
     ] {
         let record = GateResult::new(
             HEAD.to_string(),
             "gate-policy-v1".to_string(),
             vec![A.to_string()],
             Some(mode.to_string()),
-            GateOutcome::Block,
-            vec![GateReason::SemanticInvalid],
+            result,
+            reasons.clone(),
         )
         .expect("known mode builds");
 
@@ -535,8 +601,8 @@ fn validated_result_exposes_only_typed_gate_facts() {
         assert_eq!(record.input_digests(), [A]);
         assert_eq!(record.configured_mode(), Some(mode));
         assert_eq!(record.effective_mode(), Some(effective));
-        assert_eq!(record.result(), GateOutcome::Block);
-        assert_eq!(record.reasons(), [GateReason::SemanticInvalid]);
+        assert_eq!(record.result(), result);
+        assert_eq!(record.reasons(), reasons);
     }
 }
 
