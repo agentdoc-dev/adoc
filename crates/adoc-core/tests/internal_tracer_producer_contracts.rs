@@ -95,6 +95,13 @@ impl Repo {
     }
 
     fn git(&self, args: &[&str]) -> String {
+        String::from_utf8(self.git_stdout(args))
+            .expect("UTF-8 git output")
+            .trim()
+            .to_string()
+    }
+
+    fn git_stdout(&self, args: &[&str]) -> Vec<u8> {
         let mut command = Command::new("git");
         command.current_dir(self.root.path()).args(args);
         // Keep fixtures isolated when a pre-commit hook exports an outer Git context.
@@ -116,10 +123,7 @@ impl Repo {
             "git {args:?} failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
-        String::from_utf8(output.stdout)
-            .expect("UTF-8 git output")
-            .trim()
-            .to_string()
+        output.stdout
     }
 }
 
@@ -299,7 +303,7 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
     repo.git(&["add", "src/billing.rs"]);
     repo.git(&["commit", "-m", "change"]);
     let head = repo.git(&["rev-parse", "HEAD"]);
-    let hunk_content = repo.git(&[
+    let hunk_content = String::from_utf8(repo.git_stdout(&[
         "diff",
         "--unified=0",
         "--no-ext-diff",
@@ -308,8 +312,13 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
         &head,
         "--",
         "src/billing.rs",
-    ]);
+    ]))
+    .expect("UTF-8 git diff output");
     assert!(hunk_content.contains("+pub fn settle() { charge(); }"));
+    assert!(
+        hunk_content.ends_with('\n'),
+        "exact git diff stdout retains its terminal LF"
+    );
     let hunk_digest = digest(hunk_content.as_bytes());
 
     let assessment = assess_changes_from_git(ChangeAssessmentInput {
@@ -640,6 +649,16 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
         "proposer": {"type": "agent", "id": "agentdoc-action/codex/internal-synthetic"}
     });
     let post_status_graph = repo.compile_graph();
+    let post_status_graph_json: Value =
+        serde_json::from_str(&post_status_graph).expect("post-status graph JSON");
+    let post_status_object = post_status_graph_json["nodes"]
+        .as_array()
+        .expect("post-status graph nodes")
+        .iter()
+        .find(|node| node["id"] == "billing.policy")
+        .expect("post-status billing.policy graph object");
+    assert_eq!(post_status_object["status"], "draft");
+    assert_eq!(post_status_object["content_hash"], body_base_hash);
     repo.write("dist/docs.graph.json", &post_status_graph);
     let applied_body = apply_patch_for_date(
         PatchApplyInput {
