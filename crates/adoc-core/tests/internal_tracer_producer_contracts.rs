@@ -434,14 +434,13 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
         .expect("moved path")
         .to_string();
     assert_eq!(moved_binding_path, "docs/renamed-billing.adoc");
-    assert_eq!(
-        baseline_graph_object["content_hash"]
-            .as_str()
-            .expect("baseline content hash"),
-        moved_graph_object["content_hash"]
-            .as_str()
-            .expect("moved content hash")
-    );
+    let baseline_content_hash = baseline_graph_object["content_hash"]
+        .as_str()
+        .expect("baseline content hash");
+    let moved_content_hash = moved_graph_object["content_hash"]
+        .as_str()
+        .expect("moved content hash");
+    assert_eq!(baseline_content_hash, moved_content_hash);
     assert_eq!(
         baseline_binding["source_revision_digest"]
             .as_str()
@@ -499,9 +498,9 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
         .first()
         .expect("billing.policy semantic change");
     assert_eq!(promotion_change.id, "billing.policy");
-    assert_ne!(
-        promotion_change.base_content_hash, promotion_change.head_content_hash,
-        "draft-to-verified plus source change must change semantic identity"
+    assert_eq!(
+        promotion_change.base_content_hash.as_deref(),
+        Some(moved_content_hash)
     );
     assert_eq!(
         promotion_change.head_content_hash.as_deref(),
