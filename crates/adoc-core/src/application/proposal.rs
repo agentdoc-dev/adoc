@@ -152,7 +152,11 @@ fn parse_patch(
 impl ProposalRecord {
     /// Mint the successor of this record from edited patch bytes. The new
     /// record supersedes this one by digest; byte-identical patches are not a
-    /// new version and fail with `proposal_record.revision_unchanged`.
+    /// new version and fail with `proposal_record.revision_unchanged`. A patch
+    /// for a previously dispositioned finding supersedes only that disposition,
+    /// which is dropped while unrelated dispositions carry forward. Because
+    /// dispositions are excluded from the patch-set digest, a disposition-only
+    /// change cannot mint a superseding record.
     pub fn revise(
         &self,
         patches: Vec<ProposalPatchInput>,

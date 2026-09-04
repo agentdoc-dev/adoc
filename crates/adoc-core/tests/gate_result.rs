@@ -592,11 +592,34 @@ fn wire_validation_rejects_noncanonical_derived_fields() {
     );
 
     let mut wrong_version = canonical_value;
-    wrong_version["schema_version"] = json!("adoc.gate_result.v1");
+    wrong_version["schema_version"] = json!("adoc.gate_result.v99");
     assert_eq!(
         validate_gate_result(&serde_json::to_vec(&wrong_version).expect("serializes")),
         Err(GateResultError::UnsupportedVersion {
-            version: "adoc.gate_result.v1".to_string(),
+            version: "adoc.gate_result.v99".to_string(),
         })
     );
+}
+
+#[test]
+fn wire_validation_rejects_duplicate_object_members_before_normalization() {
+    let canonical = GateResult::new(
+        HEAD.to_string(),
+        "gate-policy-v1".to_string(),
+        vec![A.to_string()],
+        Some("proposal_required".to_string()),
+        GateOutcome::Block,
+        vec![GateReason::ProposalMissing],
+    )
+    .expect("gate result builds")
+    .to_canonical_json()
+    .expect("serializes");
+    let duplicated = canonical.replacen(
+        "\"result\": \"block\"",
+        "\"result\": \"pass\",\n  \"result\": \"block\"",
+        1,
+    );
+
+    validate_gate_result(duplicated.as_bytes())
+        .expect_err("duplicate result members must not collapse to the last value");
 }

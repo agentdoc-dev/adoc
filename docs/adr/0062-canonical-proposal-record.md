@@ -150,6 +150,11 @@ API.
    and policy version. Entries are unique and canonical by finding ID. Empty
    dispositions are omitted, preserving every existing `adoc.proposal.v0` byte
    sequence. Dispositions do not change the patch-only `proposal_set_digest`;
+   when a revision adds a patch for a previously dispositioned finding, that
+   patch supersedes only the matching disposition, which is dropped while
+   unrelated dispositions carry forward. Because dispositions are excluded
+   from the digest, a disposition-only change cannot mint a superseding record
+   and fails with `proposal_record.revision_unchanged`.
    Cloud resolves and exact-matches the receipt before treating the finding as
    covered and persists the referenced evidence separately before returning a
    duplicate proposal-set delivery. Model-authored prose or an unverified

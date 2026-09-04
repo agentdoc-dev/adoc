@@ -248,7 +248,7 @@ fn patch_revision_preserves_accepted_no_change_dispositions() {
             "billing.kb",
             &create_patch("billing.proposed"),
         )],
-        vec![disposition("finding-002")],
+        vec![disposition("finding-002"), disposition("finding-003")],
         None,
     )
     .expect("proposal builds");
@@ -273,7 +273,15 @@ fn patch_revision_preserves_accepted_no_change_dispositions() {
         )])
         .expect("a patch supersedes the retained no-change disposition");
 
-    assert!(disposition_replaced_by_patch.dispositions().is_empty());
+    assert_eq!(
+        disposition_replaced_by_patch
+            .dispositions()
+            .iter()
+            .map(|disposition| disposition.finding_id.as_str())
+            .collect::<Vec<_>>(),
+        ["finding-003"],
+        "only the disposition the new patch supersedes is dropped"
+    );
 }
 
 #[test]

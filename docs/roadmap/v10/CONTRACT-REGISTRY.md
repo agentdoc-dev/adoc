@@ -92,6 +92,7 @@ Deliberately invalid version fixtures cited from test modules in `crates/*/src`,
 | id | status | notes |
 | --- | --- | --- |
 | `adoc.graph.v99` | fixture | rejected-version fixture proving the Validation Runtime's exact-match context-artifact gating (E1.7.T4): neither an older nor a newer unknown graph version is consumed |
+| `adoc.gate_result.v99` | fixture | rejected-version fixture proving deterministic gate results fail closed on unsupported versions (E5.3) |
 | `adoc.search.v99` | fixture | rejected-version fixture for Search Artifact version gating |
 | `adoc.proposal.v99` | fixture | rejected-version fixture proving canonical proposal records fail closed with exact-version remediation (E5.1) |
 | `adoc.semantic_assessment.v99` | fixture | rejected-version fixture proving semantic assessments fail with exact-version remediation |

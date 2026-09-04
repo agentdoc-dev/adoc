@@ -234,15 +234,16 @@ struct RawGateResult {
 }
 
 pub fn validate_gate_result(bytes: &[u8]) -> Result<GateResult, GateResultError> {
+    // Deserialize the closed struct before normalizing to `Value` so duplicate
+    // object members cannot collapse to a different consumer's interpretation.
+    let raw: RawGateResult =
+        serde_json::from_slice(bytes).map_err(|error| GateResultError::InvalidDocument {
+            message: error.to_string(),
+        })?;
     let received: serde_json::Value =
         serde_json::from_slice(bytes).map_err(|error| GateResultError::InvalidDocument {
             message: error.to_string(),
         })?;
-    let raw: RawGateResult = serde_json::from_value(received.clone()).map_err(|error| {
-        GateResultError::InvalidDocument {
-            message: error.to_string(),
-        }
-    })?;
     if raw.schema_version != GATE_RESULT_SCHEMA_VERSION {
         return Err(GateResultError::UnsupportedVersion {
             version: raw.schema_version,
