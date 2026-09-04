@@ -373,7 +373,7 @@ Contract codes for the four-mode gate evaluator (E5.3; check publication E5.4). 
 | `gate.assessment_missing` | planned | E5.3 | `assessment_required` without a valid complete deterministic + semantic assessment |
 | `gate.semantic_invalid` | planned | E5.3 | semantic assessment present but invalid/incomplete |
 | `gate.proposal_missing` | planned | E5.3 | materially affected finding without a proposal or accepted no-change disposition |
-| `gate.proposal_hash_mismatch` | planned | E5.3 | gate-time surface that consumes the `approval.proposal_hash_mismatch` outcome; distinct code, not a respelling; the approval-bound proposal digest no longer matches the current proposal digest |
+| `gate.proposal_hash_mismatch` | planned | E5.3 | an existing approval record's bound proposal digest no longer matches the current proposal digest at gate evaluation |
 | `gate.approval_invalidated` | planned | E5.3 | gate-time surface that consumes the `approval.invalidated_proposal_changed` outcome; distinct code, not a respelling; semantic content change invalidated a prior approval |
 | `gate.cloud_unavailable` | planned | E5.3 | required Cloud decision input unavailable — blocks, never defaults |
 | `gate.audit_persistence_failed` | planned | E5.3 | decision audit record could not be persisted — blocks; gate-level surface consuming the operation-level `audit.persistence_failed` (E1.4.T4), explicit mapping per the note above the diagnostic-codes table |

@@ -567,24 +567,25 @@ fn e5_2_cloud_approval_codes_are_registered_exactly() {
     assert!(scope_row.contains("does not exact-match"));
 
     let gate_block = support::doc_scan::anchored_block(&registry, REGISTRY, "registry:gate-codes");
-    for (gate_code, approval_code) in [
-        (
-            "`gate.proposal_hash_mismatch`",
-            "`approval.proposal_hash_mismatch`",
-        ),
-        (
-            "`gate.approval_invalidated`",
-            "`approval.invalidated_proposal_changed`",
-        ),
-    ] {
-        let gate_row = gate_block
-            .lines()
-            .find(|line| line.trim().split('|').nth(1).map(str::trim) == Some(gate_code))
-            .unwrap_or_else(|| panic!("{gate_code} row"));
-        assert!(gate_row.contains(approval_code));
-        assert!(gate_row.contains("consumes"));
-        assert!(gate_row.contains("distinct code, not a respelling"));
-    }
+    let proposal_hash_row = gate_block
+        .lines()
+        .find(|line| {
+            line.trim().split('|').nth(1).map(str::trim) == Some("`gate.proposal_hash_mismatch`")
+        })
+        .expect("gate proposal-hash-mismatch row");
+    assert!(proposal_hash_row.contains("approval record"));
+    assert!(proposal_hash_row.contains("current proposal digest"));
+    assert!(!proposal_hash_row.contains("`approval.proposal_hash_mismatch`"));
+
+    let invalidated_row = gate_block
+        .lines()
+        .find(|line| {
+            line.trim().split('|').nth(1).map(str::trim) == Some("`gate.approval_invalidated`")
+        })
+        .expect("gate approval-invalidated row");
+    assert!(invalidated_row.contains("`approval.invalidated_proposal_changed`"));
+    assert!(invalidated_row.contains("consumes"));
+    assert!(invalidated_row.contains("distinct code, not a respelling"));
 }
 
 #[test]
