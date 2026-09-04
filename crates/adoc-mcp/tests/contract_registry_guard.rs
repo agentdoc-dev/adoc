@@ -563,6 +563,7 @@ fn e5_2_cloud_approval_codes_are_registered_exactly() {
         })
         .expect("approval scope-mismatch row");
     assert!(scope_row.contains("complete affected-object `(object_id, content_hash)` tuple set"));
+    assert!(scope_row.contains("`create_object` targets"));
     assert!(scope_row.contains("does not exact-match"));
 
     let gate_block = support::doc_scan::anchored_block(&registry, REGISTRY, "registry:gate-codes");
