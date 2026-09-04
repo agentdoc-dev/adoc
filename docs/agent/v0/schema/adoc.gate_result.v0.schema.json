@@ -24,7 +24,12 @@
       "items": { "$ref": "#/$defs/digest" },
       "uniqueItems": true
     },
-    "configured_mode": { "type": "string" },
+    "configured_mode": {
+      "type": "string",
+      "description": "Verbatim configured value, bounded to 128 characters and excluding C0/C1 controls.",
+      "maxLength": 128,
+      "not": { "pattern": "[\\u0000-\\u001f\\u007f-\\u009f]" }
+    },
     "effective_mode": {
       "oneOf": [{ "$ref": "#/$defs/mode" }, { "type": "null" }]
     },
@@ -56,6 +61,21 @@
       "if": { "properties": { "result": { "const": "block" } } },
       "then": { "properties": { "reasons": { "minItems": 1 } } },
       "else": { "properties": { "reasons": { "maxItems": 0 } } }
+    },
+    {
+      "if": {
+        "properties": {
+          "effective_mode": {
+            "enum": [
+              "assessment_required",
+              "proposal_required",
+              "approval_required"
+            ]
+          },
+          "result": { "const": "pass" }
+        }
+      },
+      "then": { "properties": { "input_digests": { "minItems": 1 } } }
     },
     {
       "if": { "not": { "required": ["configured_mode"] } },

@@ -111,11 +111,17 @@ impl GateResult {
         if input_digests.iter().any(|digest| !is_sha256_digest(digest)) {
             return Err(invalid_field("input_digests"));
         }
+        if configured_mode
+            .as_deref()
+            .is_some_and(|mode| mode.chars().count() > 128 || mode.chars().any(char::is_control))
+        {
+            return Err(invalid_field("configured_mode"));
+        }
         let effective_mode = configured_mode
             .as_deref()
             .map(GateMode::parse)
             .unwrap_or(Some(GateMode::Advisory));
-        let input_digests = input_digests
+        let input_digests: Vec<_> = input_digests
             .into_iter()
             .collect::<BTreeSet<_>>()
             .into_iter()
@@ -135,6 +141,19 @@ impl GateResult {
             || (effective_mode.is_some() && reasons.contains(&GateReason::ModeUnknown))
         {
             return Err(GateResultError::InvalidUnknownMode);
+        }
+        if result == GateOutcome::Pass
+            && matches!(
+                effective_mode,
+                Some(
+                    GateMode::AssessmentRequired
+                        | GateMode::ProposalRequired
+                        | GateMode::ApprovalRequired
+                )
+            )
+            && input_digests.is_empty()
+        {
+            return Err(invalid_field("input_digests"));
         }
 
         Ok(Self {

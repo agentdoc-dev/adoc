@@ -3,7 +3,9 @@
 use std::fs;
 use std::path::PathBuf;
 
-use adoc_core::{GateMode, GateOutcome, GateReason, GateResult, validate_gate_result};
+use adoc_core::{
+    GateMode, GateOutcome, GateReason, GateResult, GateResultError, validate_gate_result,
+};
 use serde_json::{Value, json};
 
 const HEAD: &str = "0123456789abcdef0123456789abcdef01234567";
@@ -147,7 +149,7 @@ fn unknown_mode_blocks_without_falling_back() {
     .expect("unknown mode produces a typed blocking result");
     assert_eq!(unknown.effective_mode(), None);
 
-    for configured in ["", " advisory ", "\t"] {
+    for configured in ["", " advisory ", "advisory-mode"] {
         let invalid_configuration = GateResult::new(
             HEAD.to_string(),
             "gate-policy-v1".to_string(),
@@ -169,18 +171,25 @@ fn unknown_mode_blocks_without_falling_back() {
                 .is_valid(&instance),
             "schema must represent unknown configured mode {configured:?}"
         );
+        assert!(
+            validate_gate_result(
+                &serde_json::to_vec(&instance).expect("unknown-mode result serializes")
+            )
+            .is_ok(),
+            "wire validation must preserve safe unknown configured mode {configured:?}"
+        );
     }
 
-    assert!(
+    assert_eq!(
         GateResult::new(
             HEAD.to_string(),
             "gate-policy-v1".to_string(),
             vec![],
             Some("advisory".to_string()),
-            GateOutcome::Pass,
+            GateOutcome::Block,
             vec![GateReason::ModeUnknown],
-        )
-        .is_err(),
+        ),
+        Err(GateResultError::InvalidUnknownMode),
         "gate.mode_unknown cannot label a known mode"
     );
 
@@ -191,9 +200,16 @@ fn unknown_mode_blocks_without_falling_back() {
         "input_digests": [],
         "configured_mode": "advisory",
         "effective_mode": "advisory",
-        "result": "pass",
+        "result": "block",
         "reasons": ["gate.mode_unknown"]
     });
+    assert_eq!(
+        validate_gate_result(
+            &serde_json::to_vec(&known_mode_with_unknown_reason).expect("serializes")
+        ),
+        Err(GateResultError::InvalidUnknownMode),
+        "wire validation must preserve the unknown-mode diagnostic"
+    );
     assert!(
         !jsonschema::validator_for(&schema())
             .expect("schema compiles")
@@ -211,6 +227,76 @@ fn unknown_mode_blocks_without_falling_back() {
             .expect("schema compiles")
             .is_valid(&unset_mode_with_unknown_reason),
         "unset advisory mode is not an unknown-mode error"
+    );
+}
+
+#[test]
+fn configured_mode_is_bounded_and_control_free() {
+    for configured in [
+        "line\nbreak".to_string(),
+        "trailing\n".to_string(),
+        "escape\u{1b}".to_string(),
+        "next\u{85}line".to_string(),
+        "x".repeat(129),
+    ] {
+        assert_eq!(
+            GateResult::new(
+                HEAD.to_string(),
+                "gate-policy-v1".to_string(),
+                vec![],
+                Some(configured.clone()),
+                GateOutcome::Block,
+                vec![GateReason::ModeUnknown],
+            ),
+            Err(GateResultError::InvalidField {
+                field: "configured_mode".to_string(),
+            })
+        );
+
+        let invalid = json!({
+            "schema_version": "adoc.gate_result.v0",
+            "head_sha": HEAD,
+            "policy_version": "gate-policy-v1",
+            "input_digests": [],
+            "configured_mode": configured,
+            "effective_mode": null,
+            "result": "block",
+            "reasons": ["gate.mode_unknown"]
+        });
+        assert_eq!(
+            validate_gate_result(&serde_json::to_vec(&invalid).expect("serializes")),
+            Err(GateResultError::InvalidField {
+                field: "configured_mode".to_string(),
+            }),
+            "wire validation must reject unsafe configured mode exactly"
+        );
+        assert!(
+            !jsonschema::validator_for(&schema())
+                .expect("schema compiles")
+                .is_valid(&invalid),
+            "published schema must reject unsafe configured mode"
+        );
+    }
+
+    let boundary = GateResult::new(
+        HEAD.to_string(),
+        "gate-policy-v1".to_string(),
+        vec![],
+        Some("é".repeat(128)),
+        GateOutcome::Block,
+        vec![GateReason::ModeUnknown],
+    )
+    .expect("128 Unicode scalar values are admitted");
+    let bytes = boundary
+        .to_canonical_json()
+        .expect("boundary result serializes");
+    let instance: Value = serde_json::from_str(&bytes).expect("boundary result is JSON");
+    assert!(validate_gate_result(bytes.as_bytes()).is_ok());
+    assert!(
+        jsonschema::validator_for(&schema())
+            .expect("schema compiles")
+            .is_valid(&instance),
+        "schema length uses Unicode scalar values, not UTF-8 bytes"
     );
 }
 
@@ -282,6 +368,119 @@ fn passing_result_never_names_a_blocking_reason() {
             .expect("schema compiles")
             .is_valid(&contradictory_pass),
         "published schema must reject a pass with a blocking reason"
+    );
+}
+
+#[test]
+fn strict_mode_pass_requires_validated_input_evidence() {
+    for mode in [
+        "assessment_required",
+        "proposal_required",
+        "approval_required",
+    ] {
+        assert_eq!(
+            GateResult::new(
+                HEAD.to_string(),
+                "gate-policy-v1".to_string(),
+                vec![],
+                Some(mode.to_string()),
+                GateOutcome::Pass,
+                vec![],
+            ),
+            Err(GateResultError::InvalidField {
+                field: "input_digests".to_string(),
+            }),
+            "{mode} cannot pass without validated input evidence"
+        );
+
+        let evidence_free_pass = json!({
+            "schema_version": "adoc.gate_result.v0",
+            "head_sha": HEAD,
+            "policy_version": "gate-policy-v1",
+            "input_digests": [],
+            "configured_mode": mode,
+            "effective_mode": mode,
+            "result": "pass",
+            "reasons": []
+        });
+        assert_eq!(
+            validate_gate_result(&serde_json::to_vec(&evidence_free_pass).expect("serializes")),
+            Err(GateResultError::InvalidField {
+                field: "input_digests".to_string(),
+            }),
+            "wire validation must reject evidence-free {mode} pass exactly"
+        );
+        assert!(
+            !jsonschema::validator_for(&schema())
+                .expect("schema compiles")
+                .is_valid(&evidence_free_pass),
+            "published schema must reject evidence-free {mode} pass"
+        );
+
+        let evidenced_pass = GateResult::new(
+            HEAD.to_string(),
+            "gate-policy-v1".to_string(),
+            vec![A.to_string()],
+            Some(mode.to_string()),
+            GateOutcome::Pass,
+            vec![],
+        )
+        .expect("strict mode passes with validated input evidence");
+        let evidenced_bytes = evidenced_pass
+            .to_canonical_json()
+            .expect("evidenced pass serializes");
+        let evidenced_instance: Value =
+            serde_json::from_str(&evidenced_bytes).expect("evidenced pass is JSON");
+        assert!(validate_gate_result(evidenced_bytes.as_bytes()).is_ok());
+        assert!(
+            jsonschema::validator_for(&schema())
+                .expect("schema compiles")
+                .is_valid(&evidenced_instance),
+            "published schema must accept evidenced {mode} pass"
+        );
+    }
+
+    for configured_mode in [None, Some("advisory".to_string())] {
+        let advisory = GateResult::new(
+            HEAD.to_string(),
+            "gate-policy-v1".to_string(),
+            vec![],
+            configured_mode,
+            GateOutcome::Pass,
+            vec![],
+        )
+        .expect("advisory pass may be evidence-free");
+        let bytes = advisory
+            .to_canonical_json()
+            .expect("advisory pass serializes");
+        let instance: Value = serde_json::from_str(&bytes).expect("advisory pass is JSON");
+        assert!(validate_gate_result(bytes.as_bytes()).is_ok());
+        assert!(
+            jsonschema::validator_for(&schema())
+                .expect("schema compiles")
+                .is_valid(&instance),
+            "published schema must accept evidence-free advisory pass"
+        );
+    }
+    let missing = GateResult::new(
+        HEAD.to_string(),
+        "gate-policy-v1".to_string(),
+        vec![],
+        Some("assessment_required".to_string()),
+        GateOutcome::Block,
+        vec![GateReason::AssessmentMissing],
+    )
+    .expect("fail-closed strict-mode block may be evidence-free");
+    let bytes = missing
+        .to_canonical_json()
+        .expect("missing-evidence block serializes");
+    let instance: Value = serde_json::from_str(&bytes).expect("missing-evidence block is JSON");
+    assert!(validate_gate_result(bytes.as_bytes()).is_ok());
+    assert!(
+        jsonschema::validator_for(&schema())
+            .expect("schema compiles")
+            .is_valid(&instance),
+        "published schema must accept evidence-free fail-closed block"
     );
 }
 
