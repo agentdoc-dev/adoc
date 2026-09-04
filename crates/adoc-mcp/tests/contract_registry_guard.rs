@@ -575,7 +575,9 @@ fn e5_2_cloud_approval_codes_are_registered_exactly() {
         .expect("approval proposal-hash-mismatch row");
     assert!(proposal_hash_approval_row.contains("no approval record is created"));
     assert!(proposal_hash_approval_row.contains("distinct from `gate.proposal_hash_mismatch`"));
-    assert!(proposal_hash_approval_row.contains("already-recorded approval at gate time"));
+    assert!(proposal_hash_approval_row.contains("gate-time stored-proposal integrity check"));
+    assert!(proposal_hash_approval_row.contains("digest re-derived from delivered content"));
+    assert!(proposal_hash_approval_row.contains("never a command rejection"));
 
     let gate_block = support::doc_scan::anchored_block(&registry, REGISTRY, "registry:gate-codes");
     let proposal_hash_row = gate_block
@@ -584,8 +586,10 @@ fn e5_2_cloud_approval_codes_are_registered_exactly() {
             line.trim().split('|').nth(1).map(str::trim) == Some("`gate.proposal_hash_mismatch`")
         })
         .expect("gate proposal-hash-mismatch row");
-    assert!(proposal_hash_row.contains("approval record"));
-    assert!(proposal_hash_row.contains("current proposal digest"));
+    assert!(proposal_hash_row.contains("declared digest"));
+    assert!(proposal_hash_row.contains("re-derived from delivered proposal content"));
+    assert!(proposal_hash_row.contains("`gate.approval_invalidated` takes precedence"));
+    assert!(proposal_hash_row.contains("this code is not emitted"));
     assert!(!proposal_hash_row.contains("`approval.proposal_hash_mismatch`"));
 
     let invalidated_row = gate_block
