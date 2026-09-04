@@ -1,4 +1,5 @@
-//! E5.5.T1 - internal/synthetic producer-side tracer through existing contracts.
+//! E5.5.T1 - internal/synthetic producer-side evidence for the cross-repo tracer.
+//! This test is not the full E5.5 acceptance tracer; Cloud owns the governed hops.
 
 use std::{fmt::Write as _, process::Command};
 
@@ -272,7 +273,7 @@ fn qualified_executor() -> (Value, ExecutorConfiguration) {
 }
 
 #[test]
-fn internal_synthetic_tracer_links_existing_producer_contracts_by_real_digests() {
+fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
     let repo = Repo::new();
     let base = repo.git(&["rev-parse", "HEAD"]);
     repo.write("src/billing.rs", "pub fn settle() { charge(); }\n");
