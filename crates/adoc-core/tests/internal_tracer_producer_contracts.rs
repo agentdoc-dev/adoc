@@ -77,6 +77,23 @@ impl Repo {
         std::fs::write(path, contents).expect("write fixture");
     }
 
+    fn compile_graph(&self) -> String {
+        compile_project_workspace_with_anchor_root_for_date(
+            CompileInput {
+                root: self.root_path().join("docs"),
+            },
+            LocalProjectContext {
+                project_root: self.root_path(),
+                docs_root: self.root_path().join("docs"),
+            },
+            self.root_path(),
+            NaiveDate::from_ymd_opt(2026, 9, 30).expect("date"),
+        )
+        .artifacts
+        .expect("fixture graph compiles")
+        .graph_json
+    }
+
     fn git(&self, args: &[&str]) -> String {
         let mut command = Command::new("git");
         command.current_dir(self.root.path()).args(args);
@@ -332,20 +349,7 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
         .expect("billing.policy assessed")
         .content_hash
         .clone();
-    let head_graph = compile_project_workspace_with_anchor_root_for_date(
-        CompileInput {
-            root: repo.root_path().join("docs"),
-        },
-        LocalProjectContext {
-            project_root: repo.root_path(),
-            docs_root: repo.root_path().join("docs"),
-        },
-        repo.root_path(),
-        NaiveDate::from_ymd_opt(2026, 9, 30).expect("date"),
-    )
-    .artifacts
-    .expect("exact-head graph compiles")
-    .graph_json;
+    let head_graph = repo.compile_graph();
     let head_graph_json: Value = serde_json::from_str(&head_graph).expect("graph JSON");
     let graph_object = head_graph_json["nodes"]
         .as_array()
@@ -632,6 +636,33 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
         "reason": format!("AgentDoc assessment {assessment_digest} finding finding-001."),
         "proposer": {"type": "agent", "id": "agentdoc-action/codex/internal-synthetic"}
     });
+    let post_status_graph = repo.compile_graph();
+    repo.write("dist/docs.graph.json", &post_status_graph);
+    let applied_body = apply_patch_for_date(
+        PatchApplyInput {
+            graph_artifact_path: repo.root_path().join("dist/docs.graph.json"),
+            docs_root: repo.root_path().join("docs"),
+            project_root: repo.root_path(),
+            interface: "internal-synthetic-tracer".to_string(),
+        },
+        parse_patch_from_value(replace_body_patch.clone()).expect("body patch parses"),
+        NaiveDate::from_ymd_opt(2026, 9, 30).expect("date"),
+    );
+    assert!(applied_body.applied, "body patch applies sequentially");
+    let applied_body_hash = applied_body
+        .object
+        .after_content_hash
+        .expect("body patch re-derives the final content hash");
+    let final_graph = repo.compile_graph();
+    let final_graph_json: Value = serde_json::from_str(&final_graph).expect("final graph JSON");
+    let final_object = final_graph_json["nodes"]
+        .as_array()
+        .expect("final graph nodes")
+        .iter()
+        .find(|node| node["id"] == "billing.policy")
+        .expect("final billing.policy graph object");
+    assert_eq!(final_object["body"], candidate_body);
+    assert_eq!(final_object["content_hash"], applied_body_hash);
     let patch_input = |patch: &Value| {
         let mut patch_bytes = serde_json::to_vec(patch).expect("patch serializes");
         patch_bytes.push(b'\n');
