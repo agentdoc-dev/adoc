@@ -488,6 +488,10 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
         .iter()
         .find(|object| object.id == "billing.policy")
         .expect("billing.policy assessed");
+    assert_eq!(
+        assessed_object.source.path, moved_binding_path,
+        "assessment placement and graph Source Binding agree on the moved path"
+    );
     let assessed_content_hash = assessed_object.content_hash.clone();
     let promotion_change = assessment
         .knowledge_changes
