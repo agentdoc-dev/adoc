@@ -197,6 +197,71 @@ fn assess_changes_emits_one_complete_body_free_record_per_changed_path() {
 }
 
 #[test]
+fn direct_authority_promotion_emits_one_typed_record() {
+    let workspace = repo();
+    workspace.write(
+        "docs/billing.adoc",
+        concat!(
+            "# Billing @doc(team.billing)\n\n",
+            "::claim billing.credits\n",
+            "status: draft\n",
+            "owner: billing-platform\n",
+            "source: src/billing.rs\n",
+            "impacts: [src/billing.rs]\n",
+            "--\nCredits settle after payment.\n::\n",
+        ),
+    );
+    git(&workspace, &["add", "docs/billing.adoc"]);
+    git(&workspace, &["commit", "-m", "make claim provisional"]);
+    workspace.write(
+        "docs/billing.adoc",
+        concat!(
+            "# Billing @doc(team.billing)\n\n",
+            "::claim billing.credits\n",
+            "status: verified\n",
+            "owner: billing-platform\n",
+            "verified_at: 2026-07-01\n",
+            "source: src/billing.rs\n",
+            "impacts: [src/billing.rs]\n",
+            "--\nCredits settle after payment.\n::\n",
+        ),
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args([
+            "assess-changes",
+            "--base",
+            "HEAD",
+            "--as-of",
+            "2026-07-22",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc assess-changes runs");
+
+    assert!(
+        output.status.success(),
+        "assessment failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("assessment JSON");
+    assert_eq!(
+        value["authority_promotions"]["value"],
+        serde_json::json!([{
+            "id": "billing.credits",
+            "content_hash": value["knowledge_changes"]["value"]["changed"][0]["head_content_hash"],
+            "kind": "claim",
+            "before_kind": "claim",
+            "before_status": "draft",
+            "after_status": "verified"
+        }])
+    );
+}
+
+#[test]
 fn empty_change_set_with_healthy_knowledge_passes() {
     let workspace = repo();
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
@@ -285,6 +350,7 @@ fn unresolved_base_emits_error_not_evaluated_envelope_and_exits_two() {
     assert_eq!(value["completeness"], "error");
     assert_eq!(value["outcome"], "not_evaluated");
     assert_eq!(value["paths"]["status"], "unavailable");
+    assert_eq!(value["authority_promotions"]["status"], "unavailable");
     assert_eq!(value["diagnostics"][0]["code"], "assessment.ref_unresolved");
 }
 
@@ -370,6 +436,7 @@ fn invalid_head_emits_error_invalid_without_fake_empty_graph_sections() {
     assert_eq!(value["outcome"], "invalid");
     assert_eq!(value["knowledge_snapshot"]["status"], "unavailable");
     assert_eq!(value["objects"]["status"], "unavailable");
+    assert_eq!(value["authority_promotions"]["status"], "unavailable");
 }
 
 #[test]

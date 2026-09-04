@@ -12,13 +12,15 @@ Complete outcomes are advisory data and the command exits 0. Partial and error e
 
 ## Availability
 
-Sections that could not be established carry `status: unavailable` and omit `value`. An unavailable collection is not equivalent to an available empty collection. In particular, a partial assessment retains the trustworthy head graph and head objects, marks their `changed_in_pr` value `unknown`, and leaves `knowledge_changes` unavailable.
+Sections that could not be established carry `status: unavailable` and omit `value`. An unavailable collection is not equivalent to an available empty collection. In particular, a partial assessment retains the trustworthy head graph and head objects, marks their `changed_in_pr` value `unknown`, and leaves `knowledge_changes` and `authority_promotions` unavailable.
 
 ## Paths and authority
 
 Every changed path occurs once in a complete envelope. Classification is `excluded`, `covered`, `provisional`, or `uncovered`. An `impacts:` entry matches an exact file or, when it ends in `/`, a component-aware directory prefix. Source-code/test evidence paths remain exact. There are no globs.
 
 Authoritative kind/status pairs are closed: verified claim, accepted decision, verified API, active policy, and verified procedure. Every other match is provisional. `agent_instruction` never grants runtime authority.
+
+`authority_promotions` records kind and/or status changes entering one of those five pairs from a non-authoritative base, plus objects created directly at one. Transitions between two authoritative pairs remain authoritative and are not promotions. Created records carry `before_kind: null` and `before_status: null`; changed records carry the base kind and status. Records use the head `content_hash`, are ordered by object ID, and contain no authorship data. The section remains optional for additive v0 wire compatibility; absence means the producer did not establish promotion facts and must never be read as an available empty set.
 
 `required_reviewers` contains only identities authored on Knowledge Objects. Policy changes emit a human-review proof obligation for `agentdoc.config.yaml`; repository CODEOWNERS supplies the reviewer identity.
 
