@@ -516,20 +516,7 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
         .as_deref()
         .expect("promoted object-set digest");
     assert_ne!(promoted_object_set, placement_object_set);
-    let head_graph = compile_project_workspace_with_anchor_root_for_date(
-        CompileInput {
-            root: repo.root_path().join("docs"),
-        },
-        LocalProjectContext {
-            project_root: repo.root_path(),
-            docs_root: repo.root_path().join("docs"),
-        },
-        repo.root_path(),
-        NaiveDate::from_ymd_opt(2026, 9, 30).expect("date"),
-    )
-    .artifacts
-    .expect("exact-head graph compiles")
-    .graph_json;
+    let head_graph = repo.compile_graph();
     let head_graph_json: Value = serde_json::from_str(&head_graph).expect("graph JSON");
     let graph_object = head_graph_json["nodes"]
         .as_array()
