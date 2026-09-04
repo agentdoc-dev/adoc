@@ -405,7 +405,7 @@ fn internal_synthetic_tracer_links_existing_producer_contracts_by_real_digests()
             graph_objects: vec![GraphCitationObject {
                 object_id: "billing.policy".to_string(),
                 semantic_hash: content_hash.clone(),
-                has_source_binding: false,
+                has_source_binding: true,
                 evidence_count: 0,
             }],
             diff_hunks: vec![DiffHunkCitation {
