@@ -264,16 +264,16 @@ fn patch_revision_preserves_accepted_no_change_dispositions() {
 
     assert_eq!(revised.dispositions(), original.dispositions());
 
-    assert!(matches!(
-        original.revise(vec![patch_input(
+    let disposition_replaced_by_patch = original
+        .revise(vec![patch_input(
             "finding-002",
             "docs/billing.adoc",
             "billing.kb",
             &create_patch("billing.contradiction"),
-        )]),
-        Err(ProposalRecordError::BindingInvalid { ref field })
-            if field == "dispositions.finding_id"
-    ));
+        )])
+        .expect("a patch supersedes the retained no-change disposition");
+
+    assert!(disposition_replaced_by_patch.dispositions().is_empty());
 }
 
 #[test]

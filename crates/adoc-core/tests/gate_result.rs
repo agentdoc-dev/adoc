@@ -555,10 +555,48 @@ fn wire_validation_rejects_noncanonical_derived_fields() {
     .expect("serializes");
     assert!(validate_gate_result(canonical.as_bytes()).is_ok());
 
-    let mut drifted: Value = serde_json::from_str(&canonical).expect("gate result is JSON");
-    drifted["effective_mode"] = json!("advisory");
+    let canonical_value: Value = serde_json::from_str(&canonical).expect("gate result is JSON");
+
+    let mut drifted_effective_mode = canonical_value.clone();
+    drifted_effective_mode["effective_mode"] = json!("advisory");
     assert!(
-        validate_gate_result(&serde_json::to_vec(&drifted).expect("serializes")).is_err(),
+        validate_gate_result(&serde_json::to_vec(&drifted_effective_mode).expect("serializes"))
+            .is_err(),
         "effective mode is derived, never caller authority"
+    );
+
+    let mut unsorted_digests = canonical_value.clone();
+    unsorted_digests["input_digests"] = json!([B, A]);
+    let mut duplicate_reasons = canonical_value.clone();
+    duplicate_reasons["reasons"] = json!(["gate.proposal_missing", "gate.proposal_missing"]);
+    let mut explicit_null_mode = canonical_value.clone();
+    explicit_null_mode["configured_mode"] = Value::Null;
+    explicit_null_mode["effective_mode"] = json!("advisory");
+
+    for (what, document) in [
+        ("unsorted input_digests", unsorted_digests),
+        ("duplicate reasons", duplicate_reasons),
+        ("explicit null configured_mode", explicit_null_mode),
+    ] {
+        assert!(
+            validate_gate_result(&serde_json::to_vec(&document).expect("serializes")).is_err(),
+            "{what} is not a canonical gate result"
+        );
+    }
+
+    let mut unknown_member = canonical_value.clone();
+    unknown_member["evaluated_at"] = json!("2026-09-04T00:00:00Z");
+    assert!(
+        validate_gate_result(&serde_json::to_vec(&unknown_member).expect("serializes")).is_err(),
+        "unknown wire members fail closed"
+    );
+
+    let mut wrong_version = canonical_value;
+    wrong_version["schema_version"] = json!("adoc.gate_result.v1");
+    assert_eq!(
+        validate_gate_result(&serde_json::to_vec(&wrong_version).expect("serializes")),
+        Err(GateResultError::UnsupportedVersion {
+            version: "adoc.gate_result.v1".to_string(),
+        })
     );
 }

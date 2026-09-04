@@ -157,10 +157,20 @@ impl ProposalRecord {
         &self,
         patches: Vec<ProposalPatchInput>,
     ) -> Result<ProposalRecord, ProposalRecordError> {
+        let dispositions = self
+            .dispositions()
+            .iter()
+            .filter(|disposition| {
+                patches
+                    .iter()
+                    .all(|patch| patch.finding_id.as_str() != disposition.finding_id.as_str())
+            })
+            .cloned()
+            .collect();
         build_proposal_record_with_dispositions(
             self.bindings().clone(),
             patches,
-            self.dispositions().to_vec(),
+            dispositions,
             Some(self.proposal_set_digest().to_string()),
         )
     }
