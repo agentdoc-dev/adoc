@@ -3,12 +3,16 @@
 use std::{fmt::Write as _, process::Command};
 
 use adoc_core::{
-    AssessmentCompleteness, AssessmentOutcome, ChangeAssessmentInput, ExactRevision,
-    ExecutorAuthority, ExecutorConfiguration, ExecutorQualificationExpectedBindings,
-    ModelConfiguration, ProposalBindings, ProposalChangeRequest, ProposalPatchInput,
-    SEMANTIC_EXECUTOR_RECEIPT_SCHEMA_VERSION, assess_changes_from_git, build_proposal_record,
-    build_semantic_context_from_document, complete_semantic_execution, semantic_prompt_digest,
-    validate_executor_qualification, validate_semantic_assessment,
+    AssessmentCompleteness, AssessmentOutcome, CapabilityPolicy, CapabilityPolicyRule,
+    ChangeAssessmentInput, CitationContentProjection, CitationHandle, ContextClass,
+    ContextRequirement, DiffHunkCitation, ExactRevision, ExecutorAuthority, ExecutorConfiguration,
+    ExecutorQualificationExpectedBindings, GraphCitationObject, ModelConfiguration,
+    ProposalBindings, ProposalChangeRequest, ProposalPatchInput,
+    SEMANTIC_EXECUTOR_RECEIPT_SCHEMA_VERSION, SemanticContextOutcome,
+    SemanticContextValidationBasis, UnavailabilityOutcome, UnavailabilityReason,
+    assess_changes_from_git, build_proposal_record, build_semantic_context_from_document,
+    complete_semantic_execution, semantic_context_content_digest, semantic_prompt_digest,
+    validate_executor_qualification, validate_semantic_assessment, validate_semantic_context,
     validate_semantic_executor_request,
 };
 use chrono::NaiveDate;
@@ -72,11 +76,22 @@ impl Repo {
     }
 
     fn git(&self, args: &[&str]) -> String {
-        let output = Command::new("git")
-            .current_dir(self.root.path())
-            .args(args)
-            .output()
-            .expect("git runs");
+        let mut command = Command::new("git");
+        command.current_dir(self.root.path()).args(args);
+        // Keep fixtures isolated when a pre-commit hook exports an outer Git context.
+        for var in [
+            "GIT_DIR",
+            "GIT_INDEX_FILE",
+            "GIT_WORK_TREE",
+            "GIT_NAMESPACE",
+            "GIT_OBJECT_DIRECTORY",
+            "GIT_COMMON_DIR",
+            "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+            "GIT_PREFIX",
+        ] {
+            command.env_remove(var);
+        }
+        let output = command.output().expect("git runs");
         assert!(
             output.status.success(),
             "git {args:?} failed: {}",
@@ -98,6 +113,7 @@ fn digest(bytes: &[u8]) -> String {
 }
 
 fn canonical_bytes(value: &impl serde::Serialize) -> Vec<u8> {
+    // Match the exact pretty JSON plus newline emitted by the CLI.
     let mut json = serde_json::to_vec_pretty(value).expect("serializes");
     json.push(b'\n');
     json
@@ -113,6 +129,8 @@ fn revision(value: &str) -> ExactRevision {
 fn context_input(
     assessment_digest: &str,
     graph_digest: &str,
+    hunk_digest: &str,
+    hunk_content: &str,
     content_hash: &str,
     base: &str,
     head: &str,
@@ -152,15 +170,15 @@ fn context_input(
             "handle_id": "hunk-a",
             "class_id": "changed_knowledge",
             "scope_ref": "repo:agentdoc/internal-synthetic",
-            "handle": {"kind": "diff_hunk", "changed_source_id": "src/billing.rs", "hunk_digest": assessment_digest},
-            "content": {"diff": "+ durable billing behavior"},
+            "handle": {"kind": "diff_hunk", "changed_source_id": "src/billing.rs", "hunk_digest": hunk_digest},
+            "content": {"diff": hunk_content},
             "truncated": false
         }, {
             "handle_id": "object-a",
             "class_id": "changed_knowledge",
             "scope_ref": "repo:agentdoc/internal-synthetic",
             "handle": {"kind": "knowledge_object", "object_id": "billing.policy", "semantic_hash": content_hash},
-            "content": {"body": "Current billing policy."},
+            "content": {"body": "Credits settle after payment."},
             "truncated": false
         }],
         "unavailability": []
@@ -261,6 +279,18 @@ fn internal_synthetic_tracer_links_existing_producer_contracts_by_real_digests()
     repo.git(&["add", "src/billing.rs"]);
     repo.git(&["commit", "-m", "change"]);
     let head = repo.git(&["rev-parse", "HEAD"]);
+    let hunk_content = repo.git(&[
+        "diff",
+        "--unified=0",
+        "--no-ext-diff",
+        "--no-color",
+        &base,
+        &head,
+        "--",
+        "src/billing.rs",
+    ]);
+    assert!(hunk_content.contains("+pub fn settle() { charge(); }"));
+    let hunk_digest = digest(hunk_content.as_bytes());
 
     let assessment = assess_changes_from_git(ChangeAssessmentInput {
         project_root: Some(repo.root_path()),
@@ -292,7 +322,10 @@ fn internal_synthetic_tracer_links_existing_producer_contracts_by_real_digests()
         .objects
         .value
         .as_ref()
-        .expect("assessment objects")[0]
+        .expect("assessment objects")
+        .iter()
+        .find(|object| object.id == "billing.policy")
+        .expect("billing.policy assessed")
         .content_hash
         .clone();
 
@@ -300,6 +333,8 @@ fn internal_synthetic_tracer_links_existing_producer_contracts_by_real_digests()
         &serde_json::to_vec(&context_input(
             &assessment_digest,
             graph_digest,
+            &hunk_digest,
+            &hunk_content,
             &content_hash,
             &base,
             &head,
@@ -307,9 +342,8 @@ fn internal_synthetic_tracer_links_existing_producer_contracts_by_real_digests()
         .expect("context input serializes"),
     )
     .expect("context builds");
-    let context_json: Value =
-        serde_json::from_str(&context.to_canonical_json().expect("context serializes"))
-            .expect("context JSON");
+    let context_canonical = context.to_canonical_json().expect("context serializes");
+    let context_json: Value = serde_json::from_str(&context_canonical).expect("context JSON");
     assert_eq!(
         context_json["basis"]["assessment_digest"],
         assessment_digest
@@ -318,7 +352,98 @@ fn internal_synthetic_tracer_links_existing_producer_contracts_by_real_digests()
         context_json["basis"]["knowledge_basis"]["digest"],
         graph_digest
     );
-    let context_digest = context.context_digest().to_string();
+    let capability_policy = CapabilityPolicy {
+        version: "semantic-context-policy-v1".to_string(),
+        rules: [
+            (
+                UnavailabilityReason::Permission,
+                UnavailabilityOutcome::Insufficient,
+            ),
+            (
+                UnavailabilityReason::Retention,
+                UnavailabilityOutcome::Insufficient,
+            ),
+            (
+                UnavailabilityReason::SourceOutage,
+                UnavailabilityOutcome::Failed,
+            ),
+            (
+                UnavailabilityReason::Truncation,
+                UnavailabilityOutcome::Insufficient,
+            ),
+            (
+                UnavailabilityReason::ResourceLimit,
+                UnavailabilityOutcome::Insufficient,
+            ),
+        ]
+        .into_iter()
+        .map(|(reason, outcome)| CapabilityPolicyRule { reason, outcome })
+        .collect(),
+    };
+    let context_class = ContextClass {
+        class_id: "changed_knowledge".to_string(),
+        requirement: ContextRequirement::Required,
+        byte_budget: 4096,
+    };
+    let scope = "repo:agentdoc/internal-synthetic".to_string();
+    let validated_context = validate_semantic_context(
+        context_canonical.as_bytes(),
+        &SemanticContextValidationBasis {
+            evaluation_date: NaiveDate::from_ymd_opt(2026, 9, 30).expect("date"),
+            subject_revision: revision(&head),
+            source_revision: revision(&head),
+            base_revision: revision(&base),
+            head_revision: revision(&head),
+            assessment_digest: assessment_digest.clone(),
+            selection_algorithm: "internal-synthetic-tracer".to_string(),
+            selection_version: "1".to_string(),
+            context_classes: vec![context_class],
+            authorized_scope: vec![scope.clone()],
+            capability_policy,
+            graph_artifact_digest: Some(graph_digest.to_string()),
+            managed_revision_digest: None,
+            graph_objects: vec![GraphCitationObject {
+                object_id: "billing.policy".to_string(),
+                semantic_hash: content_hash.clone(),
+                has_source_binding: false,
+                evidence_count: 0,
+            }],
+            diff_hunks: vec![DiffHunkCitation {
+                changed_source_id: "src/billing.rs".to_string(),
+                hunk_digest: hunk_digest.clone(),
+            }],
+            source_assertions: Vec::new(),
+            citation_contents: vec![
+                CitationContentProjection {
+                    handle: CitationHandle::DiffHunk {
+                        changed_source_id: "src/billing.rs".to_string(),
+                        hunk_digest,
+                    },
+                    class_id: "changed_knowledge".to_string(),
+                    scope_ref: scope.clone(),
+                    content_digest: semantic_context_content_digest(&json!({
+                        "diff": hunk_content
+                    })),
+                    truncated_content_digests: Vec::new(),
+                },
+                CitationContentProjection {
+                    handle: CitationHandle::KnowledgeObject {
+                        object_id: "billing.policy".to_string(),
+                        semantic_hash: content_hash.clone(),
+                    },
+                    class_id: "changed_knowledge".to_string(),
+                    scope_ref: scope,
+                    content_digest: semantic_context_content_digest(&json!({
+                        "body": "Credits settle after payment."
+                    })),
+                    truncated_content_digests: Vec::new(),
+                },
+            ],
+        },
+    )
+    .expect("context validates against exact Git and graph evidence");
+    assert_eq!(validated_context.outcome(), SemanticContextOutcome::Ready);
+    let context_digest = validated_context.context_digest().to_string();
 
     let instructions = "Return one structured semantic assessment.";
     let prompt_digest =
@@ -430,7 +555,7 @@ fn internal_synthetic_tracer_links_existing_producer_contracts_by_real_digests()
         vec![ProposalPatchInput {
             finding_id: "finding-001".to_string(),
             placement_path: "docs/billing.adoc".to_string(),
-            page_id: "billing.kb".to_string(),
+            page_id: "team.billing".to_string(),
             patch_bytes,
         }],
         None,
@@ -442,4 +567,8 @@ fn internal_synthetic_tracer_links_existing_producer_contracts_by_real_digests()
         proposal.bindings().semantic_assessment_digest,
         semantic_assessment_digest
     );
+    let proposal_json: Value =
+        serde_json::from_str(&proposal.to_canonical_json().expect("proposal serializes"))
+            .expect("proposal JSON");
+    assert_eq!(proposal_json["patches"][0]["page_id"], "team.billing");
 }
