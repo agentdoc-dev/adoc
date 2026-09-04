@@ -31,6 +31,9 @@ cross-repository contract checks unreliable.
    contain no C0 or C1 control character. Any other admitted present string,
    including blank or non-canonical configuration text, derives no effective
    mode and must block with only `gate.mode_unknown`; it never falls back.
+   Text outside the length or control-character admission bounds is rejected
+   before a result can be constructed; producers must fail that run closed and
+   must not retain or fall back to a prior or default mode.
 4. Reasons are closed to the 12 E5.3 `gate.*` rows in the contract registry.
    Every blocking result names at least one reason; a silent block is invalid.
    Every passing result names none because each registered reason denotes a
