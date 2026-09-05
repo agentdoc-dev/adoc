@@ -16,7 +16,9 @@ use serde::Serialize;
 #[cfg(test)]
 use crate::application::compile::compile_with_provider;
 use crate::application::compile::compile_with_provider_for_date;
-use crate::application::patch::{PatchCheckResult, check_patch_documents};
+use crate::application::patch::{
+    PatchCheckResult, artifact_failure_diagnostics, check_patch_documents,
+};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::graph::{
     GraphArtifactDocument, GraphKnowledgeObjectNode, GraphNode, GraphPageNode,
@@ -230,7 +232,9 @@ where
     // 1. Load the artifact and run the unchanged V2 validation.
     let graph_document = match graph_reader.read(graph_artifact_path) {
         Ok(document) => document,
-        Err(diagnostics) => return PatchApplyResult::refused(diagnostics, trace),
+        Err(diagnostics) => {
+            return PatchApplyResult::refused(artifact_failure_diagnostics(diagnostics), trace);
+        }
     };
     let target_node = find_object(&graph_document, &patch.target).cloned();
     // TB3: a create with an `after` anchor splices against that anchor's

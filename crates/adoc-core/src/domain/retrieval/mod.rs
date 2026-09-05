@@ -68,7 +68,9 @@ impl RetrievalPolicy {
     }
 }
 
-fn canonical_visibility(value: &str) -> Option<super::value_objects::visibility::Visibility> {
+pub(crate) fn canonical_visibility(
+    value: &str,
+) -> Option<super::value_objects::visibility::Visibility> {
     super::value_objects::visibility::Visibility::try_new(value)
         .ok()
         .filter(|visibility| visibility.as_str() == value)

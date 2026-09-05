@@ -28,6 +28,12 @@ pub enum LocalError {
     #[error("error[config.invalid] invalid config {}: {message}", path.display())]
     ConfigInvalid { path: PathBuf, message: String },
 
+    #[error("error[{}] invalid retrieval policy in {}: {}", diagnostic.code, path.display(), diagnostic.message)]
+    RetrievalPolicy {
+        path: PathBuf,
+        diagnostic: Box<adoc_core::Diagnostic>,
+    },
+
     #[error("error[config.missing] {message}{}", format_config_path(config_path))]
     ConfigMissing {
         message: String,
