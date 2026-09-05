@@ -332,8 +332,16 @@ pub struct RepositoryBaselineEnvelope {
     pub diagnostics: Vec<AssessmentDiagnostic>,
 }
 
-impl From<ChangeAssessmentEnvelope> for RepositoryBaselineEnvelope {
-    fn from(assessment: ChangeAssessmentEnvelope) -> Self {
+impl TryFrom<ChangeAssessmentEnvelope> for RepositoryBaselineEnvelope {
+    type Error = &'static str;
+
+    fn try_from(assessment: ChangeAssessmentEnvelope) -> Result<Self, Self::Error> {
+        if !assessment.snapshots.head.immutable
+            || assessment.snapshots.head.strategy.is_some()
+            || assessment.snapshots.head.worktree_state.is_some()
+        {
+            return Err("repository baselines require an immutable Git ref");
+        }
         let ready = assessment.is_complete()
             && assessment.validation.errors_full == 0
             && assessment.summary.provisional == 0
@@ -347,7 +355,7 @@ impl From<ChangeAssessmentEnvelope> for RepositoryBaselineEnvelope {
         } else {
             "ready"
         };
-        Self {
+        Ok(Self {
             schema_version: REPOSITORY_BASELINE_SCHEMA_VERSION,
             readiness: RepositoryBaselineReadiness {
                 ready,
@@ -362,7 +370,7 @@ impl From<ChangeAssessmentEnvelope> for RepositoryBaselineEnvelope {
             paths: assessment.paths,
             objects: assessment.objects,
             diagnostics: assessment.diagnostics,
-        }
+        })
     }
 }
 

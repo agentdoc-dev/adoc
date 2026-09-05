@@ -1227,6 +1227,8 @@ fn serialized_repository_baseline_matches_published_schema_for_all_readiness_rea
     assert_eq!(produced["snapshot"]["requested_ref"], exact_head);
     assert_eq!(produced["snapshot"]["resolved_commit"], exact_head);
     assert_eq!(produced["evaluation_date"], "2026-09-05");
+    assert_eq!(produced["readiness"]["reason"], "provisional_paths");
+    assert_eq!(produced["readiness"]["ready"], false);
     let paths = produced["paths"]["value"]
         .as_array()
         .expect("baseline paths are available");
@@ -1248,6 +1250,16 @@ fn serialized_repository_baseline_matches_published_schema_for_all_readiness_rea
     assert_eq!(unresolved["readiness"]["reason"], "invalid_source");
     assert_eq!(unresolved["paths"]["status"], "unavailable");
     assert_ne!(unresolved["diagnostics"], json!([]));
+
+    let worktree_assessment = context
+        .assess_changes(AssessmentInput {
+            base_ref: exact_head.clone(),
+            head_ref: None,
+            as_of: Some("2026-09-05".parse().expect("fixed evaluation date")),
+        })
+        .expect("worktree assessment runs")
+        .envelope;
+    assert!(RepositoryBaselineEnvelope::try_from(worktree_assessment).is_err());
 
     let assessment = context
         .assess_changes(AssessmentInput {
@@ -1284,8 +1296,11 @@ fn serialized_repository_baseline_matches_published_schema_for_all_readiness_rea
         (false, "provisional_paths", provisional_paths),
         (false, "uncovered_paths", uncovered_paths),
     ] {
-        let baseline = serde_json::to_value(RepositoryBaselineEnvelope::from(assessment))
-            .expect("repository baseline serializes");
+        let baseline = serde_json::to_value(
+            RepositoryBaselineEnvelope::try_from(assessment)
+                .expect("immutable assessment becomes a repository baseline"),
+        )
+        .expect("repository baseline serializes");
         assert_eq!(baseline["readiness"]["ready"], expected_ready);
         assert_eq!(baseline["readiness"]["reason"], expected_reason);
         assert_valid(schema_name, &baseline);
@@ -1330,6 +1345,10 @@ fn serialized_repository_baseline_matches_published_schema_for_all_readiness_rea
     let mut worktree_invalid_source = unresolved.clone();
     worktree_invalid_source["snapshot"]["worktree_state"] = json!("dirty");
     assert!(!schema_accepts(schema_name, &worktree_invalid_source));
+
+    let mut impossible_strategy = produced;
+    impossible_strategy["snapshot"]["strategy"] = json!("merge_base");
+    assert!(!schema_accepts(schema_name, &impossible_strategy));
 
     let mut ready_without_knowledge = ready_baseline.clone();
     ready_without_knowledge["knowledge_snapshot"] = json!({ "status": "unavailable" });

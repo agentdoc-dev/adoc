@@ -176,7 +176,6 @@
         "requested_ref": { "type": "string", "minLength": 1 },
         "resolved_commit": { "$ref": "#/$defs/commit" },
         "immutable": { "type": "boolean" },
-        "strategy": { "const": "merge_base" },
         "worktree_state": { "enum": ["clean", "dirty"] }
       }
     },
