@@ -16,7 +16,7 @@ use chrono::NaiveDate;
 use serde::Serialize;
 
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
-use crate::domain::graph::GraphKnowledgeObjectNode;
+use crate::domain::graph::{GraphKnowledgeObjectNode, unresolved_contradiction_claim_index};
 use crate::domain::obligation::ProofObligation;
 use crate::domain::ports::changed_files::ChangedFilesError;
 use crate::domain::review::impact::{ImpactReasonKind, impacted_objects};
@@ -24,9 +24,7 @@ use crate::domain::review::obligation_rules::obligation_for_impacted_node;
 use crate::domain::value_objects::rel_path::RelPath;
 use crate::domain::value_objects::review_interval::ReviewInterval;
 use crate::domain::value_objects::severity::Severity;
-use crate::infrastructure::artifact::graph_json::{
-    derive_effective_status_from_fields, unresolved_contradiction_claim_index,
-};
+use crate::infrastructure::artifact::graph_json::derive_effective_status_from_fields;
 
 use super::graph::GraphSession;
 use super::local_today;

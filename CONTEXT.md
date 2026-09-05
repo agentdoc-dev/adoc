@@ -368,10 +368,10 @@ _Avoid_: infinite path enumeration, graph mutation, graph visualization as the c
 
 **Retrieval Record**:
 The stable JSON shape returned by `adoc why --format json` and `adoc search --format json`. Contained inside an `adoc.retrieval.v0` envelope. A projection of a graph Knowledge Object node, including its `content_hash`, plus a small `match` block carrying `mode`, ranks, and (when relevant) `cosine_score`.
-_Avoid_: vectors in the retrieval envelope, per-record permissions in V1
+_Avoid_: vectors in the retrieval envelope, adapter-local permission filters
 
 **Retrieval Session**:
-The immutable value the V1 application layer assembles from a loaded graph artifact, an optional loaded search artifact, and built indexes. CLI commands construct one session per invocation; there is no global retrieval state.
+The immutable value the application layer assembles from a loaded graph artifact, explicit retrieval policy, an optional loaded search artifact, and built indexes. Permission filtering precedes index construction (ADR-0065). CLI commands construct one session per invocation; there is no global retrieval state.
 _Avoid_: long-lived retrieval daemon in V1, mutable shared session
 
 **Graph Index**:

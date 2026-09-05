@@ -832,22 +832,25 @@ where
 
 /// The shared read-command prefix (ADR-0038: every artifact reader locates
 /// the Graph Artifact the same way): resolve an explicit `--artifact` through
-/// the path policy, discover project config only when no explicit path was
-/// given, resolve the effective artifact path, and gate the final path
-/// through the policy again.
+/// the path policy, discover config when artifact defaults or retrieval policy
+/// require it, and gate the final artifact path through the path policy again.
 fn resolve_graph_artifact_for_read<P>(
     context: &LocalContext<P>,
     artifact_arg: Option<&Path>,
-) -> Result<PathBuf, LocalError>
+    needs_retrieval_policy: bool,
+) -> Result<(PathBuf, Option<ProjectConfig>), LocalError>
 where
     P: PathPolicy,
 {
     let artifact = artifact_arg
         .map(|path| context.path_policy().resolve_read_path(path))
         .transpose()?;
-    let config = discover_project_config_if(artifact.is_none(), context.config_start())?;
+    let config = discover_project_config_if(
+        artifact.is_none() || needs_retrieval_policy,
+        context.config_start(),
+    )?;
     let artifact = resolve_graph_artifact_path_with_config(artifact, config.as_ref());
-    context.path_policy().resolve_read_path(&artifact)
+    Ok((context.path_policy().resolve_read_path(&artifact)?, config))
 }
 
 /// Load the graph session for a read command. The session is usable only
@@ -870,11 +873,13 @@ fn why_with_context<P>(context: &LocalContext<P>, input: WhyInput) -> Result<Why
 where
     P: PathPolicy,
 {
-    let artifact = resolve_graph_artifact_for_read(context, input.artifact.as_deref())?;
+    let (artifact, config) =
+        resolve_graph_artifact_for_read(context, input.artifact.as_deref(), true)?;
     let load_result = load_retrieval_session_with_embedding_provider(
         RetrievalInput {
             artifact_path: artifact.clone(),
             search_artifact_path: None,
+            policy: config.and_then(|config| config.retrieval_policy),
         },
         EmbeddingProviderSelection::Local,
     );
@@ -920,7 +925,8 @@ fn graph_with_context<P>(
 where
     P: PathPolicy,
 {
-    let graph_artifact = resolve_graph_artifact_for_read(context, input.artifact.as_deref())?;
+    let (graph_artifact, _) =
+        resolve_graph_artifact_for_read(context, input.artifact.as_deref(), false)?;
     let (session, mut diagnostics) = load_graph_session_for_query(graph_artifact);
     let Some(session) = session else {
         let exit_code = graph_exit_code_for_diagnostics(&diagnostics);
@@ -965,7 +971,8 @@ fn stale_with_context<P>(
 where
     P: PathPolicy,
 {
-    let graph_artifact = resolve_graph_artifact_for_read(context, input.artifact.as_deref())?;
+    let (graph_artifact, _) =
+        resolve_graph_artifact_for_read(context, input.artifact.as_deref(), false)?;
     let (session, diagnostics) = load_graph_session_for_query(graph_artifact);
     let Some(session) = session else {
         let exit_code = signal_query_exit_code(&diagnostics);
@@ -990,7 +997,8 @@ fn contradictions_with_context<P>(
 where
     P: PathPolicy,
 {
-    let graph_artifact = resolve_graph_artifact_for_read(context, input.artifact.as_deref())?;
+    let (graph_artifact, _) =
+        resolve_graph_artifact_for_read(context, input.artifact.as_deref(), false)?;
     let (session, diagnostics) = load_graph_session_for_query(graph_artifact);
     let Some(session) = session else {
         let exit_code = signal_query_exit_code(&diagnostics);
@@ -1040,7 +1048,8 @@ where
         }
     };
 
-    let graph_artifact = resolve_graph_artifact_for_read(context, input.artifact.as_deref())?;
+    let (graph_artifact, _) =
+        resolve_graph_artifact_for_read(context, input.artifact.as_deref(), false)?;
     let (session, diagnostics) = load_graph_session_for_query(graph_artifact);
     let Some(session) = session else {
         let exit_code = impacted_exit_code(&diagnostics);
@@ -1083,19 +1092,20 @@ where
         .as_deref()
         .map(|path| context.path_policy().resolve_read_path(path))
         .transpose()?;
-    let needs_search_config = matches!(requested_mode, SearchMode::Hybrid | SearchMode::Semantic)
-        && search_artifact.is_none();
-    let config = discover_project_config_if(
-        artifact.is_none() || needs_search_config,
-        context.config_start(),
-    )?;
-    let embedding_provider = resolve_embedding_provider_selection(config.as_ref());
-    let artifact = resolve_graph_artifact_path_with_config(artifact, config.as_ref());
+    // An explicit artifact changes the data source, never the policy source.
+    let config = ProjectConfig::discover_from(context.config_start())?;
+    // Policy discovery must not change the historical provider/path defaults
+    // for a search whose relevant artifact paths are all explicit.
+    let defaults_config = config.as_ref().filter(|_| {
+        artifact.is_none() || (requested_mode != SearchMode::Lexical && search_artifact.is_none())
+    });
+    let embedding_provider = resolve_embedding_provider_selection(defaults_config);
+    let artifact = resolve_graph_artifact_path_with_config(artifact, defaults_config);
     let artifact = context.path_policy().resolve_read_path(&artifact)?;
     let search_artifact_path = match requested_mode {
         SearchMode::Lexical => None,
         SearchMode::Hybrid | SearchMode::Semantic => {
-            let path = resolve_search_artifact_path_with_config(search_artifact, config.as_ref());
+            let path = resolve_search_artifact_path_with_config(search_artifact, defaults_config);
             Some(context.path_policy().resolve_read_path(&path)?)
         }
     };
@@ -1103,6 +1113,9 @@ where
         RetrievalInput {
             artifact_path: artifact,
             search_artifact_path,
+            policy: config
+                .as_ref()
+                .and_then(|config| config.retrieval_policy.clone()),
         },
         embedding_provider,
     );
@@ -1119,7 +1132,7 @@ where
         diagnostics.push(Diagnostic {
             code: DiagnosticCode::SearchArtifactMissing,
             severity: Severity::Error,
-            message: "Semantic search requested but no search artifact is loaded.".to_string(),
+            message: "Semantic search requested but no usable search index is loaded.".to_string(),
             span: None,
             object_id: None,
             help: Some(
@@ -1341,7 +1354,8 @@ where
         .as_of
         .unwrap_or_else(|| chrono::Utc::now().date_naive());
     let patch_path = context.path_policy().resolve_read_path(&input.patch_path)?;
-    let graph_artifact = resolve_graph_artifact_for_read(context, input.artifact.as_deref())?;
+    let (graph_artifact, _) =
+        resolve_graph_artifact_for_read(context, input.artifact.as_deref(), false)?;
     let result = core_check_patch(PatchInput {
         graph_artifact_path: graph_artifact,
         patch_path,
