@@ -1,17 +1,18 @@
-//! E5.5.T1 - internal/synthetic producer-side evidence for the cross-repo tracer.
+//! E5.5.T1-T2 - internal/synthetic producer-side evidence for the cross-repo tracer.
 //! This test is not the full E5.5 acceptance tracer; Cloud owns the governed hops.
 
 use std::{fmt::Write as _, process::Command};
 
 use adoc_core::{
-    AssessmentCompleteness, AssessmentOutcome, CapabilityPolicy, CapabilityPolicyRule,
-    ChangeAssessmentInput, CitationContentProjection, CitationHandle, CompileInput, ContextClass,
-    ContextRequirement, DiffHunkCitation, ExactRevision, ExecutorAuthority, ExecutorConfiguration,
-    ExecutorQualificationExpectedBindings, GraphCitationObject, LocalProjectContext,
-    ModelConfiguration, PatchApplyInput, ProposalBindings, ProposalChangeRequest,
-    ProposalPatchInput, SEMANTIC_EXECUTOR_RECEIPT_SCHEMA_VERSION, SemanticContextOutcome,
+    AssessmentCompleteness, AssessmentOutcome, BuildEmbeddingMode, BuildInput, CapabilityPolicy,
+    CapabilityPolicyRule, ChangeAssessmentInput, CitationContentProjection, CitationHandle,
+    CompileInput, ContextClass, ContextRequirement, DiffHunkCitation, ExactRevision,
+    ExecutorAuthority, ExecutorConfiguration, ExecutorQualificationExpectedBindings,
+    GraphCitationObject, LocalProjectContext, ModelConfiguration, PatchApplyInput,
+    ProposalBindings, ProposalChangeRequest, ProposalPatchInput,
+    SEMANTIC_EXECUTOR_RECEIPT_SCHEMA_VERSION, SemanticContextOutcome,
     SemanticContextValidationBasis, UnavailabilityOutcome, UnavailabilityReason,
-    apply_patch_for_date, assess_changes_from_git, build_proposal_record,
+    apply_patch_for_date, assess_changes_from_git, build_project_workspace, build_proposal_record,
     build_semantic_context_from_document, compile_project_workspace_with_anchor_root_for_date,
     complete_semantic_execution, parse_patch_from_value, semantic_context_content_digest,
     semantic_prompt_digest, validate_executor_qualification, validate_semantic_assessment,
@@ -51,9 +52,8 @@ impl Repo {
             concat!(
                 "# Billing @doc(team.billing)\n\n",
                 "::claim billing.policy\n",
-                "status: verified\n",
+                "status: draft\n",
                 "owner: billing-platform\n",
-                "verified_at: 2026-09-01\n",
                 "source: src/billing.rs\n",
                 "impacts: [src/billing.rs]\n",
                 "--\nCredits settle after payment.\n::\n",
@@ -194,7 +194,7 @@ fn context_input(
             "handle_id": "hunk-a",
             "class_id": "changed_knowledge",
             "scope_ref": "repo:agentdoc/internal-synthetic",
-            "handle": {"kind": "diff_hunk", "changed_source_id": "src/billing.rs", "hunk_digest": hunk_digest},
+            "handle": {"kind": "diff_hunk", "changed_source_id": "src/settlement.rs", "hunk_digest": hunk_digest},
             "content": {"diff": hunk_content},
             "truncated": false
         }, {
@@ -299,19 +299,73 @@ fn qualified_executor() -> (Value, ExecutorConfiguration) {
 fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
     let repo = Repo::new();
     let base = repo.git(&["rev-parse", "HEAD"]);
-    repo.write("src/billing.rs", "pub fn settle() { charge(); }\n");
-    repo.git(&["add", "src/billing.rs"]);
-    repo.git(&["commit", "-m", "change"]);
+    let baseline_assessment = assess_changes_from_git(ChangeAssessmentInput {
+        project_root: Some(repo.root_path()),
+        base_ref: base.clone(),
+        head_ref: Some(base.clone()),
+        evaluation_date: NaiveDate::from_ymd_opt(2026, 9, 30).expect("date"),
+    });
+    let build_graph = || {
+        let docs_root = repo.root_path().join("docs");
+        let result = build_project_workspace(
+            BuildInput {
+                root: docs_root.clone(),
+                embeddings: BuildEmbeddingMode::Skipped,
+                prior_search_artifact_path: None,
+            },
+            LocalProjectContext {
+                project_root: repo.root_path(),
+                docs_root,
+            },
+        );
+        assert!(
+            !result.has_errors(),
+            "graph build: {:?}",
+            result.diagnostics
+        );
+        serde_json::from_str::<Value>(&result.artifacts.expect("graph artifacts").graph_json)
+            .expect("graph JSON")
+    };
+    let baseline_source_digest = digest(
+        &std::fs::read(repo.root.path().join("docs/billing.adoc")).expect("baseline source"),
+    );
+    let baseline_graph_document = build_graph();
+    repo.git(&["mv", "docs/billing.adoc", "docs/renamed-billing.adoc"]);
+    repo.git(&["commit", "-m", "move billing docs"]);
+    let moved = repo.git(&["rev-parse", "HEAD"]);
+    let placement_assessment = assess_changes_from_git(ChangeAssessmentInput {
+        project_root: Some(repo.root_path()),
+        base_ref: base.clone(),
+        head_ref: Some(moved.clone()),
+        evaluation_date: NaiveDate::from_ymd_opt(2026, 9, 30).expect("date"),
+    });
+    let moved_graph_document = build_graph();
+    repo.write(
+        "docs/renamed-billing.adoc",
+        concat!(
+            "# Billing @doc(team.billing)\n\n",
+            "::claim billing.policy\n",
+            "status: verified\n",
+            "owner: billing-platform\n",
+            "verified_at: 2026-09-01\n",
+            "source: src/settlement.rs\n",
+            "impacts: [src/settlement.rs]\n",
+            "--\nCredits settle after payment.\n::\n",
+        ),
+    );
+    repo.write("src/settlement.rs", "pub fn settle() { charge(); }\n");
+    repo.git(&["add", "docs/renamed-billing.adoc", "src/settlement.rs"]);
+    repo.git(&["commit", "-m", "promote billing policy"]);
     let head = repo.git(&["rev-parse", "HEAD"]);
     let hunk_content = String::from_utf8(repo.git_stdout(&[
         "diff",
         "--unified=0",
         "--no-ext-diff",
         "--no-color",
-        &base,
+        &moved,
         &head,
         "--",
-        "src/billing.rs",
+        "src/settlement.rs",
     ]))
     .expect("UTF-8 git diff output");
     assert!(hunk_content.contains("+pub fn settle() { charge(); }"));
@@ -323,19 +377,97 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
 
     let assessment = assess_changes_from_git(ChangeAssessmentInput {
         project_root: Some(repo.root_path()),
-        base_ref: base.clone(),
+        base_ref: moved.clone(),
         head_ref: Some(head.clone()),
         evaluation_date: NaiveDate::from_ymd_opt(2026, 9, 30).expect("date"),
     });
     assert_eq!(assessment.completeness, AssessmentCompleteness::Complete);
     assert_eq!(assessment.outcome, AssessmentOutcome::ReviewRequired);
+    let baseline_object_set = baseline_assessment
+        .knowledge_snapshot
+        .object_set_sha256
+        .as_deref()
+        .expect("baseline object-set digest");
+    let placement_object_set = placement_assessment
+        .knowledge_snapshot
+        .object_set_sha256
+        .as_deref()
+        .expect("placement object-set digest");
+    assert_eq!(
+        placement_object_set, baseline_object_set,
+        "placement-only changes preserve semantic object-set identity"
+    );
+    let baseline_graph_digest = baseline_assessment
+        .knowledge_snapshot
+        .graph_sha256
+        .as_deref()
+        .expect("baseline graph digest");
+    let placement_graph_digest = placement_assessment
+        .knowledge_snapshot
+        .graph_sha256
+        .as_deref()
+        .expect("placement graph digest");
+    assert_ne!(
+        placement_graph_digest, baseline_graph_digest,
+        "placement changes remain visible in the exact graph artifact"
+    );
+    let baseline_graph_object = baseline_graph_document["nodes"]
+        .as_array()
+        .expect("baseline graph nodes")
+        .iter()
+        .find(|node| node["id"] == "billing.policy")
+        .expect("baseline billing.policy graph node");
+    let moved_graph_object = moved_graph_document["nodes"]
+        .as_array()
+        .expect("moved graph nodes")
+        .iter()
+        .find(|node| node["id"] == "billing.policy")
+        .expect("moved billing.policy graph node");
+    let baseline_binding = &baseline_graph_object["source_binding"];
+    let moved_binding = &moved_graph_object["source_binding"];
+    assert_eq!(
+        baseline_binding["path"].as_str().expect("baseline path"),
+        "docs/billing.adoc"
+    );
+    let moved_binding_path = moved_binding["path"]
+        .as_str()
+        .expect("moved path")
+        .to_string();
+    assert_eq!(moved_binding_path, "docs/renamed-billing.adoc");
+    let baseline_content_hash = baseline_graph_object["content_hash"]
+        .as_str()
+        .expect("baseline content hash");
+    let moved_content_hash = moved_graph_object["content_hash"]
+        .as_str()
+        .expect("moved content hash");
+    assert_eq!(baseline_content_hash, moved_content_hash);
+    assert_eq!(
+        baseline_binding["source_revision_digest"]
+            .as_str()
+            .expect("baseline source revision digest"),
+        baseline_source_digest
+    );
+    assert_eq!(
+        moved_binding["source_revision_digest"]
+            .as_str()
+            .expect("moved source revision digest"),
+        baseline_source_digest
+    );
+    let placement_changes = placement_assessment
+        .knowledge_changes
+        .value
+        .as_ref()
+        .expect("placement knowledge changes");
+    assert!(placement_changes.created.is_empty());
+    assert!(placement_changes.changed.is_empty());
+    assert!(placement_changes.deleted.is_empty());
     assert_eq!(
         assessment
             .snapshots
             .requested_base
             .resolved_commit
             .as_deref(),
-        Some(base.as_str())
+        Some(moved.as_str())
     );
     assert_eq!(
         assessment.snapshots.head.resolved_commit.as_deref(),
@@ -348,16 +480,42 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
         .as_deref()
         .expect("assessment graph digest")
         .to_string();
-    let assessed_content_hash = assessment
+    let assessed_object = assessment
         .objects
         .value
         .as_ref()
         .expect("assessment objects")
         .iter()
         .find(|object| object.id == "billing.policy")
-        .expect("billing.policy assessed")
-        .content_hash
-        .clone();
+        .expect("billing.policy assessed");
+    assert_eq!(
+        assessed_object.source.path, moved_binding_path,
+        "assessment placement and graph Source Binding agree on the moved path"
+    );
+    let assessed_content_hash = assessed_object.content_hash.clone();
+    let promotion_change = assessment
+        .knowledge_changes
+        .value
+        .as_ref()
+        .expect("promotion knowledge changes")
+        .changed
+        .first()
+        .expect("billing.policy semantic change");
+    assert_eq!(promotion_change.id, "billing.policy");
+    assert_eq!(
+        promotion_change.base_content_hash.as_deref(),
+        Some(moved_content_hash)
+    );
+    assert_eq!(
+        promotion_change.head_content_hash.as_deref(),
+        Some(assessed_content_hash.as_str())
+    );
+    let promoted_object_set = assessment
+        .knowledge_snapshot
+        .object_set_sha256
+        .as_deref()
+        .expect("promoted object-set digest");
+    assert_ne!(promoted_object_set, placement_object_set);
     let head_graph = repo.compile_graph();
     let head_graph_json: Value = serde_json::from_str(&head_graph).expect("graph JSON");
     let graph_object = head_graph_json["nodes"]
@@ -382,6 +540,21 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
         .as_array()
         .expect("graph evidence")
         .len();
+    assert_eq!(
+        serde_json::to_value(&assessment.authority_promotions)
+            .expect("authority promotions serialize"),
+        json!({
+            "status": "available",
+            "value": [{
+                "id": "billing.policy",
+                "content_hash": content_hash,
+                "kind": "claim",
+                "before_kind": "claim",
+                "before_status": "draft",
+                "after_status": "verified"
+            }]
+        })
+    );
 
     let context = build_semantic_context_from_document(
         &serde_json::to_vec(&context_input(
@@ -391,7 +564,7 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
             &hunk_content,
             &content_hash,
             &object_body,
-            &base,
+            &moved,
             &head,
         ))
         .expect("context input serializes"),
@@ -451,7 +624,7 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
             evaluation_date: NaiveDate::from_ymd_opt(2026, 9, 30).expect("date"),
             subject_revision: revision(&head),
             source_revision: revision(&head),
-            base_revision: revision(&base),
+            base_revision: revision(&moved),
             head_revision: revision(&head),
             assessment_digest: assessment_digest.clone(),
             selection_algorithm: "internal-synthetic-tracer".to_string(),
@@ -468,14 +641,14 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
                 evidence_count,
             }],
             diff_hunks: vec![DiffHunkCitation {
-                changed_source_id: "src/billing.rs".to_string(),
+                changed_source_id: "src/settlement.rs".to_string(),
                 hunk_digest: hunk_digest.clone(),
             }],
             source_assertions: Vec::new(),
             citation_contents: vec![
                 CitationContentProjection {
                     handle: CitationHandle::DiffHunk {
-                        changed_source_id: "src/billing.rs".to_string(),
+                        changed_source_id: "src/settlement.rs".to_string(),
                         hunk_digest,
                     },
                     class_id: "changed_knowledge".to_string(),
@@ -578,7 +751,7 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
         &serde_json::to_vec(&semantic_assessment(
             &context_digest,
             &content_hash,
-            &base,
+            &moved,
             &head,
         ))
         .expect("semantic assessment serializes"),
@@ -690,14 +863,14 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
         patch_bytes.push(b'\n');
         ProposalPatchInput {
             finding_id: assessment_finding_id.to_string(),
-            placement_path: "docs/billing.adoc".to_string(),
+            placement_path: moved_binding_path.clone(),
             page_id: "team.billing".to_string(),
             patch_bytes,
         }
     };
     let proposal = build_proposal_record(
         ProposalBindings {
-            base_revision: revision(&base),
+            base_revision: revision(&moved),
             head_revision: revision(&head),
             change_request: ProposalChangeRequest {
                 system: "github_pull_request".to_string(),
@@ -723,6 +896,7 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
     let proposal_patches = proposal_json["patches"]
         .as_array()
         .expect("proposal patches");
+    assert_eq!(proposal_patches[0]["placement_path"], moved_binding_path);
     assert!(
         proposal_patches
             .iter()
