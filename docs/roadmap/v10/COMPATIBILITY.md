@@ -43,7 +43,7 @@ E8.5's GitLab CI component has no named home repository yet; its row covers the 
 | `E4.1` | adoc, cloud | adoc | adoc 0.3.4 (graph v5) · Cloud scaffold (pre-release) | cloud |
 | `E4.4` | adoc, cloud | cloud | adoc 0.3.4 (graph v5) · Cloud scaffold (pre-release) | cloud |
 | `E4.5` | adoc, action, cloud | adoc | adoc 0.3.4 (graph v5) · Action v2.0.0-alpha.19 · Cloud scaffold (pre-release) | cloud |
-| `E4.6` | action, cloud | cloud | Action v2.0.0-alpha.19 · Cloud scaffold (pre-release, baseline held pending O-01) | cloud |
+| `E4.6` | action, cloud | cloud | Action v2.0.0-alpha.19 · Cloud scaffold (pre-release) | cloud |
 | `E5.1` | adoc, action, cloud | adoc | adoc 0.4.0 (proposal record, graph v6; agentdoc-dev/adoc#199 pre-merge head `84f81e0`) · Action v2.0.0-alpha.19 + E5.1 `propose.sh` record (pre-release; agentdoc-dev/action#53 pre-merge head `8d420f8`) · Cloud v0.1.0 (pre-release, proposal command; agentdoc-dev/cloud#64 pre-merge head `0d08336`) | cloud |
 | `E5.3` | adoc, cloud | adoc | adoc 0.4.0 (`adoc.gate_result.v0`; agentdoc-dev/adoc#199 pre-merge head `84f81e0`) · Cloud v0.1.0 (pre-release, four-mode gate; agentdoc-dev/cloud#64 pre-merge head `0d08336`) | cloud |
 | `E5.4` | action, cloud | action | Action v2.0.0-alpha.19 + check publication (pre-release; agentdoc-dev/action#53 pre-merge head `8d420f8`) · Cloud v0.1.0 (pre-release, negative-verdict publication; agentdoc-dev/cloud#64 pre-merge head `0d08336`) | cloud |
@@ -99,7 +99,7 @@ NOT shipped at the baseline:
 - ingestion,
 - retrieval.
 
-The true-up decision/ADR is allocated in slice-start decision tracking as [`DECISION-REGISTER.md`](DECISION-REGISTER.md) obligation **O-01** — retroactive ADR, published schema, and parity test for `adoc.repository_baseline.v0`, owed at E4.6 slice start (provenance: V10.1.6, historical).
+The true-up decision/ADR allocated at the E4.6 slice start in [`DECISION-REGISTER.md`](DECISION-REGISTER.md) obligation **O-01** is satisfied by ADR-0064, the published `adoc.repository_baseline.v0` schema, and producer/schema parity evidence (provenance: V10.1.6, historical).
 <!-- /compat:true-up -->
 
 ## Historical Cloud phase labels (E0.4.T3)
