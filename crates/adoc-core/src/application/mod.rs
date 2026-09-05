@@ -7,6 +7,7 @@ pub(crate) mod evidence_anchor;
 pub(crate) mod graph;
 pub(crate) mod migrate;
 pub(crate) mod patch;
+pub(crate) mod proposal;
 pub(crate) mod resolve_knowledge_objects;
 pub(crate) mod resolve_object_references;
 pub(crate) mod retrieval;

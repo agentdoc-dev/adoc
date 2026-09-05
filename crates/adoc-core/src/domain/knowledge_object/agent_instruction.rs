@@ -678,6 +678,24 @@ mod tests {
     }
 
     #[test]
+    fn build_from_parsed_tolerates_trailing_action_list_comma() {
+        let mut fields = valid_fields();
+        fields.insert(
+            ALLOWED_ACTIONS_FIELD.to_string(),
+            "[summarize,]".to_string(),
+        );
+        let parsed = parsed_agent_instruction(fields, BODY);
+        let mut diagnostics = Vec::new();
+
+        let ai = AgentInstruction::build_from_parsed(parsed, &mut diagnostics)
+            .expect("trailing comma is valid");
+
+        assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
+        assert_eq!(ai.action_set().allowed().len(), 1);
+        assert_eq!(ai.action_set().allowed()[0].as_str(), "summarize");
+    }
+
+    #[test]
     fn build_from_parsed_collects_multiple_errors() {
         // Both scope and trust are missing — both diagnostics are emitted.
         let parsed = parsed_agent_instruction(BTreeMap::new(), BODY);

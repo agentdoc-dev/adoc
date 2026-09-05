@@ -5,9 +5,18 @@ use serde::{Deserialize, Serialize};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::graph::{GraphIndex, GraphKnowledgeObjectNode, GraphRelationKind};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
-use crate::domain::knowledge_object::draft::{KnowledgeObjectDraft, validate_draft};
-use crate::domain::knowledge_object::{BlockKind, EVIDENCE_REF_FIELD, closed_schema_field_error};
+use crate::domain::knowledge_object::draft::{
+    KnowledgeObjectDraft, validate_draft, validate_existing_draft,
+};
+use crate::domain::knowledge_object::{
+    BlockKind, EVIDENCE_REF_FIELD, EVIDENCE_REF_LIST_HELP, IMPACTS_FIELD, IMPACTS_LIST_HELP,
+    closed_schema_field_error, is_allowed_field_key, is_relation_field, list_content_range,
+    list_items, list_segments, shared_field_value_error, trim_segment,
+};
 use crate::domain::obligation::ProofObligation;
+use crate::domain::source_edit::planner::{field_value_line_break_diagnostic, guard_body_lines};
+use crate::domain::value_objects::rel_path::RelPath;
+use crate::domain::values::trim_ascii_edges;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PatchDocument {
@@ -98,6 +107,8 @@ pub(crate) struct PatchProposer {
     pub(crate) id: String,
 }
 
+pub(crate) const AGENT_PROPOSER_TYPE: &str = "agent";
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PatchDiff {
     pub field: String,
@@ -153,7 +164,8 @@ struct PatchValidator<'a> {
 
 impl PatchValidator<'_> {
     fn validate(&mut self) -> PatchValidationReport {
-        self.validate_reason();
+        self.diagnostics
+            .extend(intrinsic_patch_diagnostics(&self.patch));
 
         let target = match ObjectId::new(self.patch.target.clone()) {
             Ok(target) => target,
@@ -215,18 +227,6 @@ impl PatchValidator<'_> {
         }
     }
 
-    fn validate_reason(&mut self) {
-        if self.patch.reason.trim().is_empty() {
-            self.diagnostics.push(
-                Diagnostic::error(
-                    DiagnosticCode::PatchInvalidDocument,
-                    "patch reason must be a non-empty string",
-                )
-                .with_help("Add a short review reason explaining why this patch is proposed."),
-            );
-        }
-    }
-
     fn validate_replace_body(&mut self, target: &ObjectId, base_hash: &str, body: &str) {
         let Some(object) = self.require_existing_target(target) else {
             return;
@@ -234,12 +234,17 @@ impl PatchValidator<'_> {
         if !self.require_matching_base_hash(&object, base_hash) {
             return;
         }
-        if body.trim().is_empty() {
-            self.diagnostics.push(validation_error(
-                target.as_str(),
-                "replace_body requires a non-empty changes.body value",
-            ));
+        if trim_ascii_edges(body).is_empty() {
             return;
+        }
+        if let Some(kind) = BlockKind::from_fence_word(&object.kind) {
+            for diagnostic in
+                prospective_draft_diagnostics(target, &object, kind, &BTreeMap::new(), body)
+            {
+                if !self.diagnostics.contains(&diagnostic) {
+                    self.diagnostics.push(diagnostic);
+                }
+            }
         }
         self.diffs.push(value_diff("body", &object.body, body));
         self.add_verified_claim_obligation_if_needed(
@@ -260,53 +265,60 @@ impl PatchValidator<'_> {
         if !self.require_matching_base_hash(&object, base_hash) {
             return;
         }
+        let Some(kind) = BlockKind::from_fence_word(&object.kind) else {
+            self.diagnostics.push(validation_error(
+                target.as_str(),
+                format!(
+                    "target kind `{}` is not a Knowledge Object kind; the artifact is \
+                     corrupt — run adoc build and re-propose",
+                    object.kind
+                ),
+            ));
+            return;
+        };
+        for diagnostic in
+            prospective_draft_diagnostics(target, &object, kind, &fields, &object.body)
+        {
+            if !self.diagnostics.contains(&diagnostic) {
+                self.diagnostics.push(diagnostic);
+            }
+        }
+        let agent_proposed_or_unattributed = self
+            .patch
+            .proposer
+            .as_ref()
+            .is_none_or(|proposer| proposer.proposer_type == AGENT_PROPOSER_TYPE);
         for (key, value) in fields {
-            if !is_valid_field_key(&key) {
-                self.diagnostics.push(validation_error(
-                    target.as_str(),
-                    format!("field key `{key}` is invalid"),
-                ));
+            if !is_valid_field_key(&key)
+                || is_update_structural_field(&key)
+                || is_relation_field(&key)
+                || !is_allowed_on_any_kind(&key)
+                || trim_ascii_edges(&value).is_empty()
+                || field_value_line_break_diagnostic(&key, &value).is_some()
+            {
                 continue;
             }
-            if is_relation_field(&key) {
+            if agent_proposed_or_unattributed && kind == BlockKind::Glossary && key == "status" {
                 self.diagnostics.push(validation_error(
                     target.as_str(),
-                    format!("field `{key}` is a relation field; use a relation operation"),
-                ));
-                continue;
-            }
-            if value.trim().is_empty() {
-                self.diagnostics.push(validation_error(
-                    target.as_str(),
-                    format!("field `{key}` requires a non-empty value"),
+                    "glossary `status` is metadata, not a reviewable lifecycle, and cannot satisfy an existing-object proposal update",
                 ));
                 continue;
             }
             // E1.1.T3 (ADR-0058): the target kind's closed schema binds the
             // patch surface too — an applied patch must never leave the
-            // working tree failing `adoc check`. Artifact kinds are
-            // build-produced, so an unparseable kind is a corrupt artifact
-            // and fails closed.
-            let Some(kind) = BlockKind::from_fence_word(&object.kind) else {
-                self.diagnostics.push(validation_error(
-                    target.as_str(),
-                    format!(
-                        "target kind `{}` is not a Knowledge Object kind; the artifact is \
-                         corrupt — run adoc build and re-propose",
-                        object.kind
-                    ),
-                ));
-                continue;
-            };
+            // working tree failing `adoc check`.
             if let Some(diagnostic) = closed_schema_field_error(kind, &key, &value) {
-                self.diagnostics
-                    .push(diagnostic.with_object_id(target.as_str()));
+                let diagnostic = diagnostic.with_object_id(target.as_str());
+                if !self.diagnostics.contains(&diagnostic) {
+                    self.diagnostics.push(diagnostic);
+                }
                 continue;
             }
             // V5.8 TB5: when the field being updated is `evidence_ref`, resolve
             // each comma-separated Object ID against the head graph artifact.
-            // On a parse failure we emit an existing validation error and skip
-            // the diff (hard error — the value is syntactically invalid).
+            // On a parse failure this graph-aware pass emits the validation
+            // error and skips the diff.
             // On a resolution failure (not found / wrong kind) we emit the
             // schema diagnostic AND still record the diff: the patch is a
             // proposal and the diff is part of the record even when the ref is
@@ -314,53 +326,20 @@ impl PatchValidator<'_> {
             // supersede path which records affected_relations even when targets
             // are stale, and keeps the diff stream consistent with what other
             // field updates produce.
-            if key == EVIDENCE_REF_FIELD {
-                let mut ref_parse_error = false;
-                for raw_segment in value.split(',') {
-                    let trimmed = raw_segment.trim();
-                    if trimmed.is_empty() {
-                        continue;
+            if key == EVIDENCE_REF_FIELD
+                && kind.resolves_evidence_refs()
+                && !self.validate_evidence_ref_targets(target, &value)
+            {
+                continue;
+            }
+            if key == IMPACTS_FIELD && kind.parses_impacts() {
+                let impacts_diagnostics = impacts_value_diagnostics(target.as_str(), &value);
+                if !impacts_diagnostics.is_empty() {
+                    for diagnostic in impacts_diagnostics {
+                        if !self.diagnostics.contains(&diagnostic) {
+                            self.diagnostics.push(diagnostic);
+                        }
                     }
-                    let ref_id = match ObjectId::new(trimmed.to_string()) {
-                        Ok(id) => id,
-                        Err(_) => {
-                            self.diagnostics
-                                .push(invalid_object_id_diagnostic(trimmed, "evidence_ref target"));
-                            ref_parse_error = true;
-                            continue;
-                        }
-                    };
-                    match self.graph.object(&ref_id) {
-                        None => {
-                            self.diagnostics.push(
-                                Diagnostic::error(
-                                    DiagnosticCode::SchemaEvidenceTargetNotFound,
-                                    format!(
-                                        "patch for `{target}` references unknown object `{ref_id}` in `evidence_ref`; no object with that id exists in the graph artifact",
-                                    ),
-                                )
-                                .with_object_id(target.as_str()),
-                            );
-                        }
-                        Some(node) if node.kind != "source" => {
-                            let actual_kind = node.kind.clone();
-                            self.diagnostics.push(
-                                Diagnostic::error(
-                                    DiagnosticCode::SchemaEvidenceTargetNotASource,
-                                    format!(
-                                        "patch for `{target}` references `{ref_id}` in `evidence_ref`, but that object is a `{actual_kind}`, not a `source`",
-                                    ),
-                                )
-                                .with_object_id(target.as_str()),
-                            );
-                        }
-                        Some(_) => {} // exists and is a source — OK
-                    }
-                }
-                // Only skip the diff if the value itself was syntactically
-                // invalid (unparseable IDs). Resolution failures still produce
-                // a diff because the proposal is recorded as-is.
-                if ref_parse_error {
                     continue;
                 }
             }
@@ -401,9 +380,14 @@ impl PatchValidator<'_> {
             body,
             fields: &fields,
         });
-        self.diagnostics.extend(draft_validation.diagnostics);
         for obligation in draft_validation.proof_obligations {
             self.add_proof_obligation(&obligation.object_id, &obligation.reason);
+        }
+        if BlockKind::from_fence_word(kind).is_some_and(BlockKind::resolves_evidence_refs)
+            && let Some(evidence_ref) = fields.get(EVIDENCE_REF_FIELD)
+            && field_value_line_break_diagnostic(EVIDENCE_REF_FIELD, evidence_ref).is_none()
+        {
+            self.validate_evidence_ref_targets(target, evidence_ref);
         }
         match placement {
             Some(placement) => self.validate_placement(target, placement),
@@ -438,6 +422,52 @@ impl PatchValidator<'_> {
                 "placement": placement_json,
             })),
         });
+    }
+
+    /// Resolve syntactically valid evidence references against the head graph.
+    /// The intrinsic pass owns create syntax diagnostics. Update patches do
+    /// not carry a kind, so this pass emits their syntax diagnostic once the
+    /// graph supplies the target kind.
+    fn validate_evidence_ref_targets(&mut self, target: &ObjectId, value: &str) -> bool {
+        let syntax_diagnostics = evidence_ref_syntax_diagnostics(target.as_str(), value);
+        if !syntax_diagnostics.is_empty() {
+            for diagnostic in syntax_diagnostics {
+                if !self.diagnostics.contains(&diagnostic) {
+                    self.diagnostics.push(diagnostic);
+                }
+            }
+            return false;
+        }
+        for reference in evidence_ref_segments(value) {
+            let Ok(ref_id) = ObjectId::new(reference.to_string()) else {
+                return false;
+            };
+            match self.graph.object(&ref_id) {
+                None => self.diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode::SchemaEvidenceTargetNotFound,
+                        format!(
+                            "patch for `{target}` references unknown object `{ref_id}` in `evidence_ref`; no object with that id exists in the graph artifact",
+                        ),
+                    )
+                    .with_object_id(target.as_str()),
+                ),
+                Some(node) if node.kind != "source" => {
+                    let actual_kind = node.kind.clone();
+                    self.diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode::SchemaEvidenceTargetNotASource,
+                            format!(
+                                "patch for `{target}` references `{ref_id}` in `evidence_ref`, but that object is a `{actual_kind}`, not a `source`",
+                            ),
+                        )
+                        .with_object_id(target.as_str()),
+                    );
+                }
+                Some(_) => {}
+            }
+        }
+        true
     }
 
     fn validate_supersede(&mut self, target: &ObjectId, base_hash: &str, supersedes: Vec<String>) {
@@ -549,6 +579,10 @@ impl PatchValidator<'_> {
     }
 
     fn validate_placement(&mut self, target: &ObjectId, placement: &PlacementHint) {
+        // The mandatory intrinsic pass already reports page ID syntax errors.
+        if ObjectId::new(placement.page_id.clone()).is_err() {
+            return;
+        }
         if !self.graph.page_exists(&placement.page_id) {
             self.diagnostics.push(
                 Diagnostic::error(
@@ -562,15 +596,9 @@ impl PatchValidator<'_> {
         let Some(after) = placement.after.as_ref() else {
             return;
         };
-        let after_id = match ObjectId::new(after.clone()) {
-            Ok(id) => id,
-            Err(_) => {
-                self.diagnostics.push(invalid_object_id_diagnostic(
-                    after,
-                    "placement after target",
-                ));
-                return;
-            }
+        // The mandatory intrinsic pass already reports anchor syntax errors.
+        let Ok(after_id) = ObjectId::new(after.clone()) else {
+            return;
         };
         match self.graph.object_page_id(&after_id) {
             Some(page_id) if page_id == placement.page_id => {}
@@ -622,6 +650,137 @@ impl PatchValidator<'_> {
     }
 }
 
+/// Rules that depend only on the patch bytes, shared by graph validation and
+/// proposal-record construction so a recorded patch is never intrinsically
+/// unapplyable.
+pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+    // Patch reason is proposal metadata, not a source value object. Keep its
+    // intentionally stricter Unicode-whitespace blank check.
+    if patch.reason.trim().is_empty() {
+        diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::PatchInvalidDocument,
+                "patch reason must be a non-empty string",
+            )
+            .with_help("Add a short review reason explaining why this patch is proposed."),
+        );
+    }
+    match &patch.intent {
+        PatchIntent::ReplaceBody { body, .. } => {
+            if trim_ascii_edges(body).is_empty() {
+                diagnostics.push(validation_error(
+                    &patch.target,
+                    "replace_body requires a non-empty changes.body value",
+                ));
+            } else {
+                diagnostics.extend(
+                    guard_body_lines(body)
+                        .into_iter()
+                        .map(|diagnostic| diagnostic.with_object_id(&patch.target)),
+                );
+            }
+        }
+        PatchIntent::UpdateFields { fields, .. } => {
+            // evidence_ref syntax is target-kind-specific. update_fields does
+            // not carry the kind, so the graph-aware pass owns that check.
+            for (key, value) in fields {
+                let message = if !is_valid_field_key(key) {
+                    Some(format!("field key `{key}` is invalid"))
+                } else if is_update_structural_field(key) {
+                    Some(format!("field `{key}` is structural"))
+                } else if is_relation_field(key) {
+                    Some(format!(
+                        "field `{key}` is a relation field; use a relation operation"
+                    ))
+                } else if !is_allowed_on_any_kind(key) {
+                    diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode::SchemaUnknownField,
+                            format!(
+                                "unknown field `{key}`; it is not valid for any Knowledge Object kind"
+                            ),
+                        )
+                        .with_object_id(&patch.target)
+                        .with_help(DiagnosticCode::SchemaUnknownField.default_help()),
+                    );
+                    continue;
+                } else if trim_ascii_edges(value).is_empty() {
+                    Some(format!("field `{key}` requires a non-empty value"))
+                } else if let Some(diagnostic) = field_value_line_break_diagnostic(key, value) {
+                    diagnostics.push(diagnostic.with_object_id(&patch.target));
+                    continue;
+                } else {
+                    None
+                };
+                if let Some(message) = message {
+                    diagnostics.push(validation_error(&patch.target, message));
+                } else if let Some(diagnostic) = shared_field_value_error(key, value) {
+                    diagnostics.push(diagnostic.with_object_id(&patch.target));
+                }
+            }
+        }
+        PatchIntent::CreateObject {
+            kind,
+            status,
+            body,
+            fields,
+            placement,
+        } => {
+            if let Some(placement) = placement {
+                if ObjectId::new(placement.page_id.clone()).is_err() {
+                    diagnostics.push(invalid_object_id_diagnostic(
+                        &placement.page_id,
+                        "placement page_id",
+                    ));
+                }
+                if let Some(after) = &placement.after
+                    && ObjectId::new(after.clone()).is_err()
+                {
+                    diagnostics.push(invalid_object_id_diagnostic(
+                        after,
+                        "placement after target",
+                    ));
+                }
+            }
+            if let Ok(target) = ObjectId::new(patch.target.clone()) {
+                diagnostics.extend(
+                    validate_draft(KnowledgeObjectDraft {
+                        id: &target,
+                        kind,
+                        status: status.as_deref(),
+                        body,
+                        fields,
+                    })
+                    .diagnostics,
+                );
+            }
+            if !trim_ascii_edges(body).is_empty() {
+                diagnostics.extend(
+                    guard_body_lines(body)
+                        .into_iter()
+                        .map(|diagnostic| diagnostic.with_object_id(&patch.target)),
+                );
+            }
+            if let Some(value) = fields.get(EVIDENCE_REF_FIELD)
+                && BlockKind::from_fence_word(kind).is_some_and(BlockKind::resolves_evidence_refs)
+                && field_value_line_break_diagnostic(EVIDENCE_REF_FIELD, value).is_none()
+            {
+                diagnostics.extend(evidence_ref_syntax_diagnostics(&patch.target, value));
+            }
+            if let Some(value) = fields.get(IMPACTS_FIELD)
+                && BlockKind::from_fence_word(kind).is_some_and(BlockKind::parses_impacts)
+                && !trim_ascii_edges(value).is_empty()
+                && field_value_line_break_diagnostic(IMPACTS_FIELD, value).is_none()
+            {
+                diagnostics.extend(impacts_value_diagnostics(&patch.target, value));
+            }
+        }
+        _ => {}
+    }
+    diagnostics
+}
+
 fn value_diff(field: impl Into<String>, old: &str, new: &str) -> PatchDiff {
     option_value_diff(field.into(), Some(old.to_string()), Some(new.to_string()))
 }
@@ -645,10 +804,176 @@ fn is_valid_field_key(key: &str) -> bool {
         })
 }
 
-fn is_relation_field(key: &str) -> bool {
-    GraphRelationKind::ALL
+fn is_update_structural_field(key: &str) -> bool {
+    // These are outside every kind's field schema too; this predicate selects
+    // the more specific structural-field diagnostic. `kind` is ordinary
+    // authored metadata on source objects and is validated graph-aware.
+    matches!(key, "id" | "body" | "placement")
+}
+
+fn is_allowed_on_any_kind(key: &str) -> bool {
+    BlockKind::ALL
         .iter()
-        .any(|relation| relation.as_str() == key)
+        .any(|kind| is_allowed_field_key(*kind, key))
+}
+
+fn prospective_draft_diagnostics(
+    target: &ObjectId,
+    object: &GraphKnowledgeObjectNode,
+    kind: BlockKind,
+    changes: &BTreeMap<String, String>,
+    body: &str,
+) -> Vec<Diagnostic> {
+    let mut fields = object.fields.clone();
+    if let Some(severity) = &object.severity {
+        fields.insert("severity".to_string(), severity.clone());
+    }
+    if let Some(trust) = &object.trust {
+        fields.insert("trust".to_string(), trust.clone());
+    }
+    if kind == BlockKind::Procedure
+        && let Some(value) = object
+            .evidence
+            .iter()
+            .find_map(|evidence| evidence.value.as_ref())
+    {
+        // Procedure verification treats its three inline carriers equally, so
+        // one projected value can stand in as `source`. Object references have
+        // no value and intentionally do not satisfy this aggregate invariant.
+        fields.insert("source".to_string(), value.clone());
+    }
+    for (key, values) in [
+        ("approved_by", &object.approved_by),
+        ("allowed_actions", &object.allowed_actions),
+        ("forbidden_actions", &object.forbidden_actions),
+        ("claims", &object.contradiction_claims),
+    ] {
+        if !values.is_empty() {
+            fields.insert(key.to_string(), values.join(", "));
+        }
+    }
+    for (key, value) in changes {
+        if key != "status"
+            && is_valid_field_key(key)
+            && !is_relation_field(key)
+            && is_allowed_field_key(kind, key)
+            && !trim_ascii_edges(value).is_empty()
+            && field_value_line_break_diagnostic(key, value).is_none()
+        {
+            fields.insert(key.clone(), value.clone());
+        }
+    }
+    let changed_status = |key| {
+        changes.get(key).filter(|value| {
+            !trim_ascii_edges(value).is_empty()
+                && field_value_line_break_diagnostic(key, value).is_none()
+        })
+    };
+    let status = if kind == BlockKind::Glossary || !is_allowed_field_key(kind, "status") {
+        // Glossary `status` is an ordinary field; the other branches have no
+        // status key. Their prospective metadata is already carried by fields.
+        None
+    } else {
+        changed_status("status")
+            .or(object.status.as_ref())
+            .map(String::as_str)
+    };
+    validate_existing_draft(KnowledgeObjectDraft {
+        id: target,
+        kind: &object.kind,
+        status,
+        body,
+        fields: &fields,
+    })
+}
+
+fn evidence_ref_segments(value: &str) -> Vec<&str> {
+    // Syntax validation runs first, so lossless authored-list semantics are
+    // shared with the aggregate/source parser here.
+    list_items(value).unwrap_or_default()
+}
+
+fn evidence_ref_syntax_diagnostics(object_id: &str, value: &str) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+    let Ok(range) = list_content_range(value) else {
+        return vec![
+            Diagnostic::error(
+                DiagnosticCode::IdInvalid,
+                "evidence_ref has a malformed bracket-list value",
+            )
+            .with_object_id(object_id)
+            .with_help(EVIDENCE_REF_LIST_HELP),
+        ];
+    };
+    for (start, end, is_last) in list_segments(value, range) {
+        match trim_segment(&value[start..end]) {
+            None if !is_last => diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode::IdInvalid,
+                    "evidence_ref contains an empty Object ID segment",
+                )
+                .with_object_id(object_id)
+                .with_help(OBJECT_ID_GRAMMAR_HELP),
+            ),
+            Some((target, _, _)) if ObjectId::new(target.to_string()).is_err() => {
+                diagnostics.push(invalid_object_id_diagnostic(target, "evidence_ref target"));
+            }
+            None | Some(_) => {}
+        }
+    }
+    diagnostics
+}
+
+fn impacts_value_diagnostics(object_id: &str, value: &str) -> Vec<Diagnostic> {
+    let Ok(range) = list_content_range(value) else {
+        return vec![
+            Diagnostic::error(
+                DiagnosticCode::IdInvalid,
+                "impacts has a malformed bracket-list value",
+            )
+            .with_object_id(object_id)
+            .with_help(IMPACTS_LIST_HELP),
+        ];
+    };
+    let mut diagnostics = Vec::new();
+    let mut has_path = false;
+    for (start, end, is_last) in list_segments(value, range) {
+        match trim_segment(&value[start..end]) {
+            None if !is_last => diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode::SchemaImpactsInvalidPath,
+                    "impacts contains an empty path segment",
+                )
+                .with_object_id(object_id)
+                .with_help(DiagnosticCode::SchemaImpactsInvalidPath.default_help()),
+            ),
+            Some((path, _, _)) => {
+                has_path = true;
+                if let Err(error) = RelPath::try_new(path) {
+                    diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode::SchemaImpactsInvalidPath,
+                            format!("invalid `impacts` path `{path}`: {error}"),
+                        )
+                        .with_object_id(object_id)
+                        .with_help(DiagnosticCode::SchemaImpactsInvalidPath.default_help()),
+                    );
+                }
+            }
+            None => {}
+        }
+    }
+    if !has_path && diagnostics.is_empty() {
+        diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::SchemaImpactsEmpty,
+                "impacts requires at least one repository-relative path",
+            )
+            .with_object_id(object_id)
+            .with_help(DiagnosticCode::SchemaImpactsEmpty.default_help()),
+        );
+    }
+    diagnostics
 }
 
 fn validation_error(object_id: &str, message: impl Into<String>) -> Diagnostic {
@@ -765,6 +1090,28 @@ mod tests {
             effective_reason: None,
             evidence_quality: None,
         }
+    }
+
+    #[test]
+    fn prospective_glossary_update_runs_common_field_validation() {
+        let mut glossary = object("billing.term", "draft");
+        glossary.kind = "glossary".to_string();
+        glossary.status = None;
+        glossary
+            .fields
+            .insert("unsupported".to_string(), "value".to_string());
+        let target = ObjectId::new(glossary.id.clone()).expect("valid object id");
+
+        let diagnostics = prospective_draft_diagnostics(
+            &target,
+            &glossary,
+            BlockKind::Glossary,
+            &BTreeMap::new(),
+            &glossary.body,
+        );
+
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::SchemaUnknownField);
     }
 
     fn patch(intent: PatchIntent) -> PatchDocument {
@@ -1137,6 +1484,46 @@ mod tests {
         assert_eq!(
             report.diffs[0].new,
             Some(serde_json::Value::String("billing-team".to_string()))
+        );
+    }
+
+    #[test]
+    fn intrinsic_impacts_diagnostics_include_remediation() {
+        for (value, code, help) in [
+            (
+                "../outside",
+                DiagnosticCode::SchemaImpactsInvalidPath,
+                DiagnosticCode::SchemaImpactsInvalidPath.default_help(),
+            ),
+            (
+                "[]",
+                DiagnosticCode::SchemaImpactsEmpty,
+                DiagnosticCode::SchemaImpactsEmpty.default_help(),
+            ),
+            ("[docs/a.rs", DiagnosticCode::IdInvalid, IMPACTS_LIST_HELP),
+        ] {
+            let diagnostics = impacts_value_diagnostics("billing.credits", value);
+
+            assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+            assert_eq!(diagnostics[0].code, code);
+            assert_eq!(diagnostics[0].help.as_deref(), Some(help));
+        }
+
+        assert!(
+            impacts_value_diagnostics("billing.credits", "[\u{a0}/tmp]").is_empty(),
+            "patch validation uses the source parser's ASCII-only edge trimming"
+        );
+    }
+
+    #[test]
+    fn malformed_evidence_ref_uses_object_list_remediation() {
+        let diagnostics = evidence_ref_syntax_diagnostics("billing.credits", "[source.one");
+
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::IdInvalid);
+        assert_eq!(
+            diagnostics[0].help.as_deref(),
+            Some("Use `[source.one, source.two]` or one Object ID for evidence_ref.")
         );
     }
 }

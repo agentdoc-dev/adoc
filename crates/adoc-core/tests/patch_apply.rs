@@ -27,6 +27,147 @@ Original body line.
 Trailing prose stays byte-identical.
 ";
 
+const TASK_PAGE_TEXT: &str = "\
+# Billing
+
+::task billing.follow-up
+owner: support-ops
+status: open
+due: 2099-01-01
+--
+Update the support runbook.
+::
+";
+
+const GLOSSARY_PAGE_TEXT: &str = "\
+# Billing
+
+::glossary billing.credit-term
+status: legacy
+--
+A unit of billing value.
+::
+";
+
+const API_PAGE_TEXT: &str = "\
+# Billing
+
+::api billing.credits-api
+status: draft
+method: GET
+path: /credits
+--
+Returns billing credits.
+::
+";
+
+const ANSWERED_QUESTION_PAGE_TEXT: &str = "\
+# Billing
+
+::claim billing.answer
+status: draft
+--
+The answer.
+::
+
+::question billing.question
+status: answered
+resolved_by: billing.answer
+--
+What is the answer?
+::
+";
+
+const EXTENDED_KINDS_PAGE_TEXT: &str = "\
+# Billing
+
+::claim billing.claim-a
+status: contradicted
+--
+Claim A.
+::
+
+::claim billing.claim-b
+status: contradicted
+--
+Claim B.
+::
+
+::policy billing.retention
+status: active
+owner: security-lead
+approved_by: security-lead
+effective_at: 2026-04-01
+--
+Customer data is retained for no more than 365 days.
+::
+
+::constraint billing.no-local-storage
+severity: critical
+--
+Session tokens must not be stored in localStorage.
+::
+
+::procedure billing.rotate-key
+status: draft
+--
+1. Rotate the key.
+::
+
+::example billing.client-example
+status: draft
+lang: rust
+--
+fn main() {}
+::
+
+::agent_instruction billing.agent-scope
+scope: docs/billing/*
+trust: team
+allowed_actions: [summarize, cite]
+forbidden_actions: [execute_shell]
+--
+Summarize billing docs without executing commands.
+::
+
+::contradiction billing.claim-conflict
+severity: high
+status: unresolved
+claims: [billing.claim-a, billing.claim-b]
+--
+The two claims conflict.
+::
+
+::source billing.source-code
+kind: source_code
+path: src/lib.rs
+--
+The billing implementation.
+::
+";
+
+const VERIFIED_PROCEDURES_PAGE_TEXT: &str = "\
+# Billing
+
+::procedure billing.source-verified
+status: verified
+owner: billing
+verified_at: 2026-09-02
+source: src/keys.rs
+--
+1. Rotate the source-backed key.
+::
+
+::procedure billing.review-verified
+status: verified
+owner: billing
+verified_at: 2026-09-02
+human_review: security-review
+--
+1. Rotate the reviewed key.
+::
+";
+
 struct Workspace {
     root: tempfile::TempDir,
 }
@@ -139,6 +280,60 @@ fn apply_rewrites_exactly_the_body_span_byte_for_byte() {
     let written = fs::read(workspace.page_path()).expect("read written page");
     let expected = PAGE_TEXT.replace("Original body line.", "Rewritten body.");
     assert_eq!(written, expected.as_bytes(), "byte-exact golden mismatch");
+}
+
+#[test]
+fn apply_accepts_unicode_whitespace_body() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+    let base_hash = workspace.content_hash(&artifact, "billing.credits");
+
+    let result = workspace.apply(&artifact, replace_body_patch(&base_hash, "\u{a0}"));
+
+    assert!(result.applied, "diagnostics: {:?}", result.diagnostics);
+    assert_eq!(
+        result.post_check.error_count, 0,
+        "post-check diagnostics: {:?}",
+        result.post_check.diagnostics
+    );
+    assert_eq!(
+        fs::read_to_string(workspace.page_path()).expect("read written page"),
+        PAGE_TEXT.replace("Original body line.", "\u{a0}")
+    );
+}
+
+#[test]
+fn apply_preserves_unicode_whitespace_field_value() {
+    for (source, target) in [
+        (PAGE_TEXT, "billing.credits"),
+        (TASK_PAGE_TEXT, "billing.follow-up"),
+    ] {
+        let workspace = Workspace::new(source);
+        let artifact = workspace.build();
+        let result = workspace.apply(
+            &artifact,
+            serde_json::json!({
+                "schema_version": "adoc.patch.v0",
+                "op": "update_fields",
+                "target": target,
+                "base_hash": workspace.content_hash(&artifact, target),
+                "changes": { "fields": { "owner": "\u{a0}" } },
+                "reason": "E5.1 source field round-trip regression"
+            }),
+        );
+
+        assert!(result.applied, "diagnostics: {:?}", result.diagnostics);
+        assert_eq!(
+            result.post_check.error_count, 0,
+            "post-check diagnostics: {:?}",
+            result.post_check.diagnostics
+        );
+        let rebuilt = workspace.build();
+        assert_eq!(
+            workspace.node(&rebuilt, target)["fields"]["owner"],
+            "\u{a0}"
+        );
+    }
 }
 
 #[test]
@@ -263,18 +458,275 @@ fn apply_refuses_update_fields_outside_the_kind_closed_schema() {
 
     assert!(!result.applied);
     assert!(result.written_files.is_empty());
-    assert!(
-        result
-            .diagnostics
-            .iter()
-            .any(|d| d.code == DiagnosticCode::SchemaUnknownField),
-        "diagnostics: {:?}",
-        result.diagnostics
+    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::SchemaUnknownField
     );
     assert_eq!(
         fs::read_to_string(workspace.page_path()).expect("read"),
         PAGE_TEXT,
         "refusal writes nothing"
+    );
+}
+
+#[test]
+fn apply_reports_multiline_update_visibility_once() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+    let base_hash = workspace.content_hash(&artifact, "billing.credits");
+
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": "billing.credits",
+            "base_hash": base_hash,
+            "changes": { "fields": { "visibility": "public\nprivate" } },
+            "reason": "E5.1 intrinsic multiline-field ownership"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::PatchValidationFailed
+    );
+}
+
+#[test]
+fn apply_refuses_kind_specific_invalid_update_values() {
+    let workspace = Workspace::new(TASK_PAGE_TEXT);
+    let artifact = workspace.build();
+    let base_hash = workspace.content_hash(&artifact, "billing.follow-up");
+
+    for (fields, message) in [
+        (
+            serde_json::json!({ "status": "open", "due": "not-a-date" }),
+            "invalid due",
+        ),
+        (serde_json::json!({ "status": "blocked" }), "invalid status"),
+    ] {
+        let result = workspace.apply(
+            &artifact,
+            serde_json::json!({
+                "schema_version": "adoc.patch.v0",
+                "op": "update_fields",
+                "target": "billing.follow-up",
+                "base_hash": base_hash,
+                "changes": { "fields": fields },
+                "reason": "E5.1 kind-specific update validation"
+            }),
+        );
+
+        assert!(!result.applied);
+        assert!(result.written_files.is_empty());
+        assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+        assert_eq!(
+            result.diagnostics[0].code,
+            DiagnosticCode::PatchValidationFailed
+        );
+        assert!(
+            result.diagnostics[0].message.contains(message),
+            "{:?}",
+            result.diagnostics
+        );
+    }
+}
+
+#[test]
+fn apply_refuses_reviewable_status_that_would_orphan_an_existing_field() {
+    let workspace = Workspace::new(ANSWERED_QUESTION_PAGE_TEXT);
+    let artifact = workspace.build();
+    let base_hash = workspace.content_hash(&artifact, "billing.question");
+
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": "billing.question",
+            "base_hash": base_hash,
+            "changes": { "fields": { "status": "open" } },
+            "reason": "E5.1 prospective-state validity boundary"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert!(result.written_files.is_empty());
+    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::PatchValidationFailed
+    );
+    assert!(
+        result.diagnostics[0]
+            .message
+            .contains("fields.resolved_by requires `status: answered`"),
+        "{:?}",
+        result.diagnostics
+    );
+    assert_eq!(
+        fs::read_to_string(workspace.page_path()).expect("read"),
+        ANSWERED_QUESTION_PAGE_TEXT,
+        "an unrepresentable valid state writes nothing"
+    );
+}
+
+#[test]
+fn apply_refuses_api_representation_switch_without_field_removal() {
+    let workspace = Workspace::new(API_PAGE_TEXT);
+    let artifact = workspace.build();
+    let base_hash = workspace.content_hash(&artifact, "billing.credits-api");
+
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": "billing.credits-api",
+            "base_hash": base_hash,
+            "changes": {
+                "fields": { "status": "draft", "symbol": "billing::credits" }
+            },
+            "reason": "E5.1 insert-only API representation boundary"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert!(result.written_files.is_empty());
+    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::PatchValidationFailed
+    );
+    assert!(
+        result.diagnostics[0]
+            .message
+            .contains("api provides both `path` and `symbol`"),
+        "{:?}",
+        result.diagnostics
+    );
+    assert_eq!(
+        fs::read_to_string(workspace.page_path()).expect("read"),
+        API_PAGE_TEXT,
+        "an unrepresentable API switch writes nothing"
+    );
+}
+
+#[test]
+fn apply_refuses_invalid_values_for_every_supported_kind_family() {
+    let workspace = Workspace::new(EXTENDED_KINDS_PAGE_TEXT);
+    let artifact = workspace.build();
+    for (target, field, value, message) in [
+        (
+            "billing.retention",
+            "status",
+            "totally-bogus",
+            "invalid status",
+        ),
+        (
+            "billing.no-local-storage",
+            "severity",
+            "catastrophic",
+            "invalid severity",
+        ),
+        (
+            "billing.rotate-key",
+            "status",
+            "totally-bogus",
+            "invalid status",
+        ),
+        (
+            "billing.rotate-key",
+            "status",
+            "verified",
+            "verified procedure requires fields.owner, fields.verified_at, and evidence",
+        ),
+        (
+            "billing.client-example",
+            "status",
+            "totally-bogus",
+            "invalid status",
+        ),
+        (
+            "billing.agent-scope",
+            "trust",
+            "totally-bogus",
+            "invalid trust",
+        ),
+        (
+            "billing.claim-conflict",
+            "status",
+            "totally-bogus",
+            "invalid status",
+        ),
+        (
+            "billing.source-code",
+            "path",
+            "/absolute/path",
+            "invalid path",
+        ),
+    ] {
+        let base_hash = workspace.content_hash(&artifact, target);
+        let result = workspace.apply(
+            &artifact,
+            serde_json::json!({
+                "schema_version": "adoc.patch.v0",
+                "op": "update_fields",
+                "target": target,
+                "base_hash": base_hash,
+                "changes": { "fields": { field: value } },
+                "reason": "E5.1 complete target-kind value validation"
+            }),
+        );
+
+        assert!(!result.applied, "diagnostics: {:?}", result.diagnostics);
+        assert!(result.written_files.is_empty());
+        assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+        assert_eq!(
+            result.diagnostics[0].code,
+            DiagnosticCode::PatchValidationFailed
+        );
+        assert!(
+            result.diagnostics[0].message.contains(message),
+            "{:?}",
+            result.diagnostics
+        );
+        assert_eq!(
+            fs::read_to_string(workspace.page_path()).expect("read"),
+            EXTENDED_KINDS_PAGE_TEXT,
+            "invalid target-kind value writes nothing"
+        );
+    }
+}
+
+#[test]
+fn apply_reports_field_from_another_kind_schema_once() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+    let base_hash = workspace.content_hash(&artifact, "billing.credits");
+
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": "billing.credits",
+            "base_hash": base_hash,
+            "changes": { "fields": { "severity": "high" } },
+            "reason": "E5.1 target-kind closed-schema validation"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert!(result.written_files.is_empty());
+    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::SchemaUnknownField
     );
 }
 
@@ -300,11 +752,13 @@ fn apply_refuses_invalid_visibility_value_in_update_fields() {
 
     assert!(!result.applied);
     assert!(result.written_files.is_empty());
-    assert!(
+    assert_eq!(
         result
             .diagnostics
             .iter()
-            .any(|d| d.code == DiagnosticCode::SchemaVisibilityInvalid),
+            .filter(|d| d.code == DiagnosticCode::SchemaVisibilityInvalid)
+            .count(),
+        1,
         "diagnostics: {:?}",
         result.diagnostics
     );
@@ -312,6 +766,316 @@ fn apply_refuses_invalid_visibility_value_in_update_fields() {
         fs::read_to_string(workspace.page_path()).expect("read"),
         PAGE_TEXT,
         "refusal writes nothing"
+    );
+}
+
+#[test]
+fn apply_reports_structural_update_field_once() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+    let base_hash = workspace.content_hash(&artifact, "billing.credits");
+
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": "billing.credits",
+            "base_hash": base_hash,
+            "changes": { "fields": { "body": "Replacement" } },
+            "reason": "E5.1 intrinsic structural-field validation"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert!(result.written_files.is_empty());
+    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::PatchValidationFailed
+    );
+}
+
+#[test]
+fn source_kind_is_an_ordinary_field_other_kinds_reject_it() {
+    let workspace = Workspace::new(EXTENDED_KINDS_PAGE_TEXT);
+    let artifact = workspace.build();
+    let base_hash = workspace.content_hash(&artifact, "billing.source-code");
+
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": "billing.source-code",
+            "base_hash": base_hash,
+            "changes": { "fields": { "kind": "test" } },
+            "reason": "Correct the source evidence kind"
+        }),
+    );
+
+    assert!(result.applied, "diagnostics: {:?}", result.diagnostics);
+    assert!(result.diagnostics.is_empty());
+    let updated = fs::read_to_string(workspace.page_path()).expect("read updated source");
+    assert!(updated.contains("::source billing.source-code\nkind: test\npath: src/lib.rs"));
+
+    let incompatible = Workspace::new(EXTENDED_KINDS_PAGE_TEXT);
+    let artifact = incompatible.build();
+    let result = incompatible.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": "billing.source-code",
+            "base_hash": incompatible.content_hash(&artifact, "billing.source-code"),
+            "changes": { "fields": { "kind": "external_url" } },
+            "reason": "Exercise source kind target validation"
+        }),
+    );
+    assert!(!result.applied);
+    assert!(result.written_files.is_empty());
+    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::PatchValidationFailed
+    );
+    assert!(
+        result.diagnostics[0]
+            .message
+            .contains("kind does not allow fields.path"),
+        "{:?}",
+        result.diagnostics
+    );
+
+    let claim = Workspace::new(PAGE_TEXT);
+    let artifact = claim.build();
+    let result = claim.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": "billing.credits",
+            "base_hash": claim.content_hash(&artifact, "billing.credits"),
+            "changes": { "fields": { "kind": "test" } },
+            "reason": "Object kinds remain immutable"
+        }),
+    );
+    assert!(!result.applied);
+    assert!(result.written_files.is_empty());
+    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::SchemaUnknownField
+    );
+}
+
+#[test]
+fn apply_reports_invalid_evidence_refs_once() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+    let base_hash = workspace.content_hash(&artifact, "billing.credits");
+
+    for evidence_ref in [
+        "not-an-object-id",
+        "source.one,,source.two",
+        "\u{a0}source.one\u{a0}",
+    ] {
+        let result = workspace.apply(
+            &artifact,
+            serde_json::json!({
+                "schema_version": "adoc.patch.v0",
+                "op": "update_fields",
+                "target": "billing.credits",
+                "base_hash": base_hash,
+                "changes": { "fields": { "evidence_ref": evidence_ref } },
+                "reason": "E5.1 intrinsic evidence-reference validation"
+            }),
+        );
+
+        assert!(!result.applied);
+        assert!(result.written_files.is_empty());
+        assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+        assert_eq!(result.diagnostics[0].code, DiagnosticCode::IdInvalid);
+    }
+}
+
+#[test]
+fn apply_reports_multiline_create_evidence_ref_once() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+    let page_id = workspace.node(&artifact, "billing.credits")["page_id"]
+        .as_str()
+        .expect("page_id")
+        .to_string();
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "create_object",
+            "target": "billing.multiline-evidence",
+            "changes": {
+                "kind": "claim",
+                "status": "draft",
+                "body": "Multiline evidence metadata is rejected once.",
+                "fields": { "evidence_ref": "source.one\nsource.two" },
+                "placement": { "page_id": page_id, "after": "billing.credits" }
+            },
+            "reason": "E5.1 create evidence diagnostic ownership"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert!(result.written_files.is_empty());
+    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::PatchValidationFailed
+    );
+    assert_eq!(
+        fs::read_to_string(workspace.page_path()).expect("read"),
+        PAGE_TEXT
+    );
+}
+
+#[test]
+fn apply_resolves_each_bracketed_evidence_ref() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+    let base_hash = workspace.content_hash(&artifact, "billing.credits");
+
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": "billing.credits",
+            "base_hash": base_hash,
+            "changes": {
+                "fields": { "evidence_ref": "[source.one, source.two]" }
+            },
+            "reason": "E5.1 source-compatible bracketed evidence references"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| {
+                diagnostic.code == DiagnosticCode::SchemaEvidenceTargetNotFound
+            })
+            .count(),
+        2,
+        "diagnostics: {:?}",
+        result.diagnostics
+    );
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.code != DiagnosticCode::IdInvalid),
+        "diagnostics: {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
+fn apply_reports_unknown_create_kind_before_evidence_validation() {
+    for evidence_ref in ["not-an-object-id", "billing.missing-source"] {
+        let workspace = Workspace::new(PAGE_TEXT);
+        let artifact = workspace.build();
+        let page_id = workspace.node(&artifact, "billing.credits")["page_id"]
+            .as_str()
+            .expect("anchor page_id")
+            .to_string();
+
+        let result = workspace.apply(
+            &artifact,
+            serde_json::json!({
+                "schema_version": "adoc.patch.v0",
+                "op": "create_object",
+                "target": "billing.unknown-kind",
+                "changes": {
+                    "kind": "unknown",
+                    "body": "Unknown kinds fail before their field contents.",
+                    "fields": { "evidence_ref": evidence_ref },
+                    "placement": { "page_id": page_id, "after": "billing.credits" }
+                },
+                "reason": "E5.1 create diagnostic ownership"
+            }),
+        );
+
+        assert!(!result.applied);
+        assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+        assert_eq!(
+            result.diagnostics[0].code,
+            DiagnosticCode::PatchValidationFailed
+        );
+    }
+}
+
+#[test]
+fn apply_reports_invalid_create_page_once() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "create_object",
+            "target": "billing.ledger-claim",
+            "changes": {
+                "kind": "claim",
+                "status": "draft",
+                "body": "Ledger commits settle credits.",
+                "placement": { "page_id": "billing" }
+            },
+            "reason": "E5.1 intrinsic placement validation"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+    assert_eq!(result.diagnostics[0].code, DiagnosticCode::IdInvalid);
+}
+
+#[test]
+fn apply_reports_invalid_create_anchor_once() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+    let page_id = workspace.node(&artifact, "billing.credits")["page_id"]
+        .as_str()
+        .expect("anchor page_id")
+        .to_string();
+
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "create_object",
+            "target": "billing.ledger-claim",
+            "changes": {
+                "kind": "claim",
+                "status": "draft",
+                "body": "Ledger commits settle credits.",
+                "placement": { "page_id": page_id, "after": "not-an-object-id" }
+            },
+            "reason": "E5.1 intrinsic placement validation"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::IdInvalid)
+            .count(),
+        1,
+        "diagnostics: {:?}",
+        result.diagnostics
     );
 }
 
@@ -357,6 +1121,474 @@ fn apply_refuses_create_object_field_outside_the_kind_closed_schema() {
         fs::read_to_string(workspace.page_path()).expect("read"),
         PAGE_TEXT,
         "refusal writes nothing"
+    );
+}
+
+#[test]
+fn apply_refuses_invalid_extended_kind_create_invariants() {
+    for (target, changes, message) in [
+        (
+            "billing.missing-example-language",
+            serde_json::json!({
+                "kind": "example",
+                "status": "draft",
+                "body": "fn main() {}"
+            }),
+            "requires fields.lang or fields.format",
+        ),
+        (
+            "billing.unordered-procedure",
+            serde_json::json!({
+                "kind": "procedure",
+                "status": "draft",
+                "body": "Rotate the key without an ordered step."
+            }),
+            "ordered list",
+        ),
+        (
+            "billing.unverified-procedure",
+            serde_json::json!({
+                "kind": "procedure",
+                "status": "verified",
+                "body": "1. Rotate the key."
+            }),
+            "verified procedure requires fields.owner, fields.verified_at, and evidence",
+        ),
+        (
+            "billing.warning-status",
+            serde_json::json!({
+                "kind": "warning",
+                "status": "draft",
+                "body": "Warn about an unsupported structural status.",
+                "fields": { "severity": "critical" }
+            }),
+            "must not set changes.status",
+        ),
+        (
+            "billing.constraint-status",
+            serde_json::json!({
+                "kind": "constraint",
+                "status": "draft",
+                "body": "Constrain an unsupported structural status.",
+                "fields": { "severity": "critical" }
+            }),
+            "must not set changes.status",
+        ),
+        (
+            "billing.instruction-status",
+            serde_json::json!({
+                "kind": "agent_instruction",
+                "status": "draft",
+                "body": "Instruct with an unsupported structural status.",
+                "fields": {
+                    "scope": "billing",
+                    "trust": "team",
+                    "allowed_actions": "read",
+                    "forbidden_actions": "write"
+                }
+            }),
+            "must not set changes.status",
+        ),
+        (
+            "billing.source-status",
+            serde_json::json!({
+                "kind": "source",
+                "status": "draft",
+                "body": "Bind an unsupported structural status.",
+                "fields": { "kind": "source_code", "path": "src/lib.rs" }
+            }),
+            "must not set changes.status",
+        ),
+    ] {
+        let workspace = Workspace::new(PAGE_TEXT);
+        let artifact = workspace.build();
+        let page_id = workspace.node(&artifact, "billing.credits")["page_id"]
+            .as_str()
+            .expect("anchor page_id")
+            .to_string();
+        let mut changes = changes;
+        changes["placement"] =
+            serde_json::json!({ "page_id": page_id, "after": "billing.credits" });
+        let result = workspace.apply(
+            &artifact,
+            serde_json::json!({
+                "schema_version": "adoc.patch.v0",
+                "op": "create_object",
+                "target": target,
+                "changes": changes,
+                "reason": "E5.1 complete create invariant validation"
+            }),
+        );
+
+        assert!(!result.applied, "diagnostics: {:?}", result.diagnostics);
+        assert!(result.written_files.is_empty());
+        assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+        assert_eq!(
+            result.diagnostics[0].code,
+            DiagnosticCode::PatchValidationFailed
+        );
+        assert!(
+            result.diagnostics[0].message.contains(message),
+            "{:?}",
+            result.diagnostics
+        );
+        assert_eq!(
+            fs::read_to_string(workspace.page_path()).expect("read"),
+            PAGE_TEXT,
+            "invalid create writes nothing"
+        );
+    }
+}
+
+#[test]
+fn apply_refuses_unordered_procedure_body_replacement_before_write() {
+    let workspace = Workspace::new(EXTENDED_KINDS_PAGE_TEXT);
+    let artifact = workspace.build();
+    let target = "billing.rotate-key";
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "replace_body",
+            "target": target,
+            "base_hash": workspace.content_hash(&artifact, target),
+            "changes": { "body": "Rotate the key without an ordered step." },
+            "reason": "E5.1 procedure body preflight"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert!(result.written_files.is_empty());
+    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::PatchValidationFailed
+    );
+    assert!(
+        result.diagnostics[0].message.contains("ordered list"),
+        "{:?}",
+        result.diagnostics
+    );
+    assert_eq!(
+        fs::read_to_string(workspace.page_path()).expect("read"),
+        EXTENDED_KINDS_PAGE_TEXT,
+        "invalid body replacement writes nothing"
+    );
+}
+
+#[test]
+fn verified_procedure_projection_allows_benign_field_and_body_changes() {
+    for (target, patch) in [
+        (
+            "billing.source-verified",
+            serde_json::json!({
+                "op": "update_fields",
+                "changes": { "fields": { "estimated_time": "10m" } }
+            }),
+        ),
+        (
+            "billing.review-verified",
+            serde_json::json!({
+                "op": "replace_body",
+                "changes": { "body": "1. Rotate the reviewed key safely." }
+            }),
+        ),
+    ] {
+        let workspace = Workspace::new(VERIFIED_PROCEDURES_PAGE_TEXT);
+        let artifact = workspace.build();
+        let mut patch = patch;
+        patch["schema_version"] = serde_json::json!("adoc.patch.v0");
+        patch["target"] = serde_json::json!(target);
+        patch["base_hash"] = serde_json::json!(workspace.content_hash(&artifact, target));
+        patch["reason"] = serde_json::json!("E5.1 verified procedure projection regression");
+
+        let result = workspace.apply(&artifact, patch);
+
+        assert!(result.applied, "diagnostics: {:?}", result.diagnostics);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    }
+}
+
+#[test]
+fn apply_refuses_invalid_impacts_on_update_and_create_before_write() {
+    for patch in [
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": "billing.credits",
+            "changes": { "fields": { "impacts": "../outside" } },
+            "reason": "E5.1 impacts update validation"
+        }),
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "create_object",
+            "target": "billing.invalid-impact",
+            "changes": {
+                "kind": "claim",
+                "status": "draft",
+                "body": "An invalid impact must not be written.",
+                "fields": { "impacts": "../outside" }
+            },
+            "reason": "E5.1 impacts create validation"
+        }),
+    ] {
+        let workspace = Workspace::new(PAGE_TEXT);
+        let artifact = workspace.build();
+        let page_id = workspace.node(&artifact, "billing.credits")["page_id"]
+            .as_str()
+            .expect("page_id")
+            .to_string();
+        let mut patch = patch;
+        if patch["op"] == "update_fields" {
+            patch["base_hash"] =
+                serde_json::json!(workspace.content_hash(&artifact, "billing.credits"));
+        } else {
+            patch["changes"]["placement"] =
+                serde_json::json!({ "page_id": page_id, "after": "billing.credits" });
+        }
+
+        let result = workspace.apply(&artifact, patch);
+
+        assert!(!result.applied);
+        assert!(result.written_files.is_empty());
+        assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+        assert_eq!(
+            result.diagnostics[0].code,
+            DiagnosticCode::SchemaImpactsInvalidPath
+        );
+        assert_eq!(
+            fs::read_to_string(workspace.page_path()).expect("read"),
+            PAGE_TEXT
+        );
+    }
+}
+
+#[test]
+fn apply_allows_unparsed_impacts_metadata_on_task() {
+    let workspace = Workspace::new(TASK_PAGE_TEXT);
+    let artifact = workspace.build();
+    let patch = serde_json::json!({
+        "schema_version": "adoc.patch.v0",
+        "op": "update_fields",
+        "target": "billing.follow-up",
+        "base_hash": workspace.content_hash(&artifact, "billing.follow-up"),
+        "changes": { "fields": { "status": "open", "impacts": "/outside" } },
+        "reason": "Retain task metadata without interpreting it as a path"
+    });
+
+    let result = workspace.apply(&artifact, patch);
+
+    assert!(result.applied, "diagnostics: {:?}", result.diagnostics);
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    assert!(
+        fs::read_to_string(workspace.page_path())
+            .expect("read")
+            .contains("impacts: /outside")
+    );
+}
+
+#[test]
+fn apply_resolves_create_evidence_refs_before_write() {
+    for (target, evidence_ref, code) in [
+        (
+            "billing.missing-evidence",
+            "billing.missing-source",
+            DiagnosticCode::SchemaEvidenceTargetNotFound,
+        ),
+        (
+            "billing.wrong-evidence",
+            "billing.credits",
+            DiagnosticCode::SchemaEvidenceTargetNotASource,
+        ),
+    ] {
+        let workspace = Workspace::new(PAGE_TEXT);
+        let artifact = workspace.build();
+        let page_id = workspace.node(&artifact, "billing.credits")["page_id"]
+            .as_str()
+            .expect("page_id")
+            .to_string();
+        let result = workspace.apply(
+            &artifact,
+            serde_json::json!({
+                "schema_version": "adoc.patch.v0",
+                "op": "create_object",
+                "target": target,
+                "changes": {
+                    "kind": "claim",
+                    "status": "draft",
+                    "body": "Evidence references resolve before source is written.",
+                    "fields": { "evidence_ref": evidence_ref },
+                    "placement": { "page_id": page_id, "after": "billing.credits" }
+                },
+                "reason": "E5.1 create evidence resolution"
+            }),
+        );
+
+        assert!(!result.applied);
+        assert!(result.written_files.is_empty());
+        assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+        assert_eq!(result.diagnostics[0].code, code);
+        assert_eq!(
+            fs::read_to_string(workspace.page_path()).expect("read"),
+            PAGE_TEXT
+        );
+    }
+}
+
+#[test]
+fn apply_does_not_resolve_evidence_refs_for_kinds_without_evidence_semantics() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+    let page_id = workspace.node(&artifact, "billing.credits")["page_id"]
+        .as_str()
+        .expect("page_id")
+        .to_string();
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "create_object",
+            "target": "billing.follow-up",
+            "changes": {
+                "kind": "task",
+                "status": "open",
+                "body": "Review the billing documentation.",
+                "fields": {
+                    "owner": "billing",
+                    "evidence_ref": "https://example.com/spec"
+                },
+                "placement": { "page_id": page_id, "after": "billing.credits" }
+            },
+            "reason": "E5.1 mirror evidence resolution semantics"
+        }),
+    );
+
+    assert!(result.applied, "{:?}", result.diagnostics);
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+}
+
+#[test]
+fn apply_does_not_parse_update_evidence_for_kinds_without_evidence_semantics() {
+    let workspace = Workspace::new(TASK_PAGE_TEXT);
+    let artifact = workspace.build();
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": "billing.follow-up",
+            "base_hash": workspace.content_hash(&artifact, "billing.follow-up"),
+            "changes": {
+                "fields": {
+                    "status": "open",
+                    "evidence_ref": "https://example.com/spec"
+                }
+            },
+            "reason": "E5.1 defer evidence syntax until the target kind is known",
+            "proposer": { "type": "agent", "id": "agentdoc-action" }
+        }),
+    );
+
+    assert!(result.applied, "{:?}", result.diagnostics);
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+}
+
+#[test]
+fn apply_refuses_glossary_metadata_status_as_a_proposal_lifecycle() {
+    for proposer in [
+        None,
+        Some(serde_json::json!({
+            "type": "agent",
+            "id": "agentdoc-action"
+        })),
+    ] {
+        let workspace = Workspace::new(GLOSSARY_PAGE_TEXT);
+        let artifact = workspace.build();
+        let mut patch = serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": "billing.credit-term",
+            "base_hash": workspace.content_hash(&artifact, "billing.credit-term"),
+            "changes": { "fields": { "status": "draft" } },
+            "reason": "E5.1 glossary has no proposal lifecycle"
+        });
+        if let Some(proposer) = proposer {
+            patch["proposer"] = proposer;
+        }
+        let result = workspace.apply(&artifact, patch);
+
+        assert!(!result.applied);
+        assert!(result.written_files.is_empty());
+        assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+        assert_eq!(
+            result.diagnostics[0].code,
+            DiagnosticCode::PatchValidationFailed
+        );
+        assert!(result.diagnostics[0].message.contains("glossary"));
+        assert_eq!(
+            fs::read_to_string(workspace.page_path()).expect("read"),
+            GLOSSARY_PAGE_TEXT
+        );
+    }
+}
+
+#[test]
+fn apply_allows_trusted_glossary_metadata_status_update() {
+    let workspace = Workspace::new(GLOSSARY_PAGE_TEXT);
+    let artifact = workspace.build();
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": "billing.credit-term",
+            "base_hash": workspace.content_hash(&artifact, "billing.credit-term"),
+            "changes": { "fields": { "status": "deprecated" } },
+            "reason": "Trusted glossary metadata maintenance",
+            "proposer": { "type": "human", "id": "docs-maintainer" }
+        }),
+    );
+
+    assert!(result.applied, "{:?}", result.diagnostics);
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    assert!(
+        fs::read_to_string(workspace.page_path())
+            .expect("read")
+            .contains("status: deprecated")
+    );
+}
+
+#[test]
+fn apply_reports_multiline_create_visibility_once() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+    let page_id = workspace.node(&artifact, "billing.credits")["page_id"]
+        .as_str()
+        .expect("anchor page_id")
+        .to_string();
+
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "create_object",
+            "target": "billing.multiline-visibility",
+            "changes": {
+                "kind": "claim",
+                "status": "draft",
+                "body": "Line breaks in field values cannot be spliced.",
+                "fields": { "visibility": "public\nprivate" },
+                "placement": { "page_id": page_id, "after": "billing.credits" }
+            },
+            "reason": "E5.1 intrinsic multiline-field ownership"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::PatchValidationFailed
     );
 }
 

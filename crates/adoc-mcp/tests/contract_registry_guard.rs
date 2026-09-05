@@ -517,6 +517,26 @@ fn connector_capability_manifest_is_shipped_by_its_contract_owner() {
 }
 
 #[test]
+fn e5_1_proposal_record_is_shipped_by_its_contract_owner() {
+    let doc = registry();
+    let shipped = anchored_ids(&doc, "registry:envelopes-shipped-adoc");
+    let planned = anchored_ids(&doc, "registry:envelopes-planned");
+    let codes = anchored_ids(&doc, "registry:diagnostic-codes");
+
+    assert!(shipped.contains("adoc.proposal.v0"));
+    assert!(!planned.contains("adoc.proposal.v0"));
+    for code in [
+        "proposal_record.invalid_document",
+        "proposal_record.binding_invalid",
+        "proposal_record.patch_invalid",
+        "proposal_record.authority_rejected",
+        "proposal_record.revision_unchanged",
+    ] {
+        assert!(codes.contains(code), "E5.1 diagnostic code missing: {code}");
+    }
+}
+
+#[test]
 fn e4_5_cloud_capability_trust_codes_are_registered_exactly() {
     let registered = anchored_ids(&registry(), "registry:cloud-codes");
     for code in [

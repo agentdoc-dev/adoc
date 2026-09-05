@@ -9,10 +9,14 @@
     "op": {
       "enum": ["replace_body", "update_fields", "create_object", "supersede", "revoke"]
     },
-    "target": { "type": "string" },
+    "target": { "$ref": "#/$defs/object_id" },
     "base_hash": { "type": "string", "pattern": "^sha256:" },
     "changes": { "type": "object" },
-    "reason": { "type": "string", "minLength": 1 },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A non-blank reason for trusted patches; an E5.1 canonical proposal record additionally requires semantic text with no surrounding whitespace or control characters."
+    },
     "proposer": { "$ref": "#/$defs/proposer" }
   },
   "additionalProperties": false,
@@ -40,6 +44,7 @@
           "required": ["fields"],
           "properties": {
             "fields": {
+              "description": "Trusted update_fields patches may set any non-empty field map; an E5.1 canonical proposal record additionally requires status to be draft, proposed, or open.",
               "allOf": [
                 { "$ref": "#/$defs/fields" },
                 { "minProperties": 1 }
@@ -59,7 +64,10 @@
           "required": ["kind", "body"],
           "properties": {
             "kind": { "type": "string" },
-            "status": { "type": "string" },
+            "status": {
+              "type": "string",
+              "description": "Optional for trusted creates, where surrounding ASCII whitespace is trimmed; an E5.1 canonical proposal record additionally requires the exact untrimmed bytes of an ADR-0053 section 2 create floor: claim/draft, decision/proposed, api/draft, or task/open."
+            },
             "body": { "type": "string" },
             "fields": { "$ref": "#/$defs/fields" },
             "placement": { "$ref": "#/$defs/placement" }
@@ -79,7 +87,7 @@
             "supersedes": {
               "type": "array",
               "minItems": 1,
-              "items": { "type": "string" }
+              "items": { "$ref": "#/$defs/object_id" }
             }
           },
           "additionalProperties": false
@@ -107,13 +115,18 @@
       "type": "object",
       "required": ["page_id"],
       "properties": {
-        "page_id": { "type": "string" },
-        "after": { "type": "string" }
+        "page_id": { "$ref": "#/$defs/object_id" },
+        "after": { "$ref": "#/$defs/object_id" }
       },
       "additionalProperties": false
     },
+    "object_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?)+$"
+    },
     "proposer": {
       "type": "object",
+      "description": "Optional for trusted patches; an E5.1 canonical proposal record additionally requires type 'agent' with a non-empty id.",
       "required": ["type", "id"],
       "properties": {
         "type": { "type": "string" },

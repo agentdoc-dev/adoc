@@ -475,6 +475,48 @@ fn patch_input_schema_matches_the_public_parser_structural_contract() {
     }
 }
 
+#[test]
+fn patch_input_schema_preflights_object_ids() {
+    let patch = json!({
+        "schema_version": "adoc.patch.v0",
+        "op": "create_object",
+        "target": "billing.created",
+        "changes": {
+            "kind": "claim",
+            "status": "draft",
+            "body": "Created claim.",
+            "placement": {"page_id": "team.billing", "after": "billing.ready"}
+        },
+        "reason": "Create claim."
+    });
+    assert!(schema_accepts("patch-input.json", &patch));
+
+    for pointer in [
+        "/target",
+        "/changes/placement/page_id",
+        "/changes/placement/after",
+    ] {
+        for value in ["Billing", "billing.created\n"] {
+            let mut invalid = patch.clone();
+            *invalid.pointer_mut(pointer).expect("field exists") = json!(value);
+            assert!(
+                !schema_accepts("patch-input.json", &invalid),
+                "schema accepted malformed Object ID at {pointer}"
+            );
+        }
+    }
+
+    let malformed_supersedes = json!({
+        "schema_version": "adoc.patch.v0",
+        "op": "supersede",
+        "target": "billing.ready",
+        "base_hash": "sha256:content",
+        "changes": {"supersedes": ["Billing"]},
+        "reason": "Supersede stale knowledge."
+    });
+    assert!(!schema_accepts("patch-input.json", &malformed_supersedes));
+}
+
 /// V6.1: `adoc_stale` envelopes with all three record categories validate
 /// against `adoc.stale.v0.schema.json`.
 #[test]

@@ -7,11 +7,10 @@ use serde::{
     Deserialize, Deserializer, Serialize,
     de::{self, MapAccess, Visitor},
 };
-use serde_json::Value;
 use thiserror::Error;
 
 use super::{
-    hashing::sha256_prefixed,
+    hashing::{canonicalize_object_keys, sha256_prefixed},
     semantic_context::{ExactRevision, is_semantic_context_text, is_sha256_digest},
 };
 
@@ -503,23 +502,6 @@ fn digest(value: &impl Serialize) -> Result<String, ExternalWorkError> {
         .map_err(|error| ExternalWorkError::Serialization {
             message: error.to_string(),
         })
-}
-
-fn canonicalize_object_keys(value: Value) -> Value {
-    match value {
-        Value::Object(fields) => Value::Object(
-            fields
-                .into_iter()
-                .map(|(key, value)| (key, canonicalize_object_keys(value)))
-                .collect::<BTreeMap<_, _>>()
-                .into_iter()
-                .collect(),
-        ),
-        Value::Array(values) => {
-            Value::Array(values.into_iter().map(canonicalize_object_keys).collect())
-        }
-        value => value,
-    }
 }
 
 fn is_strictly_sorted<T: Ord>(values: &[T]) -> bool {

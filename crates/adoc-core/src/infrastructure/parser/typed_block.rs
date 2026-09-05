@@ -8,6 +8,7 @@ use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::inline::{InlineOrigin, InlineSegment};
 use crate::domain::source::SourceFile;
+use crate::domain::values::trim_ascii_edges;
 
 use super::inline::parse_inlines;
 use super::state::{TypedBlockBuildingState, TypedBlockPhase};
@@ -225,7 +226,9 @@ pub(super) fn consume_typed_block_line(
             state
                 .content_spans
                 .push(source.span_for_line(line_number, line));
-            if let Some(field) = try_parse_field(line.trim_end()) {
+            if let Some(field) = try_parse_field(
+                line.trim_end_matches(|character: char| character.is_ascii_whitespace()),
+            ) {
                 let value_span = source.span_for_line_columns(
                     line_number,
                     field.value_start_column,
@@ -406,16 +409,16 @@ fn parse_body_inlines(
     inlines
 }
 
-/// Strip leading and trailing elements from `lines` that are blank (trim to
-/// empty). Internal blank lines are preserved.
+/// Strip leading and trailing elements from `lines` that are ASCII-blank.
+/// Internal blank lines are preserved.
 fn trim_blank_edges_range(lines: &[String]) -> std::ops::Range<usize> {
     let start = lines
         .iter()
-        .position(|l| !l.trim().is_empty())
+        .position(|line| !trim_ascii_edges(line).is_empty())
         .unwrap_or(lines.len());
     let end = lines
         .iter()
-        .rposition(|l| !l.trim().is_empty())
+        .rposition(|line| !trim_ascii_edges(line).is_empty())
         .map(|i| i + 1)
         .unwrap_or(0);
     if start >= end { 0..0 } else { start..end }
@@ -1006,6 +1009,22 @@ mod tests {
                     ]
                 );
             }
+            TypedBlockLineOutcome::Continue => panic!("expected Closed"),
+        }
+    }
+
+    #[test]
+    fn consume_typed_block_line_preserves_unicode_whitespace_body() {
+        let source = make_source("--\n\u{a0}\n::\n");
+        let mut state = fresh_state("billing.credits");
+        let mut diagnostics = Vec::new();
+
+        consume_typed_block_line(&mut state, "--", 1, &source, &mut diagnostics);
+        consume_typed_block_line(&mut state, "\u{a0}", 2, &source, &mut diagnostics);
+        let outcome = consume_typed_block_line(&mut state, "::", 3, &source, &mut diagnostics);
+
+        match outcome {
+            TypedBlockLineOutcome::Closed(parsed) => assert_eq!(parsed.body_text, "\u{a0}"),
             TypedBlockLineOutcome::Continue => panic!("expected Closed"),
         }
     }

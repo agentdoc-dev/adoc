@@ -48,6 +48,10 @@ evidence boundary established by ADR-0052.
    placement path, page ID, target, and patch digest. The proposal-set digest
    hashes a sorted compact JSON array of those ordered digests plus one
    trailing newline. This private array is not a new public bundle schema.
+   *Superseded in part by ADR-0062 §2 (E5.1):* the proposal-set digest of
+   record orders patches by patch digest alone, so identity is
+   placement-blind; the placement-first key above remains only the
+   Action-private file order.
 9. Before any patch is shown as executable, one disposable exact-head sandbox
    must pass initial graph/object-set digest parity and the same-date
    `check`/`build --no-embeddings` gate. Every patch then passes

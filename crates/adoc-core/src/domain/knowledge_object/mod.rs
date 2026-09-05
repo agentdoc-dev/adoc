@@ -1,6 +1,7 @@
 //! Aggregate family — populated by Slice 1.
 
 use std::collections::BTreeSet;
+use std::ops::Range;
 
 use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourcePosition, SourceSpan};
@@ -15,6 +16,10 @@ use crate::domain::value_objects::visibility::{
 use crate::domain::values::{Body, NonEmpty, trim_ascii_edges};
 
 pub(super) const IMPACTS_FIELD: &str = "impacts";
+pub(crate) const IMPACTS_LIST_HELP: &str =
+    "Use `[path/one, path/two]` or one repository-relative path for impacts.";
+const RELATION_LIST_HELP: &str =
+    "Relation arrays must use `[object.id, other.id]`; each target must also be a valid Object ID.";
 pub(crate) const APPROVED_BY_FIELD: &str = "approved_by";
 /// E1.1.T3 (ADR-0058 §3): the authored per-object visibility classification.
 pub(crate) const VISIBILITY_FIELD: &str = "visibility";
@@ -129,6 +134,10 @@ pub(crate) fn closed_schema_field_error(
             ),
         ));
     }
+    shared_field_value_error(key, value)
+}
+
+pub(crate) fn shared_field_value_error(key: &str, value: &str) -> Option<Diagnostic> {
     let invalid_visibility = match key {
         VISIBILITY_FIELD => Visibility::try_new(value).is_err(),
         FIELD_VISIBILITY_FIELD => parse_field_visibility(value).is_err(),
@@ -300,22 +309,12 @@ pub(super) fn extract_relations(
     relations
 }
 
-/// Public-within-crate-module access to `relation_content_range` for
-/// sibling modules that need to unwrap bracket/scalar list syntax.
-pub(super) fn content_range_for_list_field(
-    parsed: &ParsedTypedBlock,
-    key: &str,
-    value: &str,
-    value_span: &SourceSpan,
-    diagnostics: &mut Vec<Diagnostic>,
-) -> Option<(usize, usize)> {
-    relation_content_range(parsed, key, value, value_span, diagnostics)
-}
-
 /// V5.8 TB2/TB3: the `evidence_ref:` field name, shared by `claim` and
 /// `decision`. Each entry names a `source` Knowledge Object by ID; the
 /// workspace validator checks the reference resolves.
 pub(crate) const EVIDENCE_REF_FIELD: &str = "evidence_ref";
+pub(crate) const EVIDENCE_REF_LIST_HELP: &str =
+    "Use `[source.one, source.two]` or one Object ID for evidence_ref.";
 
 /// Parse the `evidence_ref:` field into a deduplicated list of
 /// [`Evidence::ObjectRef`] entries. Accepts both scalar (`evidence_ref: id.one`)
@@ -339,9 +338,14 @@ pub(crate) fn parse_evidence_refs(
         .cloned()
         .unwrap_or_else(|| parsed.span.clone());
 
-    let Some((content_start, content_end)) =
-        content_range_for_list_field(parsed, EVIDENCE_REF_FIELD, &value, &value_span, diagnostics)
-    else {
+    let Some((content_start, content_end)) = relation_content_range(
+        parsed,
+        EVIDENCE_REF_FIELD,
+        &value,
+        &value_span,
+        diagnostics,
+        EVIDENCE_REF_LIST_HELP,
+    ) else {
         return Vec::new();
     };
 
@@ -354,33 +358,19 @@ pub(crate) fn parse_evidence_refs(
 
     let mut refs: Vec<Evidence> = Vec::new();
     let mut seen = std::collections::BTreeSet::new();
-    let mut segment_start = content_start;
-    for (rel, _) in value[content_start..content_end].match_indices(',') {
-        let comma = content_start + rel;
+    for (start, end, is_last) in list_segments(&value, content_start..content_end) {
         push_evidence_ref_segment(
             parsed,
             &value,
-            segment_start,
-            comma,
+            start,
+            end,
             &value_span,
             &mut seen,
             &mut refs,
             diagnostics,
-            false,
+            is_last,
         );
-        segment_start = comma + 1;
     }
-    push_evidence_ref_segment(
-        parsed,
-        &value,
-        segment_start,
-        content_end,
-        &value_span,
-        &mut seen,
-        &mut refs,
-        diagnostics,
-        true,
-    );
     refs
 }
 
@@ -454,43 +444,33 @@ fn parse_relation_targets(
         return Vec::new();
     }
 
-    let Some((content_start, content_end)) =
-        relation_content_range(parsed, key, value, value_span, diagnostics)
-    else {
+    let Some((content_start, content_end)) = relation_content_range(
+        parsed,
+        key,
+        value,
+        value_span,
+        diagnostics,
+        RELATION_LIST_HELP,
+    ) else {
         return Vec::new();
     };
 
     let mut targets = Vec::new();
     let mut seen = BTreeSet::new();
-    let mut segment_start = content_start;
-    for (relative_comma_index, _) in value[content_start..content_end].match_indices(',') {
-        let comma_index = content_start + relative_comma_index;
+    for (start, end, is_last) in list_segments(value, content_start..content_end) {
         push_relation_segment(
             parsed,
             key,
             value,
-            segment_start,
-            comma_index,
+            start,
+            end,
             value_span,
             &mut seen,
             &mut targets,
             diagnostics,
-            false,
+            is_last,
         );
-        segment_start = comma_index + 1;
     }
-    push_relation_segment(
-        parsed,
-        key,
-        value,
-        segment_start,
-        content_end,
-        value_span,
-        &mut seen,
-        &mut targets,
-        diagnostics,
-        true,
-    );
 
     targets
 }
@@ -501,18 +481,18 @@ fn relation_content_range(
     value: &str,
     value_span: &SourceSpan,
     diagnostics: &mut Vec<Diagnostic>,
+    help: &str,
 ) -> Option<(usize, usize)> {
-    let Some((trimmed, trimmed_start, trimmed_end)) = trim_segment(value) else {
-        return Some((0, 0));
-    };
-
-    match (trimmed.strip_prefix('['), trimmed.strip_suffix(']')) {
-        (Some(_), Some(_)) => Some((trimmed_start + 1, trimmed_end - 1)),
-        (Some(_), None) | (None, Some(_)) => {
+    match list_content_range(value) {
+        Ok(range) => Some((range.start, range.end)),
+        Err((trimmed_start, trimmed_end)) => {
             diagnostics.push(
                 Diagnostic::error(
                     DiagnosticCode::IdInvalid,
-                    format!("malformed relation array in `{key}` for `{}`", parsed.id_text),
+                    format!(
+                        "malformed relation array in `{key}` for `{}`",
+                        parsed.id_text
+                    ),
                 )
                 .with_span(relation_segment_span(
                     value_span,
@@ -521,12 +501,69 @@ fn relation_content_range(
                     trimmed_end,
                 ))
                 .with_object_id(&parsed.id_text)
-                .with_help("Relation arrays must use `[object.id, other.id]`; each target must also be a valid Object ID."),
+                .with_help(help),
             );
             None
         }
-        (None, None) => Some((0, value.len())),
     }
+}
+
+/// Return the scalar or bracket-list content range used by authored list
+/// fields. A mismatched outer bracket returns its trimmed bounds so callers
+/// can attach a diagnostic without re-parsing the value.
+pub(crate) fn list_content_range(value: &str) -> Result<Range<usize>, (usize, usize)> {
+    let Some((trimmed, trimmed_start, trimmed_end)) = trim_segment(value) else {
+        return Ok(0..0);
+    };
+    match (trimmed.starts_with('['), trimmed.ends_with(']')) {
+        (true, true) => Ok(trimmed_start + 1..trimmed_end - 1),
+        (true, false) | (false, true) => Err((trimmed_start, trimmed_end)),
+        (false, false) => Ok(0..value.len()),
+    }
+}
+
+/// Parse the scalar-or-bracket-list shape used by authored list fields.
+/// Interior empty segments are invalid; one trailing comma is tolerated to
+/// match the source parser.
+pub(crate) fn list_items(value: &str) -> Option<Vec<&str>> {
+    let range = list_content_range(value).ok()?;
+    let mut result = Vec::new();
+    for (start, end, is_last) in list_segments(value, range) {
+        match trim_segment(&value[start..end]) {
+            Some((item, _, _)) => result.push(item),
+            None if !is_last => return None,
+            None => {}
+        }
+    }
+    (!result.is_empty()).then_some(result)
+}
+
+/// Yield comma-delimited byte ranges without their commas. The final flag is
+/// false for a comma-terminated segment, so an empty segment before a trailing
+/// comma is still rejected while one ordinary trailing comma stays tolerated.
+pub(crate) fn list_segments(
+    value: &str,
+    range: Range<usize>,
+) -> impl Iterator<Item = (usize, usize, bool)> + '_ {
+    let range_end = range.end;
+    let mut start = range.start;
+    value[range].split_inclusive(',').map(move |segment| {
+        let next_start = start + segment.len();
+        let has_comma = segment.ends_with(',');
+        let result = (
+            start,
+            next_start - usize::from(has_comma),
+            next_start == range_end && !has_comma,
+        );
+        start = next_start;
+        result
+    })
+}
+
+pub(crate) fn is_relation_field(key: &str) -> bool {
+    GraphRelationKind::ALL
+        .iter()
+        .any(|relation| relation.as_str() == key)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -586,7 +623,7 @@ fn push_relation_segment(
     }
 }
 
-fn trim_segment(value: &str) -> Option<(&str, usize, usize)> {
+pub(crate) fn trim_segment(value: &str) -> Option<(&str, usize, usize)> {
     let start = value
         .char_indices()
         .find(|(_, character)| !character.is_ascii_whitespace())
@@ -617,9 +654,14 @@ pub(super) fn extract_impacts(
         .cloned()
         .unwrap_or_else(|| parsed.span.clone());
 
-    let Some((content_start, content_end)) =
-        relation_content_range(parsed, IMPACTS_FIELD, &value, &value_span, diagnostics)
-    else {
+    let Some((content_start, content_end)) = relation_content_range(
+        parsed,
+        IMPACTS_FIELD,
+        &value,
+        &value_span,
+        diagnostics,
+        IMPACTS_LIST_HELP,
+    ) else {
         // Malformed `[...]` already reported by relation_content_range.
         return None;
     };
@@ -634,31 +676,18 @@ pub(super) fn extract_impacts(
     }
 
     let mut paths: std::collections::BTreeSet<RelPath> = std::collections::BTreeSet::new();
-    let mut segment_start = content_start;
-    for (relative_comma_index, _) in content.match_indices(',') {
-        let comma_index = content_start + relative_comma_index;
+    for (start, end, is_last) in list_segments(&value, content_start..content_end) {
         push_impact_segment(
             parsed,
             &value,
-            segment_start,
-            comma_index,
+            start,
+            end,
             &value_span,
             &mut paths,
             diagnostics,
-            false,
+            is_last,
         );
-        segment_start = comma_index + 1;
     }
-    push_impact_segment(
-        parsed,
-        &value,
-        segment_start,
-        content_end,
-        &value_span,
-        &mut paths,
-        diagnostics,
-        true,
-    );
 
     NonEmpty::from_vec(paths.into_iter().collect())
 }
@@ -787,8 +816,14 @@ where
         .cloned()
         .unwrap_or_else(|| parsed.span.clone());
 
-    let (content_start, content_end) =
-        relation_content_range(parsed, field_name, &value, &value_span, diagnostics)?;
+    let (content_start, content_end) = relation_content_range(
+        parsed,
+        field_name,
+        &value,
+        &value_span,
+        diagnostics,
+        RELATION_LIST_HELP,
+    )?;
 
     let content = &value[content_start..content_end];
     if content
@@ -799,33 +834,19 @@ where
     }
 
     let mut items: BTreeSet<String> = BTreeSet::new();
-    let mut segment_start = content_start;
-    for (relative_comma_index, _) in content.match_indices(',') {
-        let comma_index = content_start + relative_comma_index;
+    for (start, end, is_last) in list_segments(&value, content_start..content_end) {
         push_action_list_segment(
             parsed,
             field_name,
             &value,
-            segment_start,
-            comma_index,
+            start,
+            end,
             &value_span,
             &mut items,
             diagnostics,
-            false,
+            is_last,
         );
-        segment_start = comma_index + 1;
     }
-    push_action_list_segment(
-        parsed,
-        field_name,
-        &value,
-        segment_start,
-        content_end,
-        &value_span,
-        &mut items,
-        diagnostics,
-        true,
-    );
 
     let result: Vec<T> = items.into_iter().filter_map(|s| ctor(&s)).collect();
     if result.is_empty() {
@@ -886,8 +907,14 @@ pub(super) fn extract_approved_by(
         .cloned()
         .unwrap_or_else(|| parsed.span.clone());
 
-    let (content_start, content_end) =
-        relation_content_range(parsed, APPROVED_BY_FIELD, &value, &value_span, diagnostics)?;
+    let (content_start, content_end) = relation_content_range(
+        parsed,
+        APPROVED_BY_FIELD,
+        &value,
+        &value_span,
+        diagnostics,
+        RELATION_LIST_HELP,
+    )?;
 
     let content = &value[content_start..content_end];
     if content
@@ -898,31 +925,18 @@ pub(super) fn extract_approved_by(
     }
 
     let mut approvers: BTreeSet<String> = BTreeSet::new();
-    let mut segment_start = content_start;
-    for (relative_comma_index, _) in content.match_indices(',') {
-        let comma_index = content_start + relative_comma_index;
+    for (start, end, is_last) in list_segments(&value, content_start..content_end) {
         push_approved_by_segment(
             parsed,
             &value,
-            segment_start,
-            comma_index,
+            start,
+            end,
             &value_span,
             &mut approvers,
             diagnostics,
-            false,
+            is_last,
         );
-        segment_start = comma_index + 1;
     }
-    push_approved_by_segment(
-        parsed,
-        &value,
-        segment_start,
-        content_end,
-        &value_span,
-        &mut approvers,
-        diagnostics,
-        true,
-    );
 
     NonEmpty::from_vec(
         approvers
@@ -1058,6 +1072,29 @@ impl BlockKind {
 
     pub(crate) fn from_fence_word(word: &str) -> Option<Self> {
         Self::ALL.iter().copied().find(|kind| kind.as_str() == word)
+    }
+
+    /// Kinds whose typed aggregate exposes `evidence_ref` entries for
+    /// workspace-level target resolution.
+    pub(crate) const fn resolves_evidence_refs(self) -> bool {
+        matches!(
+            self,
+            Self::Claim | Self::Decision | Self::Api | Self::Observation
+        )
+    }
+
+    /// Kinds whose typed aggregate parses `impacts` as repository paths.
+    pub(crate) const fn parses_impacts(self) -> bool {
+        matches!(
+            self,
+            Self::Claim
+                | Self::Decision
+                | Self::Constraint
+                | Self::Policy
+                | Self::Procedure
+                | Self::Example
+                | Self::Api
+        )
     }
 }
 
@@ -1655,6 +1692,104 @@ mod tests {
                 BlockKind::Question,
                 BlockKind::Task,
             ]
+        );
+    }
+
+    fn parsed_block_for_kind(kind: BlockKind) -> ParsedTypedBlock {
+        let fields = match kind {
+            BlockKind::Claim => &[("status", "draft")][..],
+            BlockKind::Decision => &[("status", "proposed")][..],
+            BlockKind::Glossary => &[][..],
+            BlockKind::Warning | BlockKind::Constraint => &[("severity", "high")][..],
+            BlockKind::Policy => &[
+                ("status", "active"),
+                ("owner", "security-lead"),
+                ("approved_by", "security-lead"),
+                ("effective_at", "2026-04-01"),
+            ][..],
+            BlockKind::Procedure => &[("status", "draft")][..],
+            BlockKind::Example => &[("lang", "rust")][..],
+            BlockKind::AgentInstruction => &[
+                ("scope", "docs/**"),
+                ("trust", "team"),
+                ("allowed_actions", "read"),
+                ("forbidden_actions", "write"),
+            ][..],
+            BlockKind::Contradiction => &[
+                ("severity", "high"),
+                ("status", "unresolved"),
+                ("claims", "[billing.one, billing.two]"),
+            ][..],
+            BlockKind::Source => &[("kind", "source_code"), ("path", "src/test.rs")][..],
+            BlockKind::Api => &[("status", "draft"), ("method", "GET"), ("path", "/test")][..],
+            BlockKind::Observation => &[("status", "observed")][..],
+            BlockKind::Question => &[("status", "open")][..],
+            BlockKind::Task => &[("status", "open"), ("owner", "docs")][..],
+        };
+        let mut parsed = parsed_block_with_fields(fields);
+        parsed.kind_word = kind.as_str().to_string();
+        if kind == BlockKind::Procedure {
+            parsed.body_text = "1. Check the documentation.".to_string();
+            parsed.body_inlines = ParsedTypedBlock::test_body_inlines_from_text(&parsed.body_text);
+        }
+        parsed
+    }
+
+    #[test]
+    fn kind_capabilities_match_typed_parser_behavior() {
+        use crate::domain::services::resolve_pending_block::resolve_pending_block;
+
+        for kind in BlockKind::ALL.iter().copied() {
+            let mut parsed = parsed_block_for_kind(kind);
+            parsed
+                .raw_fields
+                .insert(IMPACTS_FIELD.to_string(), "docs/a.rs".to_string());
+            parsed
+                .raw_fields
+                .insert(EVIDENCE_REF_FIELD.to_string(), "source.one".to_string());
+            let mut diagnostics = Vec::new();
+            let object = resolve_pending_block(parsed, &mut diagnostics)
+                .unwrap_or_else(|| panic!("{kind:?} did not resolve: {diagnostics:?}"));
+            assert!(diagnostics.is_empty(), "{kind:?}: {diagnostics:?}");
+            let has_evidence_refs = match &object {
+                KnowledgeObject::Claim(value) => !value.evidence_refs().is_empty(),
+                KnowledgeObject::Decision(value) => !value.evidence_refs().is_empty(),
+                KnowledgeObject::Api(value) => !value.evidence_refs().is_empty(),
+                KnowledgeObject::Observation(value) => !value.evidence_refs().is_empty(),
+                _ => false,
+            };
+
+            assert_eq!(
+                !object.impacts().is_empty(),
+                kind.parses_impacts(),
+                "{kind:?}"
+            );
+            assert_eq!(has_evidence_refs, kind.resolves_evidence_refs(), "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn malformed_impacts_uses_path_list_remediation() {
+        let mut parsed = parsed_block_with_fields(&[(IMPACTS_FIELD, "[docs/a.rs")]);
+        let mut diagnostics = Vec::new();
+
+        assert!(extract_impacts(&mut parsed, &mut diagnostics).is_none());
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::IdInvalid);
+        assert_eq!(diagnostics[0].help.as_deref(), Some(IMPACTS_LIST_HELP));
+    }
+
+    #[test]
+    fn malformed_evidence_ref_uses_object_list_remediation() {
+        let mut parsed = parsed_block_with_fields(&[(EVIDENCE_REF_FIELD, "[source.one")]);
+        let mut diagnostics = Vec::new();
+
+        assert!(parse_evidence_refs(&mut parsed, &mut diagnostics).is_empty());
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::IdInvalid);
+        assert_eq!(
+            diagnostics[0].help.as_deref(),
+            Some("Use `[source.one, source.two]` or one Object ID for evidence_ref.")
         );
     }
 

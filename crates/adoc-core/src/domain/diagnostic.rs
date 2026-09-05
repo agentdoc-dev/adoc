@@ -481,6 +481,39 @@ diagnostic_codes! {
         "Record non-empty provider and model identity in every semantic assessment, including structured human submissions.";
     AssessmentSemanticIdentityMismatch = "assessment.semantic_identity_mismatch" =>
         "Regenerate the assessment with the exact provider and model identity declared by the semantic executor request.";
+    /// E5.1: bytes offered as an `adoc.proposal.v0` record do not parse,
+    /// name an unsupported version, or carry fields that differ from their
+    /// canonical derivation (digests, ordering, content bindings).
+    ProposalRecordInvalidDocument = "proposal_record.invalid_document" =>
+        "Regenerate the proposal record with `adoc proposal-record` from the exact patch bytes; a record never carries digests it did not derive.";
+    /// E5.1.T1: a proposal record binding — exact revisions, change request
+    /// identity, or assessment/context/semantic digests — is missing or
+    /// malformed. A record with any binding missing is unconstructible.
+    ProposalRecordBindingInvalid = "proposal_record.binding_invalid" =>
+        "Supply every binding: exact base/head revisions, change-request system and id, and sha256-prefixed assessment, semantic-context, and semantic-assessment digests.";
+    /// E5.1: a patch in the proposal set is not a canonical `adoc.patch.v0`
+    /// document — unparseable, non-canonical bytes, duplicate, intrinsically
+    /// invalid, missing or mismatched create placement, a target outside the
+    /// Object ID grammar, a non-logical placement path, a non-semantic reason,
+    /// a create status whose raw bytes require normalization, a digest-visible
+    /// null member, conflicting coordinates for one edited target, or a
+    /// create/edit sequence outside ADR-0054 §5.
+    ProposalRecordPatchInvalid = "proposal_record.patch_invalid" =>
+        "Use intrinsically valid canonical patches with Object ID targets and entry pages, project-relative slash-normalized placement paths, semantic-text reasons, verbatim create status floors, no null members, matching create placement, and one exact-head coordinate per edited target; serialize each as sorted compact JSON with one trailing newline; create a target once or edit it with at most one update_fields then at most one replace_body.";
+    /// E5.1.T3 (ADR-0053 §2–§3, §7, ADR-0054 §3): the proposal would mint
+    /// authority — a governance-changing operation, a create outside the
+    /// non-authoritative kind/status floors, a create whose `fields`
+    /// duplicate a structural member, an existing-object edit that sets no
+    /// reviewable status, an authority field, or a patch without the trusted
+    /// Action's identified `agent` proposer. Proposals only ever create
+    /// reviewable knowledge.
+    ProposalRecordAuthorityRejected = "proposal_record.authority_rejected" =>
+        "Declare an identified agent proposer on every patch; propose only create_object at the non-authoritative floors, or update_fields/replace_body edits whose update_fields sets status to draft, proposed, or open; keep id, kind, status, body, and placement out of a create's fields; never set verified_at, reviewed_by, approved_by, decided_by, or resolved_by.";
+    /// E5.1.T2: a revision was requested with byte-identical patches, so
+    /// it would supersede its own proposal-set digest. Unchanged bytes are
+    /// not a new version; the prior record stands.
+    ProposalRecordRevisionUnchanged = "proposal_record.revision_unchanged" =>
+        "Change at least one patch byte before revising; an unchanged proposal set keeps its existing record and digest.";
 }
 
 impl DiagnosticCode {

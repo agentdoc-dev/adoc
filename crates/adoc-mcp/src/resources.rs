@@ -499,6 +499,14 @@ const RESOURCES: &[AgentResource] = &[
         contents: include_str!("../../../docs/agent/v0/schema/adoc.work_result.v0.schema.json"),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.proposal.v0.schema.json",
+        name: "schema-adoc-proposal-v0-json",
+        title: "AgentDoc Canonical Proposal Record JSON Schema",
+        description: "JSON Schema for the canonical proposal record bound to exact revisions, assessment, semantic context, and content digests.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!("../../../docs/agent/v0/schema/adoc.proposal.v0.schema.json"),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/agentdoc.connector_capabilities.v0.schema.json",
         name: "schema-agentdoc-connector-capabilities-v0-json",
         title: "Connector Capability Manifest JSON Schema",
