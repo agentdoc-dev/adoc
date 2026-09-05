@@ -332,37 +332,37 @@ pub struct RepositoryBaselineEnvelope {
     pub diagnostics: Vec<AssessmentDiagnostic>,
 }
 
-impl From<ChangeAssessmentEnvelope> for RepositoryBaselineEnvelope {
-    fn from(assessment: ChangeAssessmentEnvelope) -> Self {
-        let ready = assessment.is_complete()
-            && assessment.validation.errors_full == 0
-            && assessment.summary.provisional == 0
-            && assessment.summary.uncovered == 0;
-        let reason = if !assessment.is_complete() || assessment.validation.errors_full > 0 {
-            "invalid_source"
-        } else if assessment.summary.provisional > 0 {
-            "provisional_paths"
-        } else if assessment.summary.uncovered > 0 {
-            "uncovered_paths"
-        } else {
-            "ready"
-        };
-        Self {
-            schema_version: REPOSITORY_BASELINE_SCHEMA_VERSION,
-            readiness: RepositoryBaselineReadiness {
-                ready,
-                reason: reason.to_string(),
-            },
-            evaluation_date: assessment.evaluation_date,
-            snapshot: assessment.snapshots.head,
-            knowledge_snapshot: assessment.knowledge_snapshot,
-            assessment_config: assessment.assessment_config,
-            summary: assessment.summary,
-            validation: assessment.validation,
-            paths: assessment.paths,
-            objects: assessment.objects,
-            diagnostics: assessment.diagnostics,
-        }
+pub(crate) fn repository_baseline(
+    assessment: ChangeAssessmentEnvelope,
+) -> RepositoryBaselineEnvelope {
+    let ready = assessment.is_complete()
+        && assessment.validation.errors_full == 0
+        && assessment.summary.provisional == 0
+        && assessment.summary.uncovered == 0;
+    let reason = if !assessment.is_complete() || assessment.validation.errors_full > 0 {
+        "invalid_source"
+    } else if assessment.summary.provisional > 0 {
+        "provisional_paths"
+    } else if assessment.summary.uncovered > 0 {
+        "uncovered_paths"
+    } else {
+        "ready"
+    };
+    RepositoryBaselineEnvelope {
+        schema_version: REPOSITORY_BASELINE_SCHEMA_VERSION,
+        readiness: RepositoryBaselineReadiness {
+            ready,
+            reason: reason.to_string(),
+        },
+        evaluation_date: assessment.evaluation_date,
+        snapshot: assessment.snapshots.head,
+        knowledge_snapshot: assessment.knowledge_snapshot,
+        assessment_config: assessment.assessment_config,
+        summary: assessment.summary,
+        validation: assessment.validation,
+        paths: assessment.paths,
+        objects: assessment.objects,
+        diagnostics: assessment.diagnostics,
     }
 }
 

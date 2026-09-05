@@ -571,7 +571,9 @@ pub fn repository_baseline_from_git(
     ) {
         Ok(resolved) => resolved,
         Err(error) => {
-            return application::change_assessment::unresolved_envelope(&input, error).into();
+            return application::change_assessment::repository_baseline(
+                application::change_assessment::unresolved_envelope(&input, error),
+            );
         }
     };
     let resolved_input = application::change_assessment::ResolvedAssessmentInput {
@@ -587,8 +589,9 @@ pub fn repository_baseline_from_git(
     };
     let snapshots = infrastructure::git::worktree::GitWorktreeProvider::new(project_root.clone());
     let tracked = infrastructure::git::changed_files::GitTrackedFilesProvider::new(project_root);
-    application::change_assessment::assess_with_providers(resolved_input, &snapshots, &tracked)
-        .into()
+    application::change_assessment::repository_baseline(
+        application::change_assessment::assess_with_providers(resolved_input, &snapshots, &tracked),
+    )
 }
 
 fn assess_changes_from_git_with_worktree_status(
