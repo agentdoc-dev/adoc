@@ -379,6 +379,16 @@ const RESOURCES: &[AgentResource] = &[
         ),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.repository_baseline.v0.schema.json",
+        name: "schema-adoc-repository-baseline-v0-json",
+        title: "Repository Baseline JSON Schema",
+        description: "JSON Schema for adoc.repository_baseline.v0, the deterministic repository-wide coverage inventory at one immutable Git revision.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/adoc.repository_baseline.v0.schema.json"
+        ),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/adoc.semantic_context.v0.schema.json",
         name: "schema-adoc-semantic-context-v0-json",
         title: "Semantic Context JSON Schema",

@@ -99,7 +99,7 @@ NOT shipped at the baseline:
 - ingestion,
 - retrieval.
 
-The true-up decision/ADR is allocated in slice-start decision tracking as [`DECISION-REGISTER.md`](DECISION-REGISTER.md) obligation **O-01** — retroactive ADR, published schema, and parity test for `adoc.repository_baseline.v0`, owed at E4.6 slice start (provenance: V10.1.6, historical).
+The true-up decision/ADR allocated at the E4.6 slice start in [`DECISION-REGISTER.md`](DECISION-REGISTER.md) obligation **O-01** is satisfied by ADR-0064, the published `adoc.repository_baseline.v0` schema, and producer/schema parity evidence (provenance: V10.1.6, historical).
 <!-- /compat:true-up -->
 
 ## Historical Cloud phase labels (E0.4.T3)

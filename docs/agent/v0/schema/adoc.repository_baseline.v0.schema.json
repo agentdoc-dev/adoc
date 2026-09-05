@@ -1,0 +1,481 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.repository_baseline.v0.schema.json",
+  "title": "AgentDoc Repository Baseline",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "readiness",
+    "evaluation_date",
+    "snapshot",
+    "knowledge_snapshot",
+    "assessment_config",
+    "summary",
+    "validation",
+    "paths",
+    "objects",
+    "diagnostics"
+  ],
+  "properties": {
+    "schema_version": { "const": "adoc.repository_baseline.v0" },
+    "readiness": { "$ref": "#/$defs/readiness" },
+    "evaluation_date": { "type": "string", "format": "date" },
+    "snapshot": { "$ref": "#/$defs/snapshot" },
+    "knowledge_snapshot": { "$ref": "#/$defs/knowledgeSnapshot" },
+    "assessment_config": { "$ref": "#/$defs/assessmentConfig" },
+    "summary": { "$ref": "#/$defs/summary" },
+    "validation": { "$ref": "#/$defs/validation" },
+    "paths": { "$ref": "#/$defs/pathAvailability" },
+    "objects": { "$ref": "#/$defs/objectAvailability" },
+    "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/completeBaseline",
+      "properties": {
+        "readiness": {
+          "properties": { "ready": { "const": true }, "reason": { "const": "ready" } }
+        },
+        "validation": { "properties": { "errors_full": { "const": 0 } } },
+        "summary": {
+          "properties": { "provisional": { "const": 0 }, "uncovered": { "const": 0 } }
+        },
+        "paths": {
+          "properties": {
+            "value": {
+              "not": {
+                "contains": {
+                  "required": ["classification"],
+                  "properties": {
+                    "classification": { "enum": ["provisional", "uncovered"] }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "properties": {
+        "readiness": {
+          "properties": {
+            "ready": { "const": false },
+            "reason": { "const": "invalid_source" }
+          }
+        },
+        "snapshot": {
+          "required": ["requested_ref"],
+          "properties": { "immutable": { "const": true } },
+          "not": { "required": ["worktree_state"] }
+        }
+      },
+      "anyOf": [
+        {
+          "properties": {
+            "validation": { "properties": { "errors_full": { "minimum": 1 } } }
+          }
+        },
+        {
+          "properties": {
+            "paths": { "properties": { "status": { "const": "unavailable" } } }
+          }
+        }
+      ]
+    },
+    {
+      "$ref": "#/$defs/completeBaseline",
+      "properties": {
+        "readiness": {
+          "properties": {
+            "ready": { "const": false },
+            "reason": { "const": "provisional_paths" }
+          }
+        },
+        "validation": { "properties": { "errors_full": { "const": 0 } } },
+        "summary": { "properties": { "provisional": { "minimum": 1 } } },
+        "paths": {
+          "properties": {
+            "status": { "const": "available" },
+            "value": {
+              "contains": {
+                "required": ["classification"],
+                "properties": { "classification": { "const": "provisional" } }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "$ref": "#/$defs/completeBaseline",
+      "properties": {
+        "readiness": {
+          "properties": {
+            "ready": { "const": false },
+            "reason": { "const": "uncovered_paths" }
+          }
+        },
+        "validation": { "properties": { "errors_full": { "const": 0 } } },
+        "summary": {
+          "properties": { "provisional": { "const": 0 }, "uncovered": { "minimum": 1 } }
+        },
+        "paths": {
+          "properties": {
+            "status": { "const": "available" },
+            "value": {
+              "contains": {
+                "required": ["classification"],
+                "properties": { "classification": { "const": "uncovered" } }
+              },
+              "not": {
+                "contains": {
+                  "required": ["classification"],
+                  "properties": { "classification": { "const": "provisional" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "completeBaseline": {
+      "properties": {
+        "snapshot": {
+          "required": ["requested_ref", "resolved_commit"],
+          "properties": { "immutable": { "const": true } },
+          "not": { "required": ["worktree_state"] }
+        },
+        "knowledge_snapshot": {
+          "required": [
+            "graph_schema_version",
+            "graph_sha256",
+            "object_set_sha256",
+            "docs_path"
+          ],
+          "properties": { "status": { "const": "available" } }
+        },
+        "assessment_config": {
+          "required": ["sha256"],
+          "properties": {
+            "comparison_base": {
+              "required": ["docs_path", "sha256"],
+              "properties": { "status": { "const": "available" } }
+            },
+            "head": {
+              "required": ["docs_path", "sha256"],
+              "properties": { "status": { "const": "available" } }
+            },
+            "policy": {
+              "required": ["effective_sha256", "proposed_head_sha256"],
+              "properties": { "status": { "const": "available" } }
+            }
+          }
+        },
+        "paths": { "properties": { "status": { "const": "available" } } },
+        "objects": { "properties": { "status": { "const": "available" } } },
+        "validation": {
+          "properties": {
+            "errors_full": { "const": 0 },
+            "errors_changed": { "const": 0 },
+            "errors_unchanged": { "const": 0 },
+            "errors_unattributed": { "const": 0 }
+          }
+        }
+      }
+    },
+    "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "availability": { "type": "string", "enum": ["available", "unavailable"] },
+    "readiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ready", "reason"],
+      "properties": {
+        "ready": { "type": "boolean" },
+        "reason": {
+          "enum": ["ready", "invalid_source", "provisional_paths", "uncovered_paths"]
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "ready": { "const": true },
+            "reason": { "const": "ready" }
+          }
+        },
+        {
+          "properties": {
+            "ready": { "const": false },
+            "reason": {
+              "enum": ["invalid_source", "provisional_paths", "uncovered_paths"]
+            }
+          }
+        }
+      ]
+    },
+    "snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["immutable"],
+      "properties": {
+        "requested_ref": { "type": "string", "minLength": 1 },
+        "resolved_commit": { "$ref": "#/$defs/commit" },
+        "immutable": { "type": "boolean" },
+        "worktree_state": { "enum": ["clean", "dirty"] }
+      }
+    },
+    "knowledgeSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "$ref": "#/$defs/availability" },
+        "graph_schema_version": { "type": "string" },
+        "graph_sha256": { "$ref": "#/$defs/sha256" },
+        "object_set_sha256": { "$ref": "#/$defs/sha256" },
+        "docs_path": { "type": "string" }
+      },
+      "oneOf": [
+        {
+          "required": ["graph_schema_version", "graph_sha256", "object_set_sha256", "docs_path"],
+          "properties": { "status": { "const": "available" } }
+        },
+        {
+          "properties": { "status": { "const": "unavailable" } },
+          "not": {
+            "anyOf": [
+              { "required": ["graph_schema_version"] },
+              { "required": ["graph_sha256"] },
+              { "required": ["object_set_sha256"] },
+              { "required": ["docs_path"] }
+            ]
+          }
+        }
+      ]
+    },
+    "snapshotConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "source"],
+      "properties": {
+        "status": { "$ref": "#/$defs/availability" },
+        "source": { "const": "file" },
+        "docs_path": { "type": "string" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "effective_source_snapshot", "exclude_paths", "generated_outputs"],
+      "properties": {
+        "status": { "$ref": "#/$defs/availability" },
+        "effective_source_snapshot": { "const": "comparison_base" },
+        "exclude_paths": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "generated_outputs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "effective_sha256": { "$ref": "#/$defs/sha256" },
+        "proposed_head_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "assessmentConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["comparison_base", "head", "policy"],
+      "properties": {
+        "comparison_base": { "$ref": "#/$defs/snapshotConfig" },
+        "head": { "$ref": "#/$defs/snapshotConfig" },
+        "policy": { "$ref": "#/$defs/policy" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "changed_paths",
+        "covered",
+        "provisional",
+        "uncovered",
+        "excluded",
+        "impacted_objects"
+      ],
+      "properties": {
+        "changed_paths": { "type": "integer", "minimum": 0 },
+        "covered": { "type": "integer", "minimum": 0 },
+        "provisional": { "type": "integer", "minimum": 0 },
+        "uncovered": { "type": "integer", "minimum": 0 },
+        "excluded": { "type": "integer", "minimum": 0 },
+        "impacted_objects": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "errors_full",
+        "errors_changed",
+        "errors_unchanged",
+        "errors_unattributed",
+        "warnings"
+      ],
+      "properties": {
+        "errors_full": { "type": "integer", "minimum": 0 },
+        "errors_changed": { "type": "integer", "minimum": 0 },
+        "errors_unchanged": { "type": "integer", "minimum": 0 },
+        "errors_unattributed": { "type": "integer", "minimum": 0 },
+        "warnings": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "match": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object_id", "reason"],
+      "properties": {
+        "object_id": { "type": "string", "minLength": 1 },
+        "reason": { "enum": ["impacts_path", "evidence_path"] },
+        "via_source_object": { "type": "string", "minLength": 1 }
+      }
+    },
+    "path": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "classification", "matches"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "classification": { "enum": ["covered", "provisional", "uncovered", "excluded"] },
+        "exclusion_reason": { "type": "string", "minLength": 1 },
+        "matches": { "type": "array", "items": { "$ref": "#/$defs/match" } }
+      },
+      "oneOf": [
+        {
+          "required": ["exclusion_reason"],
+          "properties": {
+            "classification": { "const": "excluded" },
+            "matches": { "maxItems": 0 }
+          }
+        },
+        {
+          "properties": {
+            "classification": { "enum": ["covered", "provisional", "uncovered"] }
+          },
+          "not": { "required": ["exclusion_reason"] }
+        }
+      ]
+    },
+    "pathAvailability": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": { "$ref": "#/$defs/availability" },
+        "value": { "type": "array", "items": { "$ref": "#/$defs/path" } }
+      },
+      "oneOf": [
+        {
+          "required": ["status", "value"],
+          "properties": { "status": { "const": "available" } }
+        },
+        {
+          "required": ["status"],
+          "properties": { "status": { "const": "unavailable" } },
+          "not": { "required": ["value"] }
+        }
+      ]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "line", "column"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "line": { "type": "integer", "minimum": 1 },
+        "column": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "objectReason": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "reason"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "reason": { "enum": ["impacts_path", "evidence_path"] },
+        "via_source_object": { "type": "string", "minLength": 1 }
+      }
+    },
+    "object": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "content_hash",
+        "reviewers",
+        "source",
+        "authority",
+        "changed_in_pr",
+        "reasons"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "authored_status": { "type": "string" },
+        "effective_status": { "type": "string" },
+        "content_hash": { "$ref": "#/$defs/sha256" },
+        "owner": { "type": "string" },
+        "reviewers": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "evidence_quality": { "enum": ["high", "medium", "low"] },
+        "source": { "$ref": "#/$defs/source" },
+        "authority": { "enum": ["authoritative", "provisional"] },
+        "changed_in_pr": { "enum": ["yes", "no", "unknown"] },
+        "reasons": { "type": "array", "items": { "$ref": "#/$defs/objectReason" } }
+      }
+    },
+    "objectAvailability": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": { "$ref": "#/$defs/availability" },
+        "value": { "type": "array", "items": { "$ref": "#/$defs/object" } }
+      },
+      "oneOf": [
+        {
+          "required": ["status", "value"],
+          "properties": { "status": { "const": "available" } }
+        },
+        {
+          "required": ["status"],
+          "properties": { "status": { "const": "unavailable" } },
+          "not": { "required": ["value"] }
+        }
+      ]
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "severity", "message", "changed_in_pr"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "severity": { "enum": ["error", "warning", "info"] },
+        "message": { "type": "string", "minLength": 1 },
+        "source": { "$ref": "#/$defs/source" },
+        "object_id": { "type": "string", "minLength": 1 },
+        "changed_in_pr": { "enum": ["yes", "no", "unknown"] }
+      }
+    }
+  }
+}
