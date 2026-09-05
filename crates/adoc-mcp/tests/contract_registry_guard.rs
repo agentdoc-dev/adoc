@@ -537,6 +537,73 @@ fn e5_1_proposal_record_is_shipped_by_its_contract_owner() {
 }
 
 #[test]
+fn e5_2_cloud_approval_codes_are_registered_exactly() {
+    let registry = registry();
+    let cloud_block =
+        support::doc_scan::anchored_block(&registry, REGISTRY, "registry:cloud-codes");
+    let registered: BTreeSet<_> = anchored_ids(&registry, "registry:cloud-codes")
+        .into_iter()
+        .filter(|code| code.starts_with("approval."))
+        .collect();
+    let expected = BTreeSet::from([
+        "approval.ineligible_approver".to_string(),
+        "approval.proposal_hash_mismatch".to_string(),
+        "approval.scope_mismatch".to_string(),
+        "approval.policy_version_stale".to_string(),
+        "approval.invalidated_proposal_changed".to_string(),
+        "approval.concurrent_write_rejected".to_string(),
+        "approval.model_identity_rejected".to_string(),
+    ]);
+
+    assert_eq!(registered, expected);
+    let scope_row = cloud_block
+        .lines()
+        .find(|line| {
+            line.trim().split('|').nth(1).map(str::trim) == Some("`approval.scope_mismatch`")
+        })
+        .expect("approval scope-mismatch row");
+    assert!(scope_row.contains("complete affected-object `(object_id, content_hash)` tuple set"));
+    assert!(scope_row.contains("`create_object` targets"));
+    assert!(scope_row.contains("does not exact-match"));
+
+    let proposal_hash_approval_row = cloud_block
+        .lines()
+        .find(|line| {
+            line.trim().split('|').nth(1).map(str::trim)
+                == Some("`approval.proposal_hash_mismatch`")
+        })
+        .expect("approval proposal-hash-mismatch row");
+    assert!(proposal_hash_approval_row.contains("no approval record is created"));
+    assert!(proposal_hash_approval_row.contains("distinct from `gate.proposal_hash_mismatch`"));
+    assert!(proposal_hash_approval_row.contains("gate-time stored-proposal integrity check"));
+    assert!(proposal_hash_approval_row.contains("digest re-derived from delivered content"));
+    assert!(proposal_hash_approval_row.contains("never a command rejection"));
+
+    let gate_block = support::doc_scan::anchored_block(&registry, REGISTRY, "registry:gate-codes");
+    let proposal_hash_row = gate_block
+        .lines()
+        .find(|line| {
+            line.trim().split('|').nth(1).map(str::trim) == Some("`gate.proposal_hash_mismatch`")
+        })
+        .expect("gate proposal-hash-mismatch row");
+    assert!(proposal_hash_row.contains("declared digest"));
+    assert!(proposal_hash_row.contains("re-derived from delivered proposal content"));
+    assert!(proposal_hash_row.contains("`gate.approval_invalidated` takes precedence"));
+    assert!(proposal_hash_row.contains("this code is not emitted"));
+    assert!(!proposal_hash_row.contains("`approval.proposal_hash_mismatch`"));
+
+    let invalidated_row = gate_block
+        .lines()
+        .find(|line| {
+            line.trim().split('|').nth(1).map(str::trim) == Some("`gate.approval_invalidated`")
+        })
+        .expect("gate approval-invalidated row");
+    assert!(invalidated_row.contains("`approval.invalidated_proposal_changed`"));
+    assert!(invalidated_row.contains("consumes"));
+    assert!(invalidated_row.contains("distinct code, not a respelling"));
+}
+
+#[test]
 fn e4_5_cloud_capability_trust_codes_are_registered_exactly() {
     let registered = anchored_ids(&registry(), "registry:cloud-codes");
     for code in [
