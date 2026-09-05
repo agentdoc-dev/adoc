@@ -1304,6 +1304,59 @@ fn serialized_repository_baseline_matches_published_schema_for_all_readiness_rea
         assert_valid(schema_name, baseline);
     }
 
+    let mut invalid_with_validation_errors = ready_baseline.clone();
+    invalid_with_validation_errors["readiness"] =
+        json!({ "ready": false, "reason": "invalid_source" });
+    invalid_with_validation_errors["validation"]["errors_full"] = json!(1);
+    assert_valid(schema_name, &invalid_with_validation_errors);
+
+    let mut invalid_without_requested_ref = unresolved.clone();
+    invalid_without_requested_ref["snapshot"]
+        .as_object_mut()
+        .expect("snapshot is an object")
+        .remove("requested_ref");
+    assert!(!schema_accepts(schema_name, &invalid_without_requested_ref));
+
+    let mut ready_with_uncovered_classification = ready_baseline.clone();
+    ready_with_uncovered_classification["paths"]["value"]
+        .as_array_mut()
+        .expect("ready paths are available")
+        .iter_mut()
+        .find(|path| path["classification"] == "covered")
+        .expect("ready baseline has a covered path")["classification"] = json!("uncovered");
+    assert!(!schema_accepts(
+        schema_name,
+        &ready_with_uncovered_classification
+    ));
+
+    let mut provisional_without_provisional_classification = produced.clone();
+    for path in provisional_without_provisional_classification["paths"]["value"]
+        .as_array_mut()
+        .expect("provisional paths are available")
+    {
+        if path["classification"] == "provisional" {
+            path["classification"] = json!("covered");
+        }
+    }
+    assert!(!schema_accepts(
+        schema_name,
+        &provisional_without_provisional_classification
+    ));
+
+    let mut uncovered_without_uncovered_classification = uncovered_baseline.clone();
+    for path in uncovered_without_uncovered_classification["paths"]["value"]
+        .as_array_mut()
+        .expect("uncovered paths are available")
+    {
+        if path["classification"] == "uncovered" {
+            path["classification"] = json!("covered");
+        }
+    }
+    assert!(!schema_accepts(
+        schema_name,
+        &uncovered_without_uncovered_classification
+    ));
+
     let mut unsupported = produced.clone();
     unsupported["schema_version"] = json!("adoc.repository_baseline.v99");
     assert!(!schema_accepts(schema_name, &unsupported));

@@ -551,40 +551,6 @@ pub fn assess_changes_from_git(input: ChangeAssessmentInput) -> ChangeAssessment
     )
 }
 
-fn repository_baseline_from_assessment(
-    assessment: ChangeAssessmentEnvelope,
-) -> RepositoryBaselineEnvelope {
-    let ready = assessment.is_complete()
-        && assessment.validation.errors_full == 0
-        && assessment.summary.provisional == 0
-        && assessment.summary.uncovered == 0;
-    let reason = if !assessment.is_complete() || assessment.validation.errors_full > 0 {
-        "invalid_source"
-    } else if assessment.summary.provisional > 0 {
-        "provisional_paths"
-    } else if assessment.summary.uncovered > 0 {
-        "uncovered_paths"
-    } else {
-        "ready"
-    };
-    RepositoryBaselineEnvelope {
-        schema_version: REPOSITORY_BASELINE_SCHEMA_VERSION,
-        readiness: RepositoryBaselineReadiness {
-            ready,
-            reason: reason.to_string(),
-        },
-        evaluation_date: assessment.evaluation_date,
-        snapshot: assessment.snapshots.head,
-        knowledge_snapshot: assessment.knowledge_snapshot,
-        assessment_config: assessment.assessment_config,
-        summary: assessment.summary,
-        validation: assessment.validation,
-        paths: assessment.paths,
-        objects: assessment.objects,
-        diagnostics: assessment.diagnostics,
-    }
-}
-
 /// Inventory every tracked path at one immutable Git ref against AgentDoc knowledge.
 pub fn repository_baseline_from_git(
     project_root: PathBuf,
@@ -605,7 +571,7 @@ pub fn repository_baseline_from_git(
     ) {
         Ok(resolved) => resolved,
         Err(error) => {
-            return repository_baseline_from_assessment(
+            return application::change_assessment::repository_baseline(
                 application::change_assessment::unresolved_envelope(&input, error),
             );
         }
@@ -623,11 +589,9 @@ pub fn repository_baseline_from_git(
     };
     let snapshots = infrastructure::git::worktree::GitWorktreeProvider::new(project_root.clone());
     let tracked = infrastructure::git::changed_files::GitTrackedFilesProvider::new(project_root);
-    repository_baseline_from_assessment(application::change_assessment::assess_with_providers(
-        resolved_input,
-        &snapshots,
-        &tracked,
-    ))
+    application::change_assessment::repository_baseline(
+        application::change_assessment::assess_with_providers(resolved_input, &snapshots, &tracked),
+    )
 }
 
 fn assess_changes_from_git_with_worktree_status(

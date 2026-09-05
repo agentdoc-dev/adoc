@@ -40,6 +40,20 @@
         "validation": { "properties": { "errors_full": { "const": 0 } } },
         "summary": {
           "properties": { "provisional": { "const": 0 }, "uncovered": { "const": 0 } }
+        },
+        "paths": {
+          "properties": {
+            "value": {
+              "not": {
+                "contains": {
+                  "required": ["classification"],
+                  "properties": {
+                    "classification": { "enum": ["provisional", "uncovered"] }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -52,6 +66,7 @@
           }
         },
         "snapshot": {
+          "required": ["requested_ref"],
           "properties": { "immutable": { "const": true } },
           "not": { "required": ["worktree_state"] }
         }
@@ -80,7 +95,17 @@
         },
         "validation": { "properties": { "errors_full": { "const": 0 } } },
         "summary": { "properties": { "provisional": { "minimum": 1 } } },
-        "paths": { "properties": { "status": { "const": "available" } } }
+        "paths": {
+          "properties": {
+            "status": { "const": "available" },
+            "value": {
+              "contains": {
+                "required": ["classification"],
+                "properties": { "classification": { "const": "provisional" } }
+              }
+            }
+          }
+        }
       }
     },
     {
@@ -96,7 +121,23 @@
         "summary": {
           "properties": { "provisional": { "const": 0 }, "uncovered": { "minimum": 1 } }
         },
-        "paths": { "properties": { "status": { "const": "available" } } }
+        "paths": {
+          "properties": {
+            "status": { "const": "available" },
+            "value": {
+              "contains": {
+                "required": ["classification"],
+                "properties": { "classification": { "const": "uncovered" } }
+              },
+              "not": {
+                "contains": {
+                  "required": ["classification"],
+                  "properties": { "classification": { "const": "provisional" } }
+                }
+              }
+            }
+          }
+        }
       }
     }
   ],
