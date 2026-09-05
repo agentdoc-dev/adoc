@@ -7,7 +7,7 @@ use adoc_core::{
     load_review_from_git, load_review_with_changed_files_from_git, parse_patch_from_value,
     review_with_patch,
 };
-use adoc_local::{AssessmentInput, LocalContext, UnrestrictedPathPolicy};
+use adoc_local::{AssessmentInput, LocalContext, RepositoryBaselineInput, UnrestrictedPathPolicy};
 use adoc_mcp::{
     AdocPatchCheckParams, AdocReviewParams, AgentDocMcpServer, BuildParams, ContradictionsParams,
     GraphParams, ImpactedByParams, InitParams, PatchInput, ProjectStatusParams, SearchParams,
@@ -1077,6 +1077,10 @@ fn mcp_serves_schema_resources_byte_equal_to_on_disk_files() {
             "adoc.change_assessment.v0.schema.json",
         ),
         (
+            "adoc://agent/v0/schema/adoc.repository_baseline.v0.schema.json",
+            "adoc.repository_baseline.v0.schema.json",
+        ),
+        (
             "adoc://agent/v0/schema/adoc.migrate.report.v0.schema.json",
             "adoc.migrate.report.v0.schema.json",
         ),
@@ -1226,6 +1230,340 @@ fn validates_complete_and_error_change_assessments_and_rejects_illegal_tuples() 
     let schema = schema("adoc.change_assessment.v0.schema.json");
     let validator = jsonschema::validator_for(&schema).expect("schema compiles");
     assert!(!validator.is_valid(&illegal));
+}
+
+#[test]
+fn serialized_repository_baseline_matches_published_schema_for_all_readiness_reasons() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    run_git(root, &["init", "--initial-branch=main"]);
+    run_git(root, &["config", "user.email", "test@agentdoc.dev"]);
+    run_git(root, &["config", "user.name", "AgentDoc Test"]);
+    run_git(root, &["config", "commit.gpgsign", "false"]);
+    write(
+        &root.join("agentdoc.config.yaml"),
+        "version: 1\nmode: strict\ndocs_path: docs\nembeddings:\n  provider: none\n",
+    );
+    write(
+        &root.join("docs/index.adoc"),
+        &source().replace("status: draft\n", "status: draft\nimpacts: [src/lib.rs]\n"),
+    );
+    write(&root.join("src/lib.rs"), "pub fn billing_ready() {}\n");
+    run_git(root, &["add", "-A"]);
+    run_git(root, &["commit", "-m", "initial"]);
+    let exact_head = fs::read_to_string(root.join(".git/refs/heads/main"))
+        .expect("main ref is readable")
+        .trim()
+        .to_string();
+
+    let context = LocalContext::new(root.to_path_buf(), UnrestrictedPathPolicy);
+    let produced = context
+        .repository_baseline(RepositoryBaselineInput {
+            git_ref: exact_head.clone(),
+            as_of: Some("2026-09-05".parse().expect("fixed evaluation date")),
+        })
+        .expect("repository baseline runs")
+        .envelope;
+    let produced = serde_json::to_value(produced).expect("repository baseline serializes");
+    assert_eq!(produced["snapshot"]["immutable"], true);
+    assert_eq!(produced["snapshot"]["requested_ref"], exact_head);
+    assert_eq!(produced["snapshot"]["resolved_commit"], exact_head);
+    assert_eq!(produced["evaluation_date"], "2026-09-05");
+    assert_eq!(produced["readiness"]["reason"], "provisional_paths");
+    assert_eq!(produced["readiness"]["ready"], false);
+    let paths = produced["paths"]["value"]
+        .as_array()
+        .expect("baseline paths are available");
+    assert!(paths.iter().any(|path| path["matches"] != json!([])));
+    let objects = produced["objects"]["value"]
+        .as_array()
+        .expect("baseline objects are available");
+    assert!(objects.iter().any(|object| object["reasons"] != json!([])));
+
+    let unresolved = context
+        .repository_baseline(RepositoryBaselineInput {
+            git_ref: "missing-ref".to_string(),
+            as_of: None,
+        })
+        .expect("unresolved repository baseline is data")
+        .envelope;
+    let unresolved =
+        serde_json::to_value(unresolved).expect("unresolved repository baseline serializes");
+    assert_eq!(unresolved["readiness"]["reason"], "invalid_source");
+    assert_eq!(unresolved["paths"]["status"], "unavailable");
+    assert_ne!(unresolved["diagnostics"], json!([]));
+
+    write(
+        &root.join("docs/index.adoc"),
+        &source().replace(
+            "status: draft\n",
+            "status: verified\nowner: team-docs\nverified_at: 2026-09-05\nsource: test\nimpacts: [src/lib.rs]\n",
+        ),
+    );
+    run_git(root, &["add", "-A"]);
+    run_git(root, &["commit", "-m", "verify coverage"]);
+    let ready_head = fs::read_to_string(root.join(".git/refs/heads/main"))
+        .expect("ready ref is readable")
+        .trim()
+        .to_string();
+    let ready_baseline = context
+        .repository_baseline(RepositoryBaselineInput {
+            git_ref: ready_head,
+            as_of: Some("2026-09-05".parse().expect("fixed evaluation date")),
+        })
+        .expect("ready repository baseline runs")
+        .envelope;
+    let ready_baseline =
+        serde_json::to_value(ready_baseline).expect("ready repository baseline serializes");
+    assert_eq!(
+        ready_baseline["readiness"],
+        json!({ "ready": true, "reason": "ready" })
+    );
+
+    write(&root.join("docs/index.adoc"), source());
+    run_git(root, &["add", "-A"]);
+    run_git(root, &["commit", "-m", "remove coverage"]);
+    let uncovered_head = fs::read_to_string(root.join(".git/refs/heads/main"))
+        .expect("uncovered ref is readable")
+        .trim()
+        .to_string();
+    let uncovered_baseline = context
+        .repository_baseline(RepositoryBaselineInput {
+            git_ref: uncovered_head,
+            as_of: Some("2026-09-05".parse().expect("fixed evaluation date")),
+        })
+        .expect("uncovered repository baseline runs")
+        .envelope;
+    let uncovered_baseline =
+        serde_json::to_value(uncovered_baseline).expect("uncovered repository baseline serializes");
+    assert_eq!(
+        uncovered_baseline["readiness"],
+        json!({ "ready": false, "reason": "uncovered_paths" })
+    );
+
+    let schema_name = "adoc.repository_baseline.v0.schema.json";
+    for baseline in [&produced, &unresolved, &ready_baseline, &uncovered_baseline] {
+        assert_valid(schema_name, baseline);
+    }
+
+    let mut invalid_with_validation_errors = ready_baseline.clone();
+    invalid_with_validation_errors["readiness"] =
+        json!({ "ready": false, "reason": "invalid_source" });
+    invalid_with_validation_errors["validation"]["errors_full"] = json!(1);
+    assert_valid(schema_name, &invalid_with_validation_errors);
+
+    let mut invalid_without_requested_ref = unresolved.clone();
+    invalid_without_requested_ref["snapshot"]
+        .as_object_mut()
+        .expect("snapshot is an object")
+        .remove("requested_ref");
+    assert!(!schema_accepts(schema_name, &invalid_without_requested_ref));
+
+    let mut available_knowledge_without_replay_identity = unresolved.clone();
+    available_knowledge_without_replay_identity["knowledge_snapshot"]["status"] =
+        json!("available");
+    assert!(!schema_accepts(
+        schema_name,
+        &available_knowledge_without_replay_identity
+    ));
+
+    let mut unavailable_knowledge_with_replay_identity = unresolved.clone();
+    unavailable_knowledge_with_replay_identity["knowledge_snapshot"]["graph_schema_version"] =
+        json!("adoc.graph.v6");
+    assert!(!schema_accepts(
+        schema_name,
+        &unavailable_knowledge_with_replay_identity
+    ));
+
+    let mut ready_with_uncovered_classification = ready_baseline.clone();
+    ready_with_uncovered_classification["paths"]["value"]
+        .as_array_mut()
+        .expect("ready paths are available")
+        .iter_mut()
+        .find(|path| path["classification"] == "covered")
+        .expect("ready baseline has a covered path")["classification"] = json!("uncovered");
+    assert!(!schema_accepts(
+        schema_name,
+        &ready_with_uncovered_classification
+    ));
+
+    let mut ready_with_provisional_classification = ready_baseline.clone();
+    ready_with_provisional_classification["paths"]["value"]
+        .as_array_mut()
+        .expect("ready paths are available")
+        .iter_mut()
+        .find(|path| path["classification"] == "covered")
+        .expect("ready baseline has a covered path")["classification"] = json!("provisional");
+    assert!(!schema_accepts(
+        schema_name,
+        &ready_with_provisional_classification
+    ));
+
+    let mut provisional_without_provisional_classification = produced.clone();
+    for path in provisional_without_provisional_classification["paths"]["value"]
+        .as_array_mut()
+        .expect("provisional paths are available")
+    {
+        if path["classification"] == "provisional" {
+            path["classification"] = json!("covered");
+        }
+    }
+    assert!(!schema_accepts(
+        schema_name,
+        &provisional_without_provisional_classification
+    ));
+
+    let mut uncovered_without_uncovered_classification = uncovered_baseline.clone();
+    for path in uncovered_without_uncovered_classification["paths"]["value"]
+        .as_array_mut()
+        .expect("uncovered paths are available")
+    {
+        if path["classification"] == "uncovered" {
+            path["classification"] = json!("covered");
+        }
+    }
+    assert!(!schema_accepts(
+        schema_name,
+        &uncovered_without_uncovered_classification
+    ));
+
+    let mut uncovered_with_provisional_classification = uncovered_baseline.clone();
+    let paths = uncovered_with_provisional_classification["paths"]["value"]
+        .as_array_mut()
+        .expect("uncovered paths are available");
+    let mut provisional_path = paths
+        .iter()
+        .find(|path| path["classification"] == "uncovered")
+        .expect("uncovered baseline has an uncovered path")
+        .clone();
+    provisional_path["path"] = json!("provisional.rs");
+    provisional_path["classification"] = json!("provisional");
+    paths.push(provisional_path);
+    assert!(!schema_accepts(
+        schema_name,
+        &uncovered_with_provisional_classification
+    ));
+
+    let mut uncovered_with_provisional_count = uncovered_baseline.clone();
+    uncovered_with_provisional_count["summary"]["provisional"] = json!(1);
+    assert!(!schema_accepts(
+        schema_name,
+        &uncovered_with_provisional_count
+    ));
+
+    let mut unsupported = produced.clone();
+    unsupported["schema_version"] = json!("adoc.repository_baseline.v99");
+    assert!(!schema_accepts(schema_name, &unsupported));
+
+    let mut unknown_reason = produced.clone();
+    unknown_reason["readiness"]["reason"] = json!("unknown");
+    assert!(!schema_accepts(schema_name, &unknown_reason));
+
+    let mut ready_with_errors = ready_baseline.clone();
+    ready_with_errors["validation"]["errors_full"] = json!(1);
+    assert!(!schema_accepts(schema_name, &ready_with_errors));
+
+    for counter in ["errors_changed", "errors_unchanged", "errors_unattributed"] {
+        let mut ready_with_partitioned_errors = ready_baseline.clone();
+        ready_with_partitioned_errors["validation"][counter] = json!(1);
+        assert!(!schema_accepts(schema_name, &ready_with_partitioned_errors));
+    }
+
+    let mut excluded_without_evidence = ready_baseline.clone();
+    let excluded_path = excluded_without_evidence["paths"]["value"]
+        .as_array_mut()
+        .expect("ready paths are available")
+        .iter_mut()
+        .find(|path| path["classification"] == "covered")
+        .expect("ready baseline has a covered path");
+    excluded_path["classification"] = json!("excluded");
+    assert!(!schema_accepts(schema_name, &excluded_without_evidence));
+
+    let mut excluded_with_matches = excluded_without_evidence;
+    excluded_with_matches["paths"]["value"]
+        .as_array_mut()
+        .expect("ready paths are available")
+        .iter_mut()
+        .find(|path| path["path"] == "src/lib.rs")
+        .expect("mutated baseline retains the covered fixture path")["exclusion_reason"] =
+        json!("configured_exclusion:src/lib.rs");
+    assert_ne!(
+        excluded_with_matches["paths"]["value"]
+            .as_array()
+            .expect("ready paths are available")
+            .iter()
+            .find(|path| path["path"] == "src/lib.rs")
+            .expect("mutated baseline retains the covered fixture path")["matches"],
+        json!([])
+    );
+    assert!(!schema_accepts(schema_name, &excluded_with_matches));
+
+    let mut covered_with_exclusion_reason = ready_baseline.clone();
+    covered_with_exclusion_reason["paths"]["value"]
+        .as_array_mut()
+        .expect("ready paths are available")
+        .iter_mut()
+        .find(|path| path["classification"] == "covered")
+        .expect("ready baseline has a covered path")["exclusion_reason"] =
+        json!("configured_exclusion:src/lib.rs");
+    assert!(!schema_accepts(schema_name, &covered_with_exclusion_reason));
+
+    let mut ready_with_uncovered_paths = ready_baseline.clone();
+    ready_with_uncovered_paths["summary"]["uncovered"] = json!(1);
+    assert!(!schema_accepts(schema_name, &ready_with_uncovered_paths));
+
+    let mut invalid_without_invalid_source = ready_baseline.clone();
+    invalid_without_invalid_source["readiness"] =
+        json!({ "ready": false, "reason": "invalid_source" });
+    assert!(!schema_accepts(
+        schema_name,
+        &invalid_without_invalid_source
+    ));
+
+    let mut mutable_ready = ready_baseline.clone();
+    mutable_ready["snapshot"]["immutable"] = json!(false);
+    assert!(!schema_accepts(schema_name, &mutable_ready));
+
+    let mut mutable_invalid_source = unresolved.clone();
+    mutable_invalid_source["snapshot"]["immutable"] = json!(false);
+    assert!(!schema_accepts(schema_name, &mutable_invalid_source));
+
+    let mut worktree_invalid_source = unresolved.clone();
+    worktree_invalid_source["snapshot"]["worktree_state"] = json!("dirty");
+    assert!(!schema_accepts(schema_name, &worktree_invalid_source));
+
+    let mut impossible_strategy = produced;
+    impossible_strategy["snapshot"]["strategy"] = json!("merge_base");
+    assert!(!schema_accepts(schema_name, &impossible_strategy));
+
+    let mut ready_without_knowledge = ready_baseline.clone();
+    ready_without_knowledge["knowledge_snapshot"] = json!({ "status": "unavailable" });
+    assert!(!schema_accepts(schema_name, &ready_without_knowledge));
+
+    let mut ready_without_objects = ready_baseline.clone();
+    ready_without_objects["objects"] = json!({ "status": "unavailable" });
+    assert!(!schema_accepts(schema_name, &ready_without_objects));
+
+    let mut available_without_value = ready_baseline;
+    available_without_value["paths"] = json!({ "status": "available" });
+    assert!(!schema_accepts(schema_name, &available_without_value));
+
+    let mut unavailable_with_value = unresolved;
+    unavailable_with_value["objects"]["value"] = json!([]);
+    assert!(!schema_accepts(schema_name, &unavailable_with_value));
+
+    let mut provisional_without_knowledge = invalid_without_invalid_source.clone();
+    provisional_without_knowledge["readiness"] =
+        json!({ "ready": false, "reason": "provisional_paths" });
+    provisional_without_knowledge["summary"]["provisional"] = json!(1);
+    provisional_without_knowledge["knowledge_snapshot"] = json!({ "status": "unavailable" });
+    assert!(!schema_accepts(schema_name, &provisional_without_knowledge));
+
+    let mut uncovered_without_objects = invalid_without_invalid_source;
+    uncovered_without_objects["readiness"] = json!({ "ready": false, "reason": "uncovered_paths" });
+    uncovered_without_objects["summary"]["uncovered"] = json!(1);
+    uncovered_without_objects["objects"] = json!({ "status": "unavailable" });
+    assert!(!schema_accepts(schema_name, &uncovered_without_objects));
 }
 
 /// V8.1.2/V8.1.3: the `adoc migrate` report envelope — built at the same
