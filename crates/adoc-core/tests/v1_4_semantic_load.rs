@@ -21,6 +21,7 @@ fn force_deterministic_provider() {
 fn missing_search_artifact_warns_and_disables_semantic() {
     force_deterministic_provider();
     let result = load_retrieval_session(RetrievalInput {
+        policy: None,
         artifact_path: fixture("hash_drift.graph.json"),
         search_artifact_path: Some(fixture("not_present.search.json")),
     });
@@ -41,6 +42,7 @@ fn missing_search_artifact_warns_and_disables_semantic() {
 fn mismatched_model_emits_error_and_disables_semantic() {
     force_deterministic_provider();
     let result = load_retrieval_session(RetrievalInput {
+        policy: None,
         artifact_path: fixture("hash_drift.graph.json"),
         search_artifact_path: Some(fixture("model_mismatch.search.json")),
     });
@@ -59,16 +61,17 @@ fn mismatched_model_emits_error_and_disables_semantic() {
 
 #[test]
 #[serial(env_provider)]
-fn hash_drift_warns_but_keeps_semantic_index_loaded() {
+fn unrelated_hash_drift_keeps_current_semantic_entries_loaded() {
     force_deterministic_provider();
     let result = load_retrieval_session(RetrievalInput {
+        policy: None,
         artifact_path: fixture("hash_drift.graph.json"),
         search_artifact_path: Some(fixture("hash_drift.search.json")),
     });
     let session = result.session.expect("session loads");
     assert!(
         session.has_semantic_index(),
-        "drift must NOT disable semantic"
+        "unrelated graph drift must preserve current composition-bound vectors"
     );
     let drift = result
         .diagnostics

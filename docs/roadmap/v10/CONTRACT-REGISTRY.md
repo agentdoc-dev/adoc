@@ -241,8 +241,11 @@ Explicit mapping (RT-21, like the attestation family): `audit.persistence_failed
 | `proposal_record.patch_invalid` |
 | `proposal_record.revision_unchanged` |
 | `ref.broken` |
+| `retrieval.audience_unresolved` |
 | `retrieval.no_knowledge_objects_consider_migration` |
 | `retrieval.object_not_found` |
+| `retrieval.policy_invalid` |
+| `retrieval.visibility_unavailable` |
 | `schema.agent_instruction_actions_not_disjoint` |
 | `schema.agent_instruction_invalid_trust` |
 | `schema.agent_instruction_missing_allowed_actions` |

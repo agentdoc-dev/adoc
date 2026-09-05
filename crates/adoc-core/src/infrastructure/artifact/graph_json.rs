@@ -12,6 +12,7 @@ use crate::domain::graph::{
     GraphArtifactDocument, GraphBlockNode, GraphEdge, GraphEdgeKind, GraphEvidence,
     GraphKnowledgeObjectNode, GraphNode, GraphPageNode, GraphRelationKind, GraphRelations,
     GraphRepositoryIdentity, GraphSourceBinding, GraphSourceSpan,
+    apply_contradiction_effective_status,
 };
 use crate::domain::hashing::sha256_prefixed;
 use crate::domain::inline::{InlineSegment, to_source};
@@ -598,89 +599,6 @@ pub(crate) fn derive_effective_status_from_fields(
         Some(("stale".to_string(), format!("expired:{expires_at_date}")))
     } else {
         None
-    }
-}
-
-/// Reverse index over `contradiction_claims`: claim id → the sorted ids of
-/// every **unresolved** contradiction node that references it.
-///
-/// Shared core of the build-time `effective_status: "contradicted"` post-pass
-/// and the V6.2 `adoc contradictions` read-time evaluation in
-/// `application/signals.rs`. Values are sorted ascending so element `[0]` is
-/// the lexicographically smallest implicating contradiction id.
-pub(crate) fn unresolved_contradiction_claim_index<'a>(
-    objects: impl Iterator<Item = &'a crate::domain::graph::GraphKnowledgeObjectNode>,
-) -> BTreeMap<String, Vec<String>> {
-    let mut index: BTreeMap<String, Vec<String>> = BTreeMap::new();
-
-    for ko in objects {
-        if ko.kind != "contradiction" {
-            continue;
-        }
-        if ko.status.as_deref() != Some("unresolved") {
-            continue;
-        }
-        for claim_id in &ko.contradiction_claims {
-            index
-                .entry(claim_id.clone())
-                .or_default()
-                .push(ko.id.clone());
-        }
-    }
-
-    for ids in index.values_mut() {
-        ids.sort();
-        ids.dedup();
-    }
-
-    index
-}
-
-/// Cross-object post-pass: propagate `effective_status: "contradicted"` to claim
-/// nodes referenced by an **unresolved** contradiction node.
-///
-/// # Precedence
-///
-/// If a claim node already has `effective_status` set (e.g. `"stale"` from the
-/// TB2 expiry pass), it is **not** overwritten. Stale is the stronger lifecycle
-/// signal and always wins.
-///
-/// # Determinism with multiple contradictions
-///
-/// When more than one unresolved contradiction references the same claim, the
-/// `effective_reason` is set to `"contradiction:<id>"` where `<id>` is the
-/// **lexicographically smallest** contradiction id among those referencing the
-/// claim. This ensures the output is byte-stable regardless of iteration order.
-pub(crate) fn apply_contradiction_effective_status(nodes: &mut [crate::domain::graph::GraphNode]) {
-    use crate::domain::graph::GraphNode;
-
-    let contradicted = unresolved_contradiction_claim_index(nodes.iter().filter_map(|node| {
-        let GraphNode::KnowledgeObject(ko) = node else {
-            return None;
-        };
-        Some(ko)
-    }));
-
-    if contradicted.is_empty() {
-        return;
-    }
-
-    // Apply to each claim node that has no existing effective_status.
-    for node in nodes.iter_mut() {
-        let GraphNode::KnowledgeObject(ko) = node else {
-            continue;
-        };
-        if ko.kind != "claim" {
-            continue;
-        }
-        if ko.effective_status.is_some() {
-            // Stale (or any pre-set status) wins — do not overwrite.
-            continue;
-        }
-        if let Some(ids) = contradicted.get(&ko.id) {
-            ko.effective_status = Some("contradicted".to_string());
-            ko.effective_reason = Some(format!("contradiction:{}", ids[0]));
-        }
     }
 }
 

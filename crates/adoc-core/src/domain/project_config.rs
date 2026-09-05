@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+use super::retrieval::RetrievalPolicy;
 use super::source::LogicalPath;
 
 #[derive(Debug, Clone)]
@@ -12,6 +13,7 @@ pub struct ParsedProjectConfig {
     pub embeddings_provider: EmbeddingsProvider,
     pub mcp_patch_apply_enabled: bool,
     pub assessment_exclude_paths: Vec<String>,
+    pub retrieval_policy: Option<RetrievalPolicy>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -51,6 +53,7 @@ struct RawProjectConfig {
     embeddings: Option<RawEmbeddings>,
     mcp: Option<RawMcp>,
     assessment: Option<RawAssessment>,
+    retrieval_policy: Option<RetrievalPolicy>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -135,6 +138,7 @@ pub fn parse_project_config(text: &str) -> Result<ParsedProjectConfig, ProjectCo
         embeddings_provider,
         mcp_patch_apply_enabled,
         assessment_exclude_paths,
+        retrieval_policy: raw.retrieval_policy,
     })
 }
 

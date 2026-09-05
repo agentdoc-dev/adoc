@@ -141,6 +141,12 @@ diagnostic_codes! {
         "Rebuild the artifact after removing duplicate object IDs from the source.";
     RetrievalObjectNotFound = "retrieval.object_not_found" =>
         "Use an object ID present in the loaded retrieval artifact.";
+    RetrievalPolicyInvalid = "retrieval.policy_invalid" =>
+        "Use canonical allowed visibilities and valid excluded Object IDs in retrieval_policy.";
+    RetrievalAudienceUnresolved = "retrieval.audience_unresolved" =>
+        "Set retrieval_policy.audience to public, internal, or restricted.";
+    RetrievalVisibilityUnavailable = "retrieval.visibility_unavailable" =>
+        "Rebuild the graph from valid source, fixing artifact errors and invalid object visibility.";
     SearchInvalidFilter = "search.invalid_filter" =>
         "Change or remove the filter so it matches at least one object field in the artifact.";
     SearchInvalidScope = "search.invalid_scope" =>

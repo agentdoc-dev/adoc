@@ -95,6 +95,7 @@ pub use domain::proposal::{
     ProposalDispositionInput, ProposalDispositionKind, ProposalPatch, ProposalPatchInput,
     ProposalRecord, ProposalRecordError,
 };
+pub use domain::retrieval::RetrievalPolicy;
 pub use domain::retrieval::{
     ProseRecord, RetrievalEntry, RetrievalMatch, RetrievalRecord, RetrievalRelations,
     RetrievalSource, SearchMode,

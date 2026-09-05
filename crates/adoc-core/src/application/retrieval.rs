@@ -1,20 +1,21 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZeroUsize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::application::graph::GraphSession;
-use crate::domain::artifact::{SearchArtifactDocument, SearchModelHeader};
+use crate::domain::artifact::{SearchArtifactDocument, SearchEntryKind, SearchModelHeader};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
-use crate::domain::graph::{GraphArtifactDocument, GraphIndex, GraphTraversalQuery};
+use crate::domain::graph::{GraphArtifactDocument, GraphIndex, GraphNode, GraphTraversalQuery};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
 use crate::domain::knowledge_object::question::{ANSWERED_STATUS, RESOLVED_BY_FIELD};
 use crate::domain::ports::artifact_reader::ArtifactReader;
 pub use crate::domain::retrieval::SearchFilters;
 use crate::domain::retrieval::hybrid_ranker::{HybridRanker, merge_pinned_then_scored};
 use crate::domain::retrieval::lexical_index::LexicalIndex;
+use crate::domain::retrieval::metadata;
 use crate::domain::retrieval::vector_index::VectorIndex;
 use crate::domain::retrieval::{
-    ProseRecord, RetrievalEntry, RetrievalMatch, RetrievalRecord, SearchMode,
+    ProseRecord, RetrievalEntry, RetrievalMatch, RetrievalPolicy, RetrievalRecord, SearchMode,
 };
 
 pub const RETRIEVAL_SCHEMA_VERSION: &str = "adoc.retrieval.v1";
@@ -33,6 +34,8 @@ pub enum SearchRecordScope {
 pub struct RetrievalInput {
     pub artifact_path: PathBuf,
     pub search_artifact_path: Option<PathBuf>,
+    /// Absent policy permits public (including unclassified) objects only.
+    pub policy: Option<RetrievalPolicy>,
 }
 
 #[derive(Debug, Clone)]
@@ -175,12 +178,20 @@ where
     S: ArtifactReader<Output = SearchArtifactDocument>,
     G: ArtifactReader<Output = GraphArtifactDocument>,
 {
-    let document = match graph_reader.read(&input.artifact_path) {
+    if let Some(policy) = &input.policy
+        && let Err(diagnostic) = policy.validate()
+    {
+        return RetrievalLoadResult {
+            session: None,
+            diagnostics: vec![*diagnostic],
+        };
+    }
+    let mut document = match graph_reader.read(&input.artifact_path) {
         Ok(document) => document,
         Err(diagnostics) => {
             return RetrievalLoadResult {
                 session: None,
-                diagnostics,
+                diagnostics: safe_artifact_diagnostics(&input.artifact_path, diagnostics),
             };
         }
     };
@@ -190,6 +201,13 @@ where
         .to_pretty_json()
         .expect("graph artifact serialization should not fail")
         .into_bytes();
+
+    if let Err(diagnostic) = filter_retrieval_document(&mut document, input.policy.as_ref()) {
+        return RetrievalLoadResult {
+            session: None,
+            diagnostics: vec![*diagnostic],
+        };
+    }
 
     let document_diagnostics = document.diagnostics.clone();
     let graph_session = match GraphIndex::from_document(document) {
@@ -224,7 +242,7 @@ where
                         ),
                     ));
                 } else {
-                    diagnostics.extend(diags);
+                    diagnostics.extend(safe_artifact_diagnostics(search_path, diags));
                 }
             }
             Ok(doc) => {
@@ -235,14 +253,8 @@ where
                     diagnostics.push(Diagnostic::error(
                         DiagnosticCode::SearchModelMismatch,
                         format!(
-                            "Search artifact `{}` was built with model `{}/{}` (dim {}); active provider is `{}/{}` (dim {}).",
-                            search_path.display(),
-                            doc.model.provider,
-                            doc.model.id,
-                            doc.model.dim,
-                            active.provider,
-                            active.id,
-                            active.dim,
+                            "Search artifact `{}` was built with a different embedding model; the active provider is `{}/{}` (dim {}). Rebuild it.",
+                            search_path.display(), active.provider, active.id, active.dim,
                         ),
                     ));
                     artifact_unloadable = true;
@@ -250,24 +262,59 @@ where
 
                 if !artifact_unloadable {
                     let actual_hash = crate::domain::hashing::sha256_prefixed(&canonical_bytes);
-                    if actual_hash != doc.graph_artifact_hash {
+
+                    let mut has_stale_vectors = false;
+                    let vectors: Vec<_> = doc
+                        .embeddings
+                        .into_iter()
+                        .filter(|entry| {
+                            let composition = match entry.entry_kind {
+                                SearchEntryKind::KnowledgeObject => {
+                                    ObjectId::new(entry.id.as_str())
+                                        .ok()
+                                        .and_then(|id| graph_session.object(&id))
+                                        .map(metadata::embedding_input)
+                                }
+                                SearchEntryKind::Prose => {
+                                    graph_session.prose_block(&entry.id).map(|block| {
+                                        metadata::prose_embedding_input(
+                                            &block.content_text(),
+                                            &block.page_id,
+                                        )
+                                    })
+                                }
+                            };
+                            let Some(input) = composition else {
+                                // A wrong-kind entry for a permitted ID is stale;
+                                // a hidden or absent ID cannot change availability.
+                                has_stale_vectors |= graph_session.prose_block(&entry.id).is_some()
+                                    || ObjectId::new(entry.id.as_str())
+                                        .ok()
+                                        .and_then(|id| graph_session.object(&id))
+                                        .is_some();
+                                return false;
+                            };
+                            let current = crate::domain::hashing::sha256_prefixed(input.as_bytes())
+                                == entry.content_hash;
+                            has_stale_vectors |= !current;
+                            current
+                        })
+                        .map(|e| (e.id, e.vector))
+                        .collect();
+                    if actual_hash != doc.graph_artifact_hash || has_stale_vectors {
                         diagnostics.push(Diagnostic::warning(
                             DiagnosticCode::SearchHashDrift,
                             format!(
-                                "Search artifact `{}` references graph_artifact_hash `{}` but the loaded graph artifact hashes to `{}`.",
-                                search_path.display(),
-                                doc.graph_artifact_hash,
-                                actual_hash,
+                                "Search artifact `{}` does not match the loaded graph; semantic results may be incomplete; rebuild it.",
+                                search_path.display()
                             ),
                         ));
                     }
 
-                    vector_index = Some(VectorIndex::new(
-                        doc.embeddings
-                            .into_iter()
-                            .map(|e| (e.id, e.vector))
-                            .collect(),
-                    ));
+                    // Only stale permitted carriers disable semantic retrieval.
+                    // Permission-filtered emptiness must still behave like absence.
+                    vector_index = (!vectors.is_empty() || !has_stale_vectors)
+                        .then(|| VectorIndex::new(vectors));
                 }
             }
         }
@@ -281,6 +328,146 @@ where
         }),
         diagnostics,
     }
+}
+
+// Decoding can fail before visibility is known. Never echo payload values
+// from a deserializer; retain the stable error code and safe remediation.
+fn safe_artifact_diagnostics(path: &Path, diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
+    diagnostics
+        .into_iter()
+        .map(|diagnostic| match diagnostic.code {
+            DiagnosticCode::IoArtifactMalformed | DiagnosticCode::SchemaUnsupportedVersion => {
+                let safe = Diagnostic::error(
+                    diagnostic.code,
+                    format!("Artifact `{}` could not be loaded.", path.display()),
+                );
+                if let Some(help) = diagnostic.help {
+                    safe.with_help(help)
+                } else {
+                    safe
+                }
+            }
+            _ => diagnostic,
+        })
+        .collect()
+}
+
+fn filter_retrieval_document(
+    document: &mut GraphArtifactDocument,
+    policy: Option<&RetrievalPolicy>,
+) -> Result<(), Box<Diagnostic>> {
+    // A producer may have dropped invalid classification metadata. Do not
+    // interpret that absence as public, even when no other nodes are excluded.
+    if document
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == DiagnosticCode::SchemaVisibilityInvalid)
+    {
+        return Err(Box::new(
+            Diagnostic::error(
+                DiagnosticCode::RetrievalVisibilityUnavailable,
+                "The artifact reports invalid visibility; retrieval classification is unavailable.",
+            )
+            .with_help(
+                "Run `adoc check` to repair visibility and `adoc build` to rebuild the artifact.",
+            ),
+        ));
+    }
+    let mut excluded = policy
+        .map(|p| p.excluded_object_ids.clone())
+        .unwrap_or_default();
+    for object in document
+        .nodes
+        .iter()
+        .filter_map(GraphNode::as_knowledge_object)
+    {
+        if !RetrievalPolicy::permits(policy, object)? {
+            excluded.insert(object.id.clone());
+        }
+    }
+    if excluded.is_empty() {
+        return Ok(());
+    }
+    // ponytail: one extra clone/index preserves validation before redaction;
+    // extract borrowed validation if the E6.1.T3 corpus benchmark requires it.
+    if document
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.severity == crate::domain::diagnostic::Severity::Error)
+        || GraphIndex::from_document(document.clone()).is_err()
+    {
+        return Err(Box::new(Diagnostic::error(
+            DiagnosticCode::RetrievalVisibilityUnavailable,
+            "The graph artifact contains errors; a trusted retrieval projection is unavailable.",
+        ).with_help("Run `adoc check` to inspect source errors and `adoc build` to rebuild the artifact.")));
+    }
+    // Artifact diagnostics describe the unfiltered corpus and can quote content
+    // without an Object ID. They cannot safely accompany this projection.
+    document.diagnostics.clear();
+    // ponytail: repeated projection scans cover citation chains; use a reverse
+    // reference index if the worst-case cubic cost fails the E6.1.T3 corpus guard.
+    loop {
+        // ponytail: conservative ID substring matching can withhold a larger text
+        // unit; provenance-aware field projection belongs to E6.2.
+        let mentions_excluded = |text: &str| excluded.iter().any(|id| text.contains(id));
+        document.nodes.retain(|node| {
+            if let Some(object) = node.as_knowledge_object() {
+                return !excluded.contains(&object.id);
+            }
+            if let Some((_, block)) = node.as_prose_block() {
+                return !excluded.contains(&block.id);
+            }
+            true
+        });
+        document
+            .edges
+            .retain(|edge| !excluded.contains(&edge.source) && !excluded.contains(&edge.target));
+        for object in document.nodes.iter_mut().filter_map(|node| {
+            if let GraphNode::KnowledgeObject(object) = node {
+                Some(object)
+            } else {
+                None
+            }
+        }) {
+            if object
+                .effective_reason
+                .as_deref()
+                .is_some_and(|reason| reason.starts_with("contradiction:"))
+            {
+                object.effective_status = None;
+                object.effective_reason = None;
+            }
+        }
+        crate::domain::graph::apply_contradiction_effective_status(&mut document.nodes);
+        // Hashes and embeddings commit source metadata even when a field is
+        // absent from RetrievalRecord. Withhold the whole source carrier rather
+        // than redact fields and expose their old hash/vector (field reads: E6.2).
+        // Derived contradiction status above is not hash- or embedding-covered.
+        let mut referenced = BTreeSet::new();
+        for node in &document.nodes {
+            let (id, encoded) = if let Some(object) = node.as_knowledge_object() {
+                (&object.id, serde_json::to_string(object))
+            } else if let Some((_, block)) = node.as_prose_block() {
+                (&block.id, serde_json::to_string(block))
+            } else {
+                continue;
+            };
+            let encoded = encoded.map_err(|_| {
+                Box::new(Diagnostic::error(
+                    DiagnosticCode::RetrievalVisibilityUnavailable,
+                    "The retrieval projection could not be classified safely.",
+                ))
+            })?;
+            if mentions_excluded(&encoded) {
+                referenced.insert(id.clone());
+            }
+        }
+        if referenced.is_empty() {
+            break;
+        }
+        excluded.extend(referenced);
+    }
+    Ok(())
 }
 
 pub fn why_object(session: &RetrievalSession, id: &str) -> WhyResult {
@@ -544,7 +731,7 @@ fn search_semantic_impl(session: &RetrievalSession, query: SearchQuery) -> Searc
             records: Vec::new(),
             diagnostics: vec![Diagnostic::error(
                 DiagnosticCode::SearchArtifactMissing,
-                "Semantic search requested but no search artifact is loaded.",
+                "Semantic search requested but no usable search index is loaded.",
             )],
         };
     };
@@ -908,6 +1095,7 @@ mod tests {
 
         let result = load_retrieval_session_with_readers(
             RetrievalInput {
+                policy: None,
                 artifact_path: PathBuf::from("ignored.graph.json"),
                 search_artifact_path: None,
             },
@@ -941,6 +1129,7 @@ mod tests {
 
         let result = load_retrieval_session_with_readers(
             RetrievalInput {
+                policy: None,
                 artifact_path: PathBuf::from("ignored.graph.json"),
                 search_artifact_path: None,
             },
@@ -980,6 +1169,7 @@ mod tests {
 
         let result = load_retrieval_session_with_readers(
             RetrievalInput {
+                policy: None,
                 artifact_path: PathBuf::from("ignored.graph.json"),
                 search_artifact_path: Some(PathBuf::from("ignored.search.json")),
             },
@@ -1024,6 +1214,395 @@ mod tests {
         );
     }
 
+    #[test]
+    fn search_diagnostics_never_echo_payloads_or_reveal_hidden_corpus() {
+        for mismatch in [false, true] {
+            let mut observed = Vec::new();
+            for hidden_present in [false, true] {
+                let mut hidden = object("billing.hidden", "Private credits.");
+                hidden.visibility = Some("restricted".to_string());
+                let mut search_artifact = search_document("sha256:billing.hidden");
+                if mismatch {
+                    search_artifact.model.provider = "billing.hidden".to_string();
+                    search_artifact.model.id = "private-provider-payload".to_string();
+                }
+                let loaded = load_retrieval_session_with_readers(
+                    RetrievalInput {
+                        artifact_path: "ignored.graph.json".into(),
+                        search_artifact_path: Some("ignored.search.json".into()),
+                        policy: None,
+                    },
+                    &StubSearchArtifactReader {
+                        document: search_artifact,
+                    },
+                    &StubGraphArtifactReader {
+                        document: graph_document(
+                            if hidden_present { vec![hidden] } else { vec![] },
+                            vec![],
+                        ),
+                    },
+                    Some(SearchModelHeader {
+                        id: "hash-v1".into(),
+                        provider: "deterministic".into(),
+                        dim: 2,
+                    }),
+                );
+                assert_eq!(
+                    loaded.diagnostics[0].code,
+                    if mismatch {
+                        DiagnosticCode::SearchModelMismatch
+                    } else {
+                        DiagnosticCode::SearchHashDrift
+                    }
+                );
+                let encoded = serde_json::to_string(&loaded.diagnostics).unwrap();
+                assert!(!encoded.contains("billing.hidden"), "{encoded}");
+                assert!(!encoded.contains("private-provider-payload"), "{encoded}");
+                if mismatch {
+                    assert!(encoded.contains("deterministic/hash-v1"), "{encoded}");
+                }
+                observed.push(encoded);
+            }
+            assert_eq!(observed[0], observed[1]);
+        }
+    }
+
+    #[test]
+    fn carried_visibility_errors_refuse_even_without_policy_or_classified_nodes() {
+        for explicit_policy in [false, true] {
+            let mut document =
+                graph_document(vec![object("billing.target", "Private credits.")], vec![]);
+            document.diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode::SchemaVisibilityInvalid,
+                    "private-classification-payload",
+                )
+                .with_object_id("billing.target"),
+            );
+            let loaded = load_retrieval_session_with_readers(
+                RetrievalInput {
+                    artifact_path: "ignored.graph.json".into(),
+                    search_artifact_path: None,
+                    policy: explicit_policy.then(|| RetrievalPolicy {
+                        audience: "public".into(),
+                        allowed_visibilities: BTreeSet::from(["public".into()]),
+                        excluded_object_ids: BTreeSet::new(),
+                    }),
+                },
+                &StubSearchArtifactReader {
+                    document: search_document("sha256:unused"),
+                },
+                &StubGraphArtifactReader { document },
+                None,
+            );
+            assert!(
+                loaded.session.is_none(),
+                "untrusted classification must refuse: policy={explicit_policy}"
+            );
+            assert_eq!(loaded.diagnostics.len(), 1);
+            assert_eq!(
+                loaded.diagnostics[0].code,
+                DiagnosticCode::RetrievalVisibilityUnavailable
+            );
+            let encoded = serde_json::to_string(&loaded.diagnostics).unwrap();
+            assert!(!encoded.contains("private-classification-payload"));
+            assert!(!encoded.contains("billing.target"));
+        }
+    }
+
+    #[test]
+    fn denied_metadata_withholds_original_hash_and_embedding() {
+        let mut carrier = object("billing.target", "Shared credits.");
+        carrier
+            .fields
+            .insert("owner".to_string(), "billing.hidden".to_string());
+        carrier.content_hash =
+            crate::infrastructure::artifact::graph_json::graph_knowledge_object_content_hash(
+                &carrier,
+            );
+        let original_hash = carrier.content_hash.clone();
+        let document = graph_document(vec![carrier], Vec::new());
+        let graph_hash = sha256_prefixed(document.to_pretty_json().unwrap().as_bytes());
+        let mut search_artifact = search_document(&graph_hash);
+        search_artifact.embeddings[0].content_hash = sha256_prefixed(
+            metadata::embedding_input(document.nodes[0].as_knowledge_object().unwrap()).as_bytes(),
+        );
+        let loaded = load_retrieval_session_with_readers(
+            RetrievalInput {
+                artifact_path: "ignored.graph.json".into(),
+                search_artifact_path: Some("ignored.search.json".into()),
+                policy: Some(RetrievalPolicy {
+                    audience: "public".into(),
+                    allowed_visibilities: BTreeSet::from(["public".into()]),
+                    excluded_object_ids: BTreeSet::from(["billing.hidden".into()]),
+                }),
+            },
+            &StubSearchArtifactReader {
+                document: search_artifact,
+            },
+            &StubGraphArtifactReader { document },
+            None,
+        );
+        assert!(loaded.diagnostics.is_empty());
+        let session = loaded.session.unwrap();
+        let why = why_object(&session, "billing.target");
+        let hash_withheld = !serde_json::to_string(&RetrievalEnvelope::from(why))
+            .unwrap()
+            .contains(&original_hash);
+        let vector_withheld = session
+            .vector_index()
+            .unwrap()
+            .rank(&[1.0, 0.0], 10)
+            .is_empty();
+        assert!(
+            hash_withheld && vector_withheld,
+            "hash withheld: {hash_withheld}; vector withheld: {vector_withheld}"
+        );
+    }
+
+    #[test]
+    fn excluded_and_absent_corpora_keep_the_same_empty_semantic_index() {
+        let mut observed = Vec::new();
+        for hidden_present in [false, true] {
+            let mut hidden = object("billing.target", "Target body.");
+            hidden.visibility = Some("restricted".into());
+            let document =
+                graph_document(if hidden_present { vec![hidden] } else { vec![] }, vec![]);
+            let mut vectors = search_document(&sha256_prefixed(
+                document.to_pretty_json().unwrap().as_bytes(),
+            ));
+            if !hidden_present {
+                vectors.embeddings.clear();
+            }
+            let loaded = load_retrieval_session_with_readers(
+                RetrievalInput {
+                    artifact_path: "ignored.graph.json".into(),
+                    search_artifact_path: Some("ignored.search.json".into()),
+                    policy: None,
+                },
+                &StubSearchArtifactReader { document: vectors },
+                &StubGraphArtifactReader { document },
+                None,
+            );
+            assert!(loaded.diagnostics.is_empty());
+            let session = loaded.session.unwrap();
+            assert!(session.has_semantic_index());
+            let mut query = lexical_search_query("credits", SearchRecordScope::ObjectsOnly);
+            query.mode = SearchMode::Semantic;
+            query.query_vector = Some(vec![1.0, 0.0]);
+            let result = search(&session, query);
+            assert!(result.records.is_empty());
+            assert!(result.diagnostics.is_empty());
+            observed.push(serde_json::to_string(&RetrievalEnvelope::from(result)).unwrap());
+        }
+        assert_eq!(observed[0], observed[1]);
+    }
+
+    #[test]
+    fn a_matching_manifest_does_not_validate_individual_vector_bindings() {
+        for wrong_kind in [false, true] {
+            let current = object("billing.target", "Shared current credits.");
+            let document = graph_document(vec![current.clone()], vec![]);
+            let current_graph_hash = sha256_prefixed(document.to_pretty_json().unwrap().as_bytes());
+            // The manifest can name the current graph while an individual entry
+            // still carries old metadata. It is an assertion, not an attestation.
+            let mut vectors = search_document(&current_graph_hash);
+            assert_eq!(vectors.graph_artifact_hash, current_graph_hash);
+            let old = object("billing.target", "Private billing.hidden credits.");
+            vectors.embeddings[0].content_hash = sha256_prefixed(
+                metadata::embedding_input(if wrong_kind { &current } else { &old }).as_bytes(),
+            );
+            if wrong_kind {
+                vectors.embeddings[0].entry_kind = SearchEntryKind::Prose;
+            }
+            let loaded = load_retrieval_session_with_readers(
+                RetrievalInput {
+                    artifact_path: "ignored.graph.json".into(),
+                    search_artifact_path: Some("ignored.search.json".into()),
+                    policy: Some(RetrievalPolicy {
+                        audience: "public".into(),
+                        allowed_visibilities: BTreeSet::from(["public".into()]),
+                        excluded_object_ids: BTreeSet::from(["billing.hidden".into()]),
+                    }),
+                },
+                &StubSearchArtifactReader { document: vectors },
+                &StubGraphArtifactReader { document },
+                None,
+            );
+            let session = loaded.session.unwrap();
+            assert_eq!(why_object(&session, "billing.target").records.len(), 1);
+            assert!(!session.has_semantic_index(), "wrong_kind={wrong_kind}");
+            assert_eq!(loaded.diagnostics.len(), 1);
+            assert_eq!(loaded.diagnostics[0].code, DiagnosticCode::SearchHashDrift);
+            assert!(
+                !serde_json::to_string(&loaded.diagnostics)
+                    .unwrap()
+                    .contains("billing.hidden")
+            );
+        }
+    }
+
+    #[test]
+    fn fully_stale_permitted_vectors_disable_semantic_but_preserve_lexical_fallback() {
+        let loaded = load_retrieval_session_with_readers(
+            RetrievalInput {
+                artifact_path: "ignored.graph.json".into(),
+                search_artifact_path: Some("ignored.search.json".into()),
+                policy: None,
+            },
+            &StubSearchArtifactReader {
+                document: search_document("sha256:older-graph"),
+            },
+            &StubGraphArtifactReader {
+                document: graph_document(
+                    vec![object("billing.target", "Shared updated credits.")],
+                    vec![],
+                ),
+            },
+            None,
+        );
+        let session = loaded.session.unwrap();
+        assert!(
+            !session.has_semantic_index(),
+            "a fully stale permitted index is unavailable"
+        );
+        assert_eq!(loaded.diagnostics[0].code, DiagnosticCode::SearchHashDrift);
+        let mut query = lexical_search_query("credits", SearchRecordScope::ObjectsOnly);
+        query.mode = SearchMode::Semantic;
+        let result = search(&session, query.clone());
+        assert!(result.records.is_empty());
+        assert_eq!(
+            result.diagnostics[0].code,
+            DiagnosticCode::SearchArtifactMissing
+        );
+        assert_eq!(
+            result.diagnostics[0].severity,
+            crate::domain::diagnostic::Severity::Error
+        );
+        query.mode = SearchMode::Hybrid;
+        let result = search(&session, query);
+        assert!(result.diagnostics.is_empty());
+        assert_eq!(result.records[0].id(), "billing.target");
+    }
+
+    #[test]
+    fn vector_admission_checks_current_composition_and_kind_on_drift() {
+        use crate::domain::retrieval::metadata;
+        for change in ["owner", "body", "kind", "unchanged"] {
+            let mut old = object("billing.target", "Shared credits.");
+            old.fields
+                .insert("owner".to_string(), "public-team".to_string());
+            if change == "owner" {
+                old.fields
+                    .insert("owner".to_string(), "billing.hidden".to_string());
+            }
+            if change == "body" {
+                old.body = "Private billing.hidden credits.".to_string();
+            }
+            let mut current = object("billing.target", "Shared credits.");
+            current
+                .fields
+                .insert("owner".to_string(), "public-team".to_string());
+            let mut search_artifact = search_document("sha256:older-graph");
+            search_artifact.embeddings[0].content_hash =
+                sha256_prefixed(metadata::embedding_input(&old).as_bytes());
+            if change == "kind" {
+                search_artifact.embeddings[0].entry_kind = SearchEntryKind::Prose;
+            }
+            let loaded = load_retrieval_session_with_readers(
+                RetrievalInput {
+                    artifact_path: "ignored.graph.json".into(),
+                    search_artifact_path: Some("ignored.search.json".into()),
+                    policy: Some(RetrievalPolicy {
+                        audience: "public".into(),
+                        allowed_visibilities: BTreeSet::from(["public".into()]),
+                        excluded_object_ids: BTreeSet::from(["billing.hidden".into()]),
+                    }),
+                },
+                &StubSearchArtifactReader {
+                    document: search_artifact,
+                },
+                &StubGraphArtifactReader {
+                    document: graph_document(vec![current], Vec::new()),
+                },
+                None,
+            );
+            assert_eq!(loaded.diagnostics[0].code, DiagnosticCode::SearchHashDrift);
+            let session = loaded.session.unwrap();
+            assert_eq!(why_object(&session, "billing.target").records.len(), 1);
+            assert_eq!(
+                session.has_semantic_index(),
+                change == "unchanged",
+                "{change}"
+            );
+            let hits = session
+                .vector_index()
+                .map(|index| index.rank(&[1.0, 0.0], 10))
+                .unwrap_or_default();
+            assert_eq!(hits.len(), usize::from(change == "unchanged"), "{change}");
+        }
+    }
+
+    #[test]
+    fn prose_vector_admission_checks_current_composition_and_kind() {
+        use crate::domain::retrieval::metadata;
+        for change in ["body", "page", "kind", "unchanged"] {
+            let text = "Shared credit rules are public now.";
+            let page = "guides.page";
+            let document: GraphArtifactDocument = serde_json::from_value(serde_json::json!({
+                "schema_version":"adoc.graph.v6", "repository_identity":null,
+                "nodes":[{"type":"paragraph", "id":"guides.page#block-1", "page_id":page,"order":1,"text":text,"source_span":{"path":"docs/public.adoc","line":1,"column":1}}],
+                "edges":[],"diagnostics":[]
+            })).unwrap();
+            let old_text = if change == "body" {
+                "Private billing.hidden credit rules used to apply."
+            } else {
+                text
+            };
+            let old_page = if change == "page" {
+                "billing.hidden"
+            } else {
+                page
+            };
+            let mut search_artifact = search_document("sha256:older-graph");
+            search_artifact.embeddings[0].id = "guides.page#block-1".into();
+            search_artifact.embeddings[0].entry_kind = if change == "kind" {
+                SearchEntryKind::KnowledgeObject
+            } else {
+                SearchEntryKind::Prose
+            };
+            search_artifact.embeddings[0].content_hash =
+                sha256_prefixed(metadata::prose_embedding_input(old_text, old_page).as_bytes());
+            let loaded = load_retrieval_session_with_readers(
+                RetrievalInput {
+                    artifact_path: "ignored.graph.json".into(),
+                    search_artifact_path: Some("ignored.search.json".into()),
+                    policy: None,
+                },
+                &StubSearchArtifactReader {
+                    document: search_artifact,
+                },
+                &StubGraphArtifactReader { document },
+                None,
+            );
+            assert_eq!(loaded.diagnostics[0].code, DiagnosticCode::SearchHashDrift);
+            let session = loaded.session.unwrap();
+            assert_eq!(
+                session.has_semantic_index(),
+                change == "unchanged",
+                "{change}"
+            );
+            assert_eq!(
+                session
+                    .vector_index()
+                    .map(|index| index.rank(&[1.0, 0.0], 10).len())
+                    .unwrap_or(0),
+                usize::from(change == "unchanged"),
+                "{change}"
+            );
+        }
+    }
+
     fn search_document(graph_artifact_hash: &str) -> SearchArtifactDocument {
         SearchArtifactDocument {
             schema_version: "adoc.search.v2".to_string(),
@@ -1036,9 +1615,57 @@ mod tests {
             embeddings: vec![SearchEmbedding {
                 id: "billing.target".to_string(),
                 entry_kind: SearchEntryKind::KnowledgeObject,
-                content_hash: "sha256:content".to_string(),
+                content_hash: sha256_prefixed(
+                    metadata::embedding_input(&object("billing.target", "Target body.")).as_bytes(),
+                ),
                 vector: vec![1.0, 0.0],
             }],
+        }
+    }
+
+    #[test]
+    fn retrieval_policy_excludes_vectors_before_index_construction() {
+        let loaded = load_retrieval_session_with_readers(
+            RetrievalInput {
+                artifact_path: PathBuf::from("ignored.graph.json"),
+                search_artifact_path: Some(PathBuf::from("ignored.search.json")),
+                policy: Some(RetrievalPolicy {
+                    audience: "public".to_string(),
+                    allowed_visibilities: BTreeSet::from(["public".to_string()]),
+                    excluded_object_ids: BTreeSet::from(["billing.target".to_string()]),
+                }),
+            },
+            &StubSearchArtifactReader {
+                document: search_document("sha256:hidden-corpus"),
+            },
+            &StubGraphArtifactReader {
+                document: graph_document(
+                    vec![object("billing.target", "Secret credits.")],
+                    Vec::new(),
+                ),
+            },
+            None,
+        );
+        assert_eq!(loaded.diagnostics[0].code, DiagnosticCode::SearchHashDrift);
+        assert!(!loaded.diagnostics[0].message.contains("sha256:"));
+        let session = loaded.session.expect("filtered session loads");
+        assert!(
+            session
+                .vector_index()
+                .unwrap()
+                .rank(&[1.0, 0.0], 10)
+                .is_empty()
+        );
+        for mode in [
+            SearchMode::Lexical,
+            SearchMode::Semantic,
+            SearchMode::Hybrid,
+        ] {
+            let mut query = empty_search_query();
+            query.mode = mode;
+            query.text = "billing.target".to_string();
+            query.query_vector = Some(vec![1.0, 0.0]);
+            assert!(search(&session, query).records.is_empty());
         }
     }
 
@@ -1102,6 +1729,7 @@ mod tests {
     fn load_session_from_document(document: GraphArtifactDocument) -> RetrievalSession {
         load_retrieval_session_with_readers(
             RetrievalInput {
+                policy: None,
                 artifact_path: PathBuf::from("ignored.graph.json"),
                 search_artifact_path: None,
             },
@@ -1123,6 +1751,33 @@ mod tests {
             top: NonZeroUsize::new(10).expect("non-zero"),
             query_vector: None,
             scope: SearchRecordScope::default(),
+        }
+    }
+
+    #[test]
+    fn retrieval_without_policy_denies_nonpublic_objects_before_search_and_why() {
+        let public = object("billing.public", "Shared credits.");
+        let mut restricted = object("billing.restricted", "Secret credits.");
+        restricted.visibility = Some("restricted".to_string());
+        let mut internal = object("billing.internal", "Internal credits.");
+        internal.visibility = Some("internal".to_string());
+        let session = load_session_from_document(graph_document(
+            vec![public, restricted, internal],
+            Vec::new(),
+        ));
+
+        let result = search(&session, empty_search_query());
+        assert_eq!(
+            result.records.iter().map(|r| r.id()).collect::<Vec<_>>(),
+            ["billing.public"]
+        );
+        for id in ["billing.restricted", "billing.internal"] {
+            let result = why_object(&session, id);
+            assert!(result.records.is_empty());
+            assert_eq!(
+                result.diagnostics[0].code,
+                DiagnosticCode::RetrievalObjectNotFound
+            );
         }
     }
 

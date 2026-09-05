@@ -378,8 +378,8 @@ fn why_rejects_v5_artifact_exact_match_with_rebuild_guidance() {
         .as_str()
         .expect("diagnostic message is a string");
     assert!(
-        message.contains("adoc.graph.v5"),
-        "rejection must name the unsupported version exactly; got: {message}"
+        !message.contains("adoc.graph.v5"),
+        "retrieval must not echo artifact-controlled version text; got: {message}"
     );
     let help = value["diagnostics"][0]["help"]
         .as_str()

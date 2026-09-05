@@ -44,6 +44,7 @@ fn load_session_from_objects(objects: Vec<Value>) -> RetrievalSession {
     let graph_json = graph_json_from_objects(objects, Vec::new());
     let artifact = write_temp_artifact("search", &graph_json);
     let result = load_retrieval_session(RetrievalInput {
+        policy: None,
         artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: None,
     });
@@ -61,6 +62,7 @@ fn load_session_from_objects_with_vectors(
     vectors: Vec<(&str, Vec<f32>)>,
 ) -> RetrievalSession {
     let graph_json = graph_json_from_objects(objects, Vec::new());
+    let graph: Value = serde_json::from_str(&graph_json).expect("graph fixture parses");
     let artifact = write_temp_artifact("hybrid-graph", &graph_json);
     let search_document = serde_json::json!({
         "schema_version": "adoc.search.v2",
@@ -75,7 +77,7 @@ fn load_session_from_objects_with_vectors(
             .map(|(id, vector)| serde_json::json!({
                 "id": id,
                 "entry_kind": "knowledge_object",
-                "content_hash": "sha256:test",
+                "content_hash": fixture_embedding_hash(&graph, id),
                 "vector": vector
             }))
             .collect::<Vec<_>>()
@@ -86,6 +88,7 @@ fn load_session_from_objects_with_vectors(
     );
 
     let result = load_retrieval_session(RetrievalInput {
+        policy: None,
         artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: Some(search_artifact.path().to_path_buf()),
     });
@@ -106,6 +109,7 @@ fn load_session_from_objects_with_graph(
     let artifact = write_temp_artifact("graph-search", &graph_json);
 
     let result = load_retrieval_session(RetrievalInput {
+        policy: None,
         artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: None,
     });
@@ -127,6 +131,44 @@ fn sha256_prefixed(bytes: &[u8]) -> String {
         let _ = write!(output, "{byte:02x}");
     }
     output
+}
+
+// Hash the documented Embedding Composition, not the object's semantic hash.
+fn fixture_embedding_hash(graph: &Value, id: &str) -> String {
+    let Some(node) = graph["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == id)
+    else {
+        // Preserve orphan-vector fixtures; no current carrier can admit them.
+        return sha256_prefixed(b"absent fixture record");
+    };
+    let normalized = |text: &str| {
+        text.replace("\r\n", "\n")
+            .replace('\r', "\n")
+            .trim()
+            .to_string()
+    };
+    let input = match node["type"].as_str().unwrap() {
+        "knowledge_object" => format!(
+            "{}: {}\n[id: {id}] [status: {}] [owner: {}]",
+            node["kind"].as_str().unwrap(),
+            normalized(node["body"].as_str().unwrap()),
+            ["status", "severity", "trust"]
+                .iter()
+                .find_map(|key| node[*key].as_str())
+                .unwrap_or("unknown"),
+            node["fields"]["owner"].as_str().unwrap_or("unknown"),
+        ),
+        "paragraph" | "heading" => format!(
+            "prose: {}\n[page: {}]",
+            normalized(node["text"].as_str().unwrap()),
+            node["page_id"].as_str().unwrap(),
+        ),
+        kind => panic!("unexpected vector fixture carrier: {kind}"),
+    };
+    sha256_prefixed(input.as_bytes())
 }
 
 fn graph_json_from_objects(objects: Vec<Value>, edges: Vec<Value>) -> String {
@@ -255,6 +297,7 @@ fn relation_edge(source: &str, relation: GraphRelationKind, target: &str) -> Val
 
 fn load_workspace_fixture_session(relative: &str) -> RetrievalSession {
     let result = load_retrieval_session(RetrievalInput {
+        policy: None,
         artifact_path: workspace_fixture_path(relative),
         search_artifact_path: None,
     });
@@ -740,6 +783,7 @@ fn retrieval_session_rejects_malformed_graph_artifacts_through_graph_index_valid
     let artifact = write_temp_artifact("duplicate", &graph_json);
 
     let result = load_retrieval_session(RetrievalInput {
+        policy: None,
         artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: None,
     });
@@ -1653,6 +1697,7 @@ fn search_filter_validation_reports_each_supplied_filter_with_no_independent_mat
 fn why_object_returns_record_for_id_in_loaded_graph_artifact() {
     let artifact = verified_claim_graph_artifact();
     let result = load_retrieval_session(RetrievalInput {
+        policy: None,
         artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: None,
     });
@@ -1693,6 +1738,7 @@ fn why_object_returns_record_for_id_in_loaded_graph_artifact() {
 fn why_object_serializes_record_without_search_match_block() {
     let artifact = verified_claim_graph_artifact();
     let result = load_retrieval_session(RetrievalInput {
+        policy: None,
         artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: None,
     });
@@ -1760,6 +1806,7 @@ fn why_object_lists_answered_questions_resolving_the_target() {
 fn retrieval_envelope_serializes_stable_schema_with_records_and_diagnostics() {
     let artifact = verified_claim_graph_artifact();
     let result = load_retrieval_session(RetrievalInput {
+        policy: None,
         artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: None,
     });
@@ -1859,6 +1906,7 @@ fn retrieval_envelope_can_be_created_from_search_result() {
 fn why_object_reports_unknown_id_without_loading_source() {
     let artifact = verified_claim_graph_artifact();
     let result = load_retrieval_session(RetrievalInput {
+        policy: None,
         artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: None,
     });
@@ -1882,6 +1930,7 @@ fn why_object_reports_unknown_id_without_loading_source() {
 fn why_object_reports_invalid_id_without_lookup() {
     let artifact = verified_claim_graph_artifact();
     let result = load_retrieval_session(RetrievalInput {
+        policy: None,
         artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: None,
     });
@@ -1922,6 +1971,7 @@ fn load_retrieval_session_rejects_invalid_object_ids_inside_artifact() {
     );
 
     let result = load_retrieval_session(RetrievalInput {
+        policy: None,
         artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: None,
     });
@@ -1971,6 +2021,7 @@ fn load_retrieval_session_rejects_duplicate_object_ids_inside_artifact() {
     );
 
     let result = load_retrieval_session(RetrievalInput {
+        policy: None,
         artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: None,
     });
@@ -2044,6 +2095,7 @@ fn empty_graph_artifact() -> tempfile::NamedTempFile {
 fn load_prose_only_session(prose_blocks: usize) -> RetrievalSession {
     let artifact = prose_only_graph_artifact(prose_blocks);
     let result = load_retrieval_session(RetrievalInput {
+        policy: None,
         artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: None,
     });
@@ -2058,6 +2110,7 @@ fn load_prose_only_session(prose_blocks: usize) -> RetrievalSession {
 fn load_empty_graph_session() -> RetrievalSession {
     let artifact = empty_graph_artifact();
     let result = load_retrieval_session(RetrievalInput {
+        policy: None,
         artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: None,
     });
@@ -2427,6 +2480,7 @@ fn load_prose_session(extension: &str) -> RetrievalSession {
         &prose_symmetry_graph_json(extension),
     );
     let result = load_retrieval_session(RetrievalInput {
+        policy: None,
         artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: None,
     });
@@ -2548,6 +2602,7 @@ fn load_prose_session_with_vectors(vectors: Vec<(&str, Vec<f32>)>) -> RetrievalS
         .expect("prose fixture has canonical shape");
     let graph_json =
         serde_json::to_string_pretty(&canonical).expect("prose fixture serializes canonically");
+    let graph: Value = serde_json::from_str(&graph_json).expect("graph fixture parses");
     let artifact = write_temp_artifact("prose-vectors-graph", &graph_json);
     let search_document = json!({
         "schema_version": "adoc.search.v2",
@@ -2562,7 +2617,7 @@ fn load_prose_session_with_vectors(vectors: Vec<(&str, Vec<f32>)>) -> RetrievalS
             .map(|(id, vector)| json!({
                 "id": id,
                 "entry_kind": if id.contains('#') { "prose" } else { "knowledge_object" },
-                "content_hash": "sha256:test",
+                "content_hash": fixture_embedding_hash(&graph, id),
                 "vector": vector
             }))
             .collect::<Vec<_>>()
@@ -2573,6 +2628,7 @@ fn load_prose_session_with_vectors(vectors: Vec<(&str, Vec<f32>)>) -> RetrievalS
     );
 
     let result = load_retrieval_session(RetrievalInput {
+        policy: None,
         artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: Some(search_artifact.path().to_path_buf()),
     });
@@ -2827,6 +2883,7 @@ fn blended_lexical_search_ranks_knowledge_objects_and_prose_by_honest_rank() {
     );
     let artifact = write_temp_artifact("mixed-blend", &graph_json);
     let result = load_retrieval_session(RetrievalInput {
+        policy: None,
         artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: None,
     });
@@ -2857,4 +2914,750 @@ fn blended_lexical_search_ranks_knowledge_objects_and_prose_by_honest_rank() {
         "a mixed corpus never fires the migration hint: {:?}",
         prose_first.diagnostics
     );
+}
+
+#[test]
+fn retrieval_policy_excludes_search_and_why_before_ranking() {
+    let public = retrieval_search_object(
+        "billing.public",
+        "claim",
+        Some("draft"),
+        None,
+        "docs/public.adoc",
+        "Shared credits.",
+    );
+    let hidden = retrieval_search_object(
+        "billing.hidden",
+        "claim",
+        Some("draft"),
+        None,
+        "docs/hidden.adoc",
+        "Shared credits credits credits.",
+    );
+    let policy: adoc_core::RetrievalPolicy = serde_json::from_value(json!({
+        "audience": "public", "allowed_visibilities": ["public"],
+        "excluded_object_ids": ["billing.hidden"]
+    }))
+    .expect("policy parses");
+    let load = |objects, policy| {
+        let artifact = write_temp_artifact("policy", &graph_json_from_objects(objects, Vec::new()));
+        let loaded = load_retrieval_session(RetrievalInput {
+            artifact_path: artifact.path().to_path_buf(),
+            search_artifact_path: None,
+            policy,
+        });
+        assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+        loaded.session.expect("session loads")
+    };
+    let filtered = load(vec![public.clone(), hidden.clone()], Some(policy.clone()));
+    let absent = load(vec![public.clone()], Some(policy));
+    for text in ["", "credits", "billing.hidden", "billing"] {
+        let query = lexical_query(text, 10, SearchFilters::default());
+        let actual =
+            serde_json::to_value(RetrievalEnvelope::from(search(&filtered, query.clone())))
+                .unwrap();
+        let expected =
+            serde_json::to_value(RetrievalEnvelope::from(search(&absent, query))).unwrap();
+        assert_eq!(actual, expected, "query: {text}");
+    }
+    assert_eq!(
+        serde_json::to_value(RetrievalEnvelope::from(why_object(
+            &filtered,
+            "billing.hidden"
+        )))
+        .unwrap(),
+        serde_json::to_value(RetrievalEnvelope::from(why_object(
+            &absent,
+            "billing.hidden"
+        )))
+        .unwrap(),
+    );
+    let unrestricted = load(vec![public, hidden], None);
+    assert_eq!(why_object(&unrestricted, "billing.hidden").records.len(), 1);
+}
+
+#[test]
+fn retrieval_policy_withholds_carriers_from_prose_metadata_and_diagnostics() {
+    let mut public = retrieval_search_object(
+        "billing.public",
+        "question",
+        Some("answered"),
+        None,
+        "docs/public.adoc",
+        "Shared credits.",
+    );
+    public["relations"]["depends_on"] = json!(["billing.hidden"]);
+    public["fields"]["resolved_by"] = json!("billing.hidden");
+    public["evidence"] = json!([{"kind":"source_code", "value":"See billing.hidden"}]);
+    let hidden = retrieval_search_object(
+        "billing.hidden",
+        "claim",
+        Some("draft"),
+        None,
+        "docs/hidden.adoc",
+        "Secret credits.",
+    );
+    let mut document: Value = serde_json::from_str(&graph_json_from_objects(vec![public, hidden], vec![
+        json!({"kind":"relation", "source":"billing.public", "target":"billing.hidden", "relation":"depends_on"})
+    ])).unwrap();
+    document["nodes"].as_array_mut().unwrap().push(json!({
+        "type":"paragraph", "id":"team.billing#block-1", "page_id":"team.billing", "order":1,
+        "text":"Secret credits from [[billing.hidden]].", "source_span":{"path":"docs/public.adoc","line":2,"column":1}
+    }));
+    document["nodes"][0]["evidence_quality"] = json!("high");
+    document["diagnostics"] = json!([{
+        "code":"ref.broken", "severity":"warning", "message":"Secret credits from billing.hidden"
+    }]);
+    let artifact = write_temp_artifact("policy-projection", &document.to_string());
+    let result = load_retrieval_session(RetrievalInput {
+        artifact_path: artifact.path().to_path_buf(),
+        search_artifact_path: None,
+        policy: Some(
+            serde_json::from_value(
+                json!({"audience":"public", "allowed_visibilities":["public"],
+            "excluded_object_ids":["billing.hidden"]}),
+            )
+            .unwrap(),
+        ),
+    });
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    let session = result
+        .session
+        .expect("filtered graph loads without dangling edges");
+    let why = why_object(&session, "billing.public");
+    assert!(
+        why.records.is_empty(),
+        "a source carrier cannot retain its pre-redaction hash"
+    );
+    let why_json = serde_json::to_string(&RetrievalEnvelope::from(why)).unwrap();
+    assert!(!why_json.contains("billing.hidden"), "{why_json}");
+    let search_json = serde_json::to_string(&RetrievalEnvelope::from(search(
+        &session,
+        lexical_query("credits", 10, SearchFilters::default()),
+    )))
+    .unwrap();
+    assert!(!search_json.contains("billing.hidden"), "{search_json}");
+    assert!(!search_json.contains("Secret credits"), "{search_json}");
+}
+
+#[test]
+fn retrieval_policy_invalid_values_fail_closed_and_audience_is_a_ceiling() {
+    let mut object = retrieval_search_object(
+        "billing.internal",
+        "claim",
+        Some("draft"),
+        None,
+        "docs/internal.adoc",
+        "Internal credits.",
+    );
+    object["visibility"] = json!("internal");
+    let graph = json!({"schema_version":"adoc.graph.v6", "repository_identity":null,
+        "nodes":[object], "edges":[], "diagnostics":[]});
+    let artifact = write_temp_artifact("policy-values", &graph.to_string());
+    let load = |policy| {
+        load_retrieval_session(RetrievalInput {
+            artifact_path: artifact.path().to_path_buf(),
+            search_artifact_path: None,
+            policy: Some(serde_json::from_value(policy).unwrap()),
+        })
+    };
+    for (policy, code) in [
+        (
+            json!({"audience":"unknown", "allowed_visibilities":["public"]}),
+            DiagnosticCode::RetrievalAudienceUnresolved,
+        ),
+        (
+            json!({"audience":"public", "allowed_visibilities":["secret"]}),
+            DiagnosticCode::RetrievalPolicyInvalid,
+        ),
+        (
+            json!({"audience":"public", "allowed_visibilities":[" public"]}),
+            DiagnosticCode::RetrievalPolicyInvalid,
+        ),
+        (
+            json!({"audience":"public", "allowed_visibilities":["public"], "excluded_object_ids":["bad"]}),
+            DiagnosticCode::RetrievalPolicyInvalid,
+        ),
+    ] {
+        let result = load(policy);
+        assert!(result.session.is_none());
+        assert_eq!(result.diagnostics.len(), 1);
+        assert_eq!(result.diagnostics[0].code, code);
+    }
+    for (audience, allowed, count) in [
+        ("public", vec!["internal"], 0),
+        ("internal", vec![], 0),
+        ("internal", vec!["internal"], 1),
+        ("restricted", vec!["internal"], 1),
+    ] {
+        let session = load(json!({"audience":audience, "allowed_visibilities":allowed}))
+            .session
+            .unwrap();
+        assert_eq!(
+            why_object(&session, "billing.internal").records.len(),
+            count
+        );
+    }
+    let mut invalid_graph = graph;
+    invalid_graph["nodes"][0]["visibility"] = json!("secret");
+    std::fs::write(artifact.path(), invalid_graph.to_string()).unwrap();
+    let invalid = load(json!({"audience":"public", "allowed_visibilities":["public"]}));
+    assert!(invalid.session.is_none());
+    assert_eq!(
+        invalid.diagnostics[0].code,
+        DiagnosticCode::RetrievalVisibilityUnavailable
+    );
+}
+
+#[test]
+fn project_config_carries_strict_retrieval_policy_and_defaults_exclusions() {
+    let base = "version: 1\nmode: strict\ndocs_path: docs\n";
+    assert!(
+        adoc_core::parse_project_config(base)
+            .unwrap()
+            .retrieval_policy
+            .is_none()
+    );
+    let configured =
+        format!("{base}retrieval_policy:\n  audience: public\n  allowed_visibilities: [public]\n");
+    let policy = adoc_core::parse_project_config(&configured)
+        .unwrap()
+        .retrieval_policy
+        .unwrap();
+    assert!(policy.excluded_object_ids.is_empty());
+    let encoded = serde_json::to_value(&policy).unwrap();
+    assert_eq!(
+        serde_json::from_value::<adoc_core::RetrievalPolicy>(encoded).unwrap(),
+        policy
+    );
+    assert!(adoc_core::parse_project_config(&format!("{configured}  typo: true\n")).is_err());
+    assert!(
+        adoc_core::parse_project_config(&format!("{base}retrieval_policy:\n  audience: public\n"))
+            .is_err()
+    );
+}
+
+#[test]
+fn retrieval_policy_preserves_artifact_failure_without_disclosing_content() {
+    let mut graph: Value =
+        serde_json::from_str(&graph_json_from_objects(Vec::new(), Vec::new())).unwrap();
+    graph["diagnostics"] = json!([{
+        "code":"ref.broken", "severity":"error", "message":"Secret billing.hidden is broken"
+    }]);
+    let artifact = write_temp_artifact("policy-invalid-corpus", &graph.to_string());
+    let result = load_retrieval_session(RetrievalInput {
+        artifact_path: artifact.path().to_path_buf(),
+        search_artifact_path: None,
+        policy: Some(
+            serde_json::from_value(
+                json!({"audience":"public", "allowed_visibilities":["public"],
+            "excluded_object_ids":["billing.hidden"]}),
+            )
+            .unwrap(),
+        ),
+    });
+    assert!(
+        result.session.is_none(),
+        "carried source errors must refuse even a structurally valid filtered session"
+    );
+    assert_eq!(result.diagnostics.len(), 1);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::RetrievalVisibilityUnavailable
+    );
+    assert_eq!(result.diagnostics[0].severity, adoc_core::Severity::Error);
+    let help = result.diagnostics[0]
+        .help
+        .as_deref()
+        .expect("safe repair guidance");
+    assert!(
+        help.contains("adoc check") && help.contains("adoc build"),
+        "{help}"
+    );
+    let diagnostic = serde_json::to_string(&result.diagnostics).unwrap();
+    assert!(!diagnostic.contains("Secret"));
+    assert!(!diagnostic.contains("billing.hidden"));
+
+    graph["diagnostics"] = json!([]);
+    graph["edges"] = json!([{"kind":"relation", "source":"billing.missing", "target":"billing.other", "relation":"depends_on"}]);
+    std::fs::write(artifact.path(), graph.to_string()).unwrap();
+    let result = load_retrieval_session(RetrievalInput {
+        artifact_path: artifact.path().to_path_buf(),
+        search_artifact_path: None,
+        policy: Some(
+            serde_json::from_value(
+                json!({"audience":"public", "allowed_visibilities":["public"],
+            "excluded_object_ids":["billing.hidden"]}),
+            )
+            .unwrap(),
+        ),
+    });
+    assert!(
+        result.session.is_none(),
+        "unrelated broken edges must still fail graph validation"
+    );
+}
+
+#[test]
+fn permission_projection_recomputes_contradiction_status_without_hidden_ids() {
+    let mut public = retrieval_search_object(
+        "billing.public",
+        "claim",
+        Some("verified"),
+        None,
+        "docs/public.adoc",
+        "Shared credits.",
+    );
+    public["effective_status"] = json!("contradicted");
+    public["effective_reason"] = json!("contradiction:billing.hidden");
+    let mut hidden = retrieval_search_object(
+        "billing.hidden",
+        "contradiction",
+        Some("unresolved"),
+        None,
+        "docs/hidden.adoc",
+        "Private dispute.",
+    );
+    hidden["visibility"] = json!("restricted");
+    hidden["contradiction_claims"] = json!(["billing.public"]);
+    let artifact = write_temp_artifact(
+        "contradiction-privacy",
+        &json!({
+            "schema_version":"adoc.graph.v6", "repository_identity":null,
+            "nodes":[public, hidden], "edges":[], "diagnostics":[]
+        })
+        .to_string(),
+    );
+    let result = load_retrieval_session(RetrievalInput {
+        artifact_path: artifact.path().into(),
+        search_artifact_path: None,
+        policy: None,
+    });
+    let session = result.session.unwrap();
+    let record = &why_object(&session, "billing.public").records[0];
+    assert_eq!(record.effective_status, None);
+    assert_eq!(record.effective_reason, None);
+    assert_eq!(record.status.as_deref(), Some("verified"));
+}
+
+#[test]
+fn permission_projection_withholds_bodies_referencing_denied_objects_before_ranking() {
+    for (path, body) in [
+        ("docs/public.adoc", "See [[billing.hidden]] for credits."),
+        ("docs/billing.hidden.adoc", "Shared credits."),
+    ] {
+        let public =
+            retrieval_search_object("billing.public", "claim", Some("draft"), None, path, body);
+        let artifact = write_temp_artifact(
+            "body-privacy",
+            &graph_json_from_objects(vec![public], Vec::new()),
+        );
+        let loaded = load_retrieval_session(RetrievalInput {
+        artifact_path: artifact.path().into(), search_artifact_path: None,
+        policy: Some(serde_json::from_value(json!({"audience":"public", "allowed_visibilities":["public"], "excluded_object_ids":["billing.hidden"]})).unwrap()),
+    });
+        let session = loaded.session.unwrap();
+        assert!(
+            search(
+                &session,
+                lexical_query("credits", 10, SearchFilters::default())
+            )
+            .records
+            .is_empty()
+        );
+        assert!(why_object(&session, "billing.public").records.is_empty());
+    }
+}
+
+#[test]
+fn permission_projection_does_not_launder_invalid_hidden_nodes() {
+    let mut hidden = retrieval_search_object(
+        "billing.hidden",
+        "claim",
+        Some("draft"),
+        None,
+        "docs/hidden.adoc",
+        "Secret claim.",
+    );
+    hidden["visibility"] = json!("restricted");
+    hidden.as_object_mut().unwrap().remove("content_hash");
+    let artifact = write_temp_artifact(
+        "invalid-hidden",
+        &json!({
+            "schema_version":"adoc.graph.v6", "repository_identity":null,
+            "nodes":[hidden], "edges":[], "diagnostics":[]
+        })
+        .to_string(),
+    );
+    let loaded = load_retrieval_session(RetrievalInput {
+        artifact_path: artifact.path().into(),
+        search_artifact_path: None,
+        policy: None,
+    });
+    assert!(loaded.session.is_none());
+    assert_eq!(
+        loaded.diagnostics[0].code,
+        DiagnosticCode::RetrievalVisibilityUnavailable
+    );
+    assert!(
+        !serde_json::to_string(&loaded.diagnostics)
+            .unwrap()
+            .contains("billing.hidden")
+    );
+}
+
+#[test]
+fn malformed_private_artifact_errors_never_echo_untrusted_values() {
+    let mut hidden = retrieval_search_object(
+        "billing.hidden",
+        "claim",
+        Some("draft"),
+        None,
+        "docs/hidden.adoc",
+        "Private claim.",
+    );
+    hidden["visibility"] = json!("restricted");
+    hidden["source_span"]["line"] = json!("secret-internal-host");
+    let artifact = write_temp_artifact(
+        "private-parser-error",
+        &json!({
+            "schema_version":"adoc.graph.v6", "repository_identity":null,
+            "nodes":[hidden], "edges":[], "diagnostics":[]
+        })
+        .to_string(),
+    );
+    let loaded = load_retrieval_session(RetrievalInput {
+        artifact_path: artifact.path().into(),
+        search_artifact_path: None,
+        policy: None,
+    });
+    assert!(loaded.session.is_none());
+    assert_eq!(
+        loaded.diagnostics[0].code,
+        DiagnosticCode::IoArtifactMalformed
+    );
+    let encoded = serde_json::to_string(&loaded.diagnostics).unwrap();
+    assert!(!encoded.contains("secret-internal-host"), "{encoded}");
+    assert!(!encoded.contains("billing.hidden"), "{encoded}");
+}
+
+#[test]
+fn unsupported_artifact_versions_never_echo_untrusted_values() {
+    let valid = empty_graph_artifact();
+    let hostile = write_temp_artifact(
+        "hostile-version",
+        r#"{"schema_version":"secret-internal-host","model":{"id":"fixture","provider":"fastembed","dim":1},"graph_artifact_hash":"sha256:fixture","embeddings":[]}"#,
+    );
+    for search_artifact in [false, true] {
+        let loaded = load_retrieval_session(RetrievalInput {
+            artifact_path: if search_artifact {
+                valid.path()
+            } else {
+                hostile.path()
+            }
+            .into(),
+            search_artifact_path: search_artifact.then(|| hostile.path().into()),
+            policy: None,
+        });
+        assert!(
+            loaded
+                .diagnostics
+                .iter()
+                .any(|d| d.code == DiagnosticCode::SchemaUnsupportedVersion)
+        );
+        let encoded = serde_json::to_string(&loaded.diagnostics).unwrap();
+        assert!(!encoded.contains("secret-internal-host"), "{encoded}");
+        let guidance = if search_artifact {
+            "Rebuild the artifact"
+        } else {
+            "Regenerate the artifact"
+        };
+        assert!(encoded.contains(guidance), "{encoded}");
+    }
+}
+
+#[test]
+fn permission_projection_withholds_prose_with_denied_metadata() {
+    let mut leaking_carriers = Vec::new();
+    for carrier in ["id", "page_id", "path", "language", "noncanonical_code"] {
+        let mut block = json!({
+            "type":"paragraph", "id":"team.billing#block-1", "page_id":"team.billing", "order":1,
+            "text":"Shared credits.", "source_span":{"path":"docs/public.adoc","line":2,"column":1}
+        });
+        match carrier {
+            "id" => block["id"] = json!("billing.hidden#block-1"),
+            "page_id" => block["page_id"] = json!("billing.hidden"),
+            "path" => block["source_span"]["path"] = json!("docs/billing.hidden.adoc"),
+            "language" => block["language"] = json!("billing.hidden"),
+            "noncanonical_code" => block["code"] = json!("billing.hidden"),
+            _ => unreachable!(),
+        }
+        let artifact = write_temp_artifact(
+            "prose-metadata",
+            &json!({
+                "schema_version":"adoc.graph.v6", "repository_identity":null,
+                "nodes":[block], "edges":[], "diagnostics":[]
+            })
+            .to_string(),
+        );
+        let policy = serde_json::from_value(json!({
+            "audience":"public", "allowed_visibilities":["public"], "excluded_object_ids":["billing.hidden"]
+        })).unwrap();
+        let loaded = load_retrieval_session(RetrievalInput {
+            artifact_path: artifact.path().into(),
+            search_artifact_path: None,
+            policy: Some(policy),
+        });
+        assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+        let session = loaded.session.unwrap();
+        let mut query = lexical_query("credits", 10, SearchFilters::default());
+        query.scope = SearchRecordScope::ProseOnly;
+        let encoded =
+            serde_json::to_string(&RetrievalEnvelope::from(search(&session, query))).unwrap();
+        if encoded.contains("billing.hidden") || encoded.contains("Shared credits") {
+            leaking_carriers.push(carrier);
+        }
+    }
+    assert!(
+        leaking_carriers.is_empty(),
+        "prose was not withheld for: {leaking_carriers:?}"
+    );
+}
+
+#[test]
+fn permission_projection_checks_every_serialized_scalar_carrier() {
+    for field in [
+        "id",
+        "status",
+        "kind",
+        "severity",
+        "trust",
+        "content_hash",
+        "effective_status",
+        "effective_reason",
+    ] {
+        let mut public = retrieval_search_object(
+            "billing.public",
+            "claim",
+            Some("draft"),
+            None,
+            "docs/public.adoc",
+            "Shared credits.",
+        );
+        public[field] = if field == "id" {
+            json!("billing.hidden.faq")
+        } else {
+            json!("pending billing.hidden")
+        };
+        let artifact = write_temp_artifact(
+            "scalar-privacy",
+            &json!({
+                "schema_version":"adoc.graph.v6", "repository_identity":null,
+                "nodes":[public], "edges":[], "diagnostics":[]
+            })
+            .to_string(),
+        );
+        let loaded = load_retrieval_session(RetrievalInput {
+            artifact_path:artifact.path().into(), search_artifact_path:None,
+            policy:Some(serde_json::from_value(json!({"audience":"public", "allowed_visibilities":["public"], "excluded_object_ids":["billing.hidden"]})).unwrap())
+        });
+        assert!(
+            !serde_json::to_string(&loaded.diagnostics)
+                .unwrap()
+                .contains("billing.hidden")
+        );
+        let Some(session) = loaded.session else {
+            assert_ne!(
+                field, "status",
+                "free-form claim status is valid authored metadata"
+            );
+            assert_eq!(
+                loaded.diagnostics[0].code,
+                DiagnosticCode::RetrievalVisibilityUnavailable
+            );
+            continue;
+        };
+        assert!(
+            why_object(&session, "billing.public").records.is_empty(),
+            "{field}"
+        );
+        assert!(
+            search(
+                &session,
+                lexical_query("credits", 10, SearchFilters::default())
+            )
+            .records
+            .is_empty(),
+            "{field}"
+        );
+    }
+}
+
+#[test]
+fn tool_guide_upgrade_policy_restores_all_classes_and_transitive_public_dependents() {
+    let object = |id| {
+        retrieval_search_object(
+            id,
+            "claim",
+            Some("draft"),
+            None,
+            "docs/migration.adoc",
+            "Migration fixture knowledge.",
+        )
+    };
+    let public = object("migration.public");
+    let mut internal = object("migration.internal");
+    internal["visibility"] = json!("internal");
+    let mut restricted = object("migration.restricted");
+    restricted["visibility"] = json!("restricted");
+    let mut direct = object("migration.direct");
+    direct["visibility"] = json!("public");
+    direct["relations"]["depends_on"] = json!(["migration.internal"]);
+    let mut transitive = object("migration.transitive");
+    transitive["visibility"] = json!("public");
+    transitive["relations"]["depends_on"] = json!(["migration.direct"]);
+    let artifact = write_temp_artifact("migration-policy", &json!({
+        "schema_version": "adoc.graph.v6", "repository_identity": null,
+        "nodes": [public, internal, restricted, direct, transitive],
+        "edges": [
+            {"kind":"relation", "source":"migration.direct", "target":"migration.internal", "relation":"depends_on"},
+            {"kind":"relation", "source":"migration.transitive", "target":"migration.direct", "relation":"depends_on"}
+        ],
+        "diagnostics": []
+    }).to_string());
+    let load = |policy| {
+        let loaded = load_retrieval_session(RetrievalInput {
+            artifact_path: artifact.path().to_path_buf(),
+            search_artifact_path: None,
+            policy,
+        });
+        assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+        loaded.session.expect("migration artifact loads")
+    };
+    let default_session = load(None);
+    assert_eq!(
+        search_ids(&search(
+            &default_session,
+            lexical_query("", 10, SearchFilters::default())
+        )),
+        ["migration.public"]
+    );
+    for id in [
+        "migration.internal",
+        "migration.restricted",
+        "migration.direct",
+        "migration.transitive",
+    ] {
+        assert!(
+            why_object(&default_session, id).records.is_empty(),
+            "default deny: {id}"
+        );
+    }
+
+    let guide = include_str!("../../../docs/agent/v0/tool-guide.md");
+    let config_example = guide
+        .split("```yaml\n")
+        .skip(1)
+        .map(|block| block.split("```").next().unwrap())
+        .find(|block| block.contains("audience: restricted"))
+        .expect("tool guide must document the all-classes retrieval policy");
+    let policy = adoc_core::parse_project_config(&format!(
+        "version: 1\nmode: strict\ndocs_path: docs\n{config_example}"
+    ))
+    .expect("documented config parses")
+    .retrieval_policy
+    .expect("documented retrieval policy");
+    assert_eq!(policy.audience, "restricted");
+    assert_eq!(
+        policy.allowed_visibilities,
+        ["public", "internal", "restricted"]
+            .into_iter()
+            .map(String::from)
+            .collect()
+    );
+    assert!(policy.excluded_object_ids.is_empty());
+    let restored = load(Some(policy));
+    let ids = [
+        "migration.direct",
+        "migration.internal",
+        "migration.public",
+        "migration.restricted",
+        "migration.transitive",
+    ];
+    assert_eq!(
+        search_ids(&search(
+            &restored,
+            lexical_query("", 10, SearchFilters::default())
+        )),
+        ids
+    );
+    for id in ids {
+        assert_eq!(why_object(&restored, id).records.len(), 1, "restored: {id}");
+    }
+    assert_eq!(
+        why_object(&restored, "migration.direct").records[0]
+            .relations
+            .depends_on,
+        ["migration.internal"]
+    );
+    assert_eq!(
+        why_object(&restored, "migration.transitive").records[0]
+            .relations
+            .depends_on,
+        ["migration.direct"]
+    );
+}
+
+#[test]
+fn nonstructural_source_errors_fail_closed_without_raw_diagnostics() {
+    let public = retrieval_search_object(
+        "billing.public",
+        "claim",
+        Some("draft"),
+        None,
+        "docs/public.adoc",
+        "Shared credits.",
+    );
+    let mut internal = retrieval_search_object(
+        "billing.internal",
+        "claim",
+        Some("draft"),
+        None,
+        "docs/internal.adoc",
+        "Private credits.",
+    );
+    internal["visibility"] = json!("internal");
+    let artifact = write_temp_artifact("nonstructural-source-errors", &json!({
+        "schema_version":"adoc.graph.v6", "repository_identity":null,
+        "nodes":[public, internal], "edges":[], "diagnostics":[
+            {"code":"schema.unknown_field", "severity":"error", "object_id":"billing.public",
+             "message":"raw-private-schema-payload names billing.internal", "help":"raw-private-schema-payload"},
+            {"code":"schema.unknown_field", "severity":"error", "object_id":"billing.internal",
+             "message":"raw-private-schema-payload"}
+        ]
+    }).to_string());
+    let loaded = load_retrieval_session(RetrievalInput {
+        artifact_path: artifact.path().to_path_buf(),
+        search_artifact_path: None,
+        policy: None,
+    });
+    assert!(
+        loaded.session.is_none(),
+        "carried errors must refuse retrieval"
+    );
+    assert_eq!(loaded.diagnostics.len(), 1);
+    let diagnostic = &loaded.diagnostics[0];
+    assert_eq!(
+        diagnostic.code,
+        DiagnosticCode::RetrievalVisibilityUnavailable
+    );
+    assert_eq!(diagnostic.severity, adoc_core::Severity::Error);
+    let help = diagnostic.help.as_deref().expect("safe repair guidance");
+    assert!(
+        help.contains("adoc check") && help.contains("adoc build"),
+        "{help}"
+    );
+    let encoded = serde_json::to_string(&loaded.diagnostics).unwrap();
+    assert!(!encoded.contains("raw-private-schema-payload"));
+    assert!(!encoded.contains("billing.internal"));
 }
