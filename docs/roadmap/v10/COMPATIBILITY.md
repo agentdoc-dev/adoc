@@ -44,10 +44,10 @@ E8.5's GitLab CI component has no named home repository yet; its row covers the 
 | `E4.4` | adoc, cloud | cloud | adoc 0.3.4 (graph v5) · Cloud scaffold (pre-release) | cloud |
 | `E4.5` | adoc, action, cloud | adoc | adoc 0.3.4 (graph v5) · Action v2.0.0-alpha.19 · Cloud scaffold (pre-release) | cloud |
 | `E4.6` | action, cloud | cloud | Action v2.0.0-alpha.19 · Cloud scaffold (pre-release) | cloud |
-| `E5.1` | adoc, action, cloud | adoc | adoc 0.4.x (proposal-record, `adoc.proposal.v0`) · Action v2.0.0-alpha.19 + E5.1 `propose.sh` record (pre-release) · Cloud v0.1.0 (pre-release, proposal command) | cloud |
-| `E5.3` | adoc, cloud | adoc | adoc 0.3.4 (graph v5) · Cloud scaffold (pre-release) | cloud |
-| `E5.4` | action, cloud | action | Action v2.0.0-alpha.19 · Cloud scaffold (pre-release) | cloud |
-| `E5.5` | adoc, action, cloud | adoc | adoc 0.3.4 (graph v5) · Action v2.0.0-alpha.19 · Cloud scaffold (pre-release) | cloud |
+| `E5.1` | adoc, action, cloud | adoc | adoc 0.4.0 (proposal record, graph v6; agentdoc-dev/adoc#199 pre-merge head `84f81e0`) · Action v2.0.0-alpha.19 + E5.1 `propose.sh` record (pre-release; agentdoc-dev/action#53 pre-merge head `8d420f8`) · Cloud v0.1.0 (pre-release, proposal command; agentdoc-dev/cloud#64 pre-merge head `0d08336`) | cloud |
+| `E5.3` | adoc, cloud | adoc | adoc 0.4.0 (`adoc.gate_result.v0`; agentdoc-dev/adoc#199 pre-merge head `84f81e0`) · Cloud v0.1.0 (pre-release, four-mode gate; agentdoc-dev/cloud#64 pre-merge head `0d08336`) | cloud |
+| `E5.4` | action, cloud | action | Action v2.0.0-alpha.19 + check publication (pre-release; agentdoc-dev/action#53 pre-merge head `8d420f8`) · Cloud v0.1.0 (pre-release, negative-verdict publication; agentdoc-dev/cloud#64 pre-merge head `0d08336`) | cloud |
+| `E5.5` | adoc, action, cloud | adoc | adoc 0.4.0 (graph v6, internal tracer; agentdoc-dev/adoc#199 pre-merge head `84f81e0`) · Action v2.0.0-alpha.19 + E5.5 delivery (pre-release; agentdoc-dev/action#53 pre-merge head `8d420f8`) · Cloud v0.1.0 (pre-release; tracer readout; agentdoc-dev/cloud#64 pre-merge head `0d08336`) | cloud |
 | `E6.1` | adoc, cloud | adoc | adoc 0.3.4 (graph v5) · Cloud scaffold (pre-release) | cloud |
 | `E6.2` | adoc, cloud | cloud | adoc 0.3.4 (graph v5) · Cloud scaffold (pre-release) | cloud |
 | `E6.3` | adoc, cloud | adoc | adoc 0.3.4 (graph v5) · Cloud scaffold (pre-release) | cloud |
