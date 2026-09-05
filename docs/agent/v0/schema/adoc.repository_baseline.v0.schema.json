@@ -50,6 +50,10 @@
             "ready": { "const": false },
             "reason": { "const": "invalid_source" }
           }
+        },
+        "snapshot": {
+          "properties": { "immutable": { "const": true } },
+          "not": { "required": ["worktree_state"] }
         }
       },
       "anyOf": [

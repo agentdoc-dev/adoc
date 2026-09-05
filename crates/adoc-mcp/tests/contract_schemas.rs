@@ -1323,6 +1323,14 @@ fn serialized_repository_baseline_matches_published_schema_for_all_readiness_rea
     mutable_ready["snapshot"]["immutable"] = json!(false);
     assert!(!schema_accepts(schema_name, &mutable_ready));
 
+    let mut mutable_invalid_source = unresolved.clone();
+    mutable_invalid_source["snapshot"]["immutable"] = json!(false);
+    assert!(!schema_accepts(schema_name, &mutable_invalid_source));
+
+    let mut worktree_invalid_source = unresolved.clone();
+    worktree_invalid_source["snapshot"]["worktree_state"] = json!("dirty");
+    assert!(!schema_accepts(schema_name, &worktree_invalid_source));
+
     let mut ready_without_knowledge = ready_baseline.clone();
     ready_without_knowledge["knowledge_snapshot"] = json!({ "status": "unavailable" });
     assert!(!schema_accepts(schema_name, &ready_without_knowledge));
