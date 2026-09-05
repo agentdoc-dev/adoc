@@ -149,6 +149,7 @@ fn revision(value: &str) -> ExactRevision {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn context_input(
     assessment_digest: &str,
     graph_digest: &str,
