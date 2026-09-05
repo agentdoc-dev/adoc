@@ -264,6 +264,7 @@ fn public_surface_compiles_with_only_documented_imports() {
 
     let _: fn(RetrievalInput) -> RetrievalLoadResult = load_retrieval_session;
     let _: RetrievalInput = RetrievalInput {
+        policy: None,
         artifact_path: PathBuf::from("/missing-docs-graph-json-for-surface-test"),
         search_artifact_path: None,
     };

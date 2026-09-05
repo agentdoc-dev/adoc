@@ -22,6 +22,7 @@ pub struct ProjectConfig {
     /// only bites opted-in projects; deliberately no version bump).
     pub mcp_patch_apply_enabled: bool,
     pub assessment_exclude_paths: Vec<String>,
+    pub retrieval_policy: Option<adoc_core::RetrievalPolicy>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -90,6 +91,7 @@ impl ProjectConfig {
             embeddings_provider: parsed.embeddings_provider,
             mcp_patch_apply_enabled: parsed.mcp_patch_apply_enabled,
             assessment_exclude_paths: parsed.assessment_exclude_paths,
+            retrieval_policy: parsed.retrieval_policy,
         })
     }
 }
