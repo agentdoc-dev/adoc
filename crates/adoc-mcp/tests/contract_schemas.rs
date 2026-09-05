@@ -1329,6 +1329,18 @@ fn serialized_repository_baseline_matches_published_schema_for_all_readiness_rea
         &ready_with_uncovered_classification
     ));
 
+    let mut ready_with_provisional_classification = ready_baseline.clone();
+    ready_with_provisional_classification["paths"]["value"]
+        .as_array_mut()
+        .expect("ready paths are available")
+        .iter_mut()
+        .find(|path| path["classification"] == "covered")
+        .expect("ready baseline has a covered path")["classification"] = json!("provisional");
+    assert!(!schema_accepts(
+        schema_name,
+        &ready_with_provisional_classification
+    ));
+
     let mut provisional_without_provisional_classification = produced.clone();
     for path in provisional_without_provisional_classification["paths"]["value"]
         .as_array_mut()
@@ -1355,6 +1367,23 @@ fn serialized_repository_baseline_matches_published_schema_for_all_readiness_rea
     assert!(!schema_accepts(
         schema_name,
         &uncovered_without_uncovered_classification
+    ));
+
+    let mut uncovered_with_provisional_classification = uncovered_baseline.clone();
+    let paths = uncovered_with_provisional_classification["paths"]["value"]
+        .as_array_mut()
+        .expect("uncovered paths are available");
+    let mut provisional_path = paths
+        .iter()
+        .find(|path| path["classification"] == "uncovered")
+        .expect("uncovered baseline has an uncovered path")
+        .clone();
+    provisional_path["path"] = json!("provisional.rs");
+    provisional_path["classification"] = json!("provisional");
+    paths.push(provisional_path);
+    assert!(!schema_accepts(
+        schema_name,
+        &uncovered_with_provisional_classification
     ));
 
     let mut unsupported = produced.clone();
