@@ -176,12 +176,20 @@
           }
         },
         "paths": { "properties": { "status": { "const": "available" } } },
-        "objects": { "properties": { "status": { "const": "available" } } }
+        "objects": { "properties": { "status": { "const": "available" } } },
+        "validation": {
+          "properties": {
+            "errors_full": { "const": 0 },
+            "errors_changed": { "const": 0 },
+            "errors_unchanged": { "const": 0 },
+            "errors_unattributed": { "const": 0 }
+          }
+        }
       }
     },
     "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
     "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
-    "availability": { "enum": ["available", "unavailable"] },
+    "availability": { "type": "string", "enum": ["available", "unavailable"] },
     "readiness": {
       "type": "object",
       "additionalProperties": false,
@@ -230,7 +238,24 @@
         "graph_sha256": { "$ref": "#/$defs/sha256" },
         "object_set_sha256": { "$ref": "#/$defs/sha256" },
         "docs_path": { "type": "string" }
-      }
+      },
+      "oneOf": [
+        {
+          "required": ["graph_schema_version", "graph_sha256", "object_set_sha256", "docs_path"],
+          "properties": { "status": { "const": "available" } }
+        },
+        {
+          "properties": { "status": { "const": "unavailable" } },
+          "not": {
+            "anyOf": [
+              { "required": ["graph_schema_version"] },
+              { "required": ["graph_sha256"] },
+              { "required": ["object_set_sha256"] },
+              { "required": ["docs_path"] }
+            ]
+          }
+        }
+      ]
     },
     "snapshotConfig": {
       "type": "object",
@@ -332,7 +357,22 @@
         "classification": { "enum": ["covered", "provisional", "uncovered", "excluded"] },
         "exclusion_reason": { "type": "string", "minLength": 1 },
         "matches": { "type": "array", "items": { "$ref": "#/$defs/match" } }
-      }
+      },
+      "oneOf": [
+        {
+          "required": ["exclusion_reason"],
+          "properties": {
+            "classification": { "const": "excluded" },
+            "matches": { "maxItems": 0 }
+          }
+        },
+        {
+          "properties": {
+            "classification": { "enum": ["covered", "provisional", "uncovered"] }
+          },
+          "not": { "required": ["exclusion_reason"] }
+        }
+      ]
     },
     "pathAvailability": {
       "type": "object",

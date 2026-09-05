@@ -1317,6 +1317,22 @@ fn serialized_repository_baseline_matches_published_schema_for_all_readiness_rea
         .remove("requested_ref");
     assert!(!schema_accepts(schema_name, &invalid_without_requested_ref));
 
+    let mut available_knowledge_without_replay_identity = unresolved.clone();
+    available_knowledge_without_replay_identity["knowledge_snapshot"]["status"] =
+        json!("available");
+    assert!(!schema_accepts(
+        schema_name,
+        &available_knowledge_without_replay_identity
+    ));
+
+    let mut unavailable_knowledge_with_replay_identity = unresolved.clone();
+    unavailable_knowledge_with_replay_identity["knowledge_snapshot"]["graph_schema_version"] =
+        json!("adoc.graph.v6");
+    assert!(!schema_accepts(
+        schema_name,
+        &unavailable_knowledge_with_replay_identity
+    ));
+
     let mut ready_with_uncovered_classification = ready_baseline.clone();
     ready_with_uncovered_classification["paths"]["value"]
         .as_array_mut()
@@ -1386,6 +1402,13 @@ fn serialized_repository_baseline_matches_published_schema_for_all_readiness_rea
         &uncovered_with_provisional_classification
     ));
 
+    let mut uncovered_with_provisional_count = uncovered_baseline.clone();
+    uncovered_with_provisional_count["summary"]["provisional"] = json!(1);
+    assert!(!schema_accepts(
+        schema_name,
+        &uncovered_with_provisional_count
+    ));
+
     let mut unsupported = produced.clone();
     unsupported["schema_version"] = json!("adoc.repository_baseline.v99");
     assert!(!schema_accepts(schema_name, &unsupported));
@@ -1397,6 +1420,51 @@ fn serialized_repository_baseline_matches_published_schema_for_all_readiness_rea
     let mut ready_with_errors = ready_baseline.clone();
     ready_with_errors["validation"]["errors_full"] = json!(1);
     assert!(!schema_accepts(schema_name, &ready_with_errors));
+
+    for counter in ["errors_changed", "errors_unchanged", "errors_unattributed"] {
+        let mut ready_with_partitioned_errors = ready_baseline.clone();
+        ready_with_partitioned_errors["validation"][counter] = json!(1);
+        assert!(!schema_accepts(schema_name, &ready_with_partitioned_errors));
+    }
+
+    let mut excluded_without_evidence = ready_baseline.clone();
+    let excluded_path = excluded_without_evidence["paths"]["value"]
+        .as_array_mut()
+        .expect("ready paths are available")
+        .iter_mut()
+        .find(|path| path["classification"] == "covered")
+        .expect("ready baseline has a covered path");
+    excluded_path["classification"] = json!("excluded");
+    assert!(!schema_accepts(schema_name, &excluded_without_evidence));
+
+    let mut excluded_with_matches = excluded_without_evidence;
+    excluded_with_matches["paths"]["value"]
+        .as_array_mut()
+        .expect("ready paths are available")
+        .iter_mut()
+        .find(|path| path["path"] == "src/lib.rs")
+        .expect("mutated baseline retains the covered fixture path")["exclusion_reason"] =
+        json!("configured_exclusion:src/lib.rs");
+    assert_ne!(
+        excluded_with_matches["paths"]["value"]
+            .as_array()
+            .expect("ready paths are available")
+            .iter()
+            .find(|path| path["path"] == "src/lib.rs")
+            .expect("mutated baseline retains the covered fixture path")["matches"],
+        json!([])
+    );
+    assert!(!schema_accepts(schema_name, &excluded_with_matches));
+
+    let mut covered_with_exclusion_reason = ready_baseline.clone();
+    covered_with_exclusion_reason["paths"]["value"]
+        .as_array_mut()
+        .expect("ready paths are available")
+        .iter_mut()
+        .find(|path| path["classification"] == "covered")
+        .expect("ready baseline has a covered path")["exclusion_reason"] =
+        json!("configured_exclusion:src/lib.rs");
+    assert!(!schema_accepts(schema_name, &covered_with_exclusion_reason));
 
     let mut ready_with_uncovered_paths = ready_baseline.clone();
     ready_with_uncovered_paths["summary"]["uncovered"] = json!(1);
