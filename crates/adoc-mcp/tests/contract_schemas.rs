@@ -1246,7 +1246,14 @@ fn validates_complete_and_error_change_assessments_and_rejects_illegal_tuples() 
             .envelope,
     )
     .expect("complete envelope serializes");
+    assert_eq!(complete["authority_promotions"]["status"], "available");
     assert_valid("adoc.change_assessment.v0.schema.json", &complete);
+    let mut prior_shape = complete.clone();
+    prior_shape
+        .as_object_mut()
+        .expect("assessment is an object")
+        .remove("authority_promotions");
+    assert_valid("adoc.change_assessment.v0.schema.json", &prior_shape);
 
     run_git(root, &["add", "-A"]);
     run_git(root, &["commit", "-m", "code change"]);
@@ -1269,6 +1276,7 @@ fn validates_complete_and_error_change_assessments_and_rejects_illegal_tuples() 
     )
     .expect("partial envelope serializes");
     assert_eq!(partial["completeness"], "partial");
+    assert_eq!(partial["authority_promotions"]["status"], "unavailable");
     assert_valid("adoc.change_assessment.v0.schema.json", &partial);
 
     let error = serde_json::to_value(
@@ -1284,12 +1292,70 @@ fn validates_complete_and_error_change_assessments_and_rejects_illegal_tuples() 
     .expect("error envelope serializes");
     assert_valid("adoc.change_assessment.v0.schema.json", &error);
 
-    let mut illegal = complete;
+    let mut illegal = complete.clone();
     illegal["completeness"] = json!("partial");
     illegal["outcome"] = json!("pass");
     let schema = schema("adoc.change_assessment.v0.schema.json");
     let validator = jsonschema::validator_for(&schema).expect("schema compiles");
     assert!(!validator.is_valid(&illegal));
+
+    let mut kind_only_promotion = complete.clone();
+    kind_only_promotion["authority_promotions"] = json!({"status": "available", "value": [{
+        "id": "billing.credits",
+        "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "kind": "claim",
+        "before_kind": "example",
+        "before_status": "verified",
+        "after_status": "verified"
+    }]});
+    assert_valid(
+        "adoc.change_assessment.v0.schema.json",
+        &kind_only_promotion,
+    );
+
+    for authority_promotions in [
+        json!({"status": "available"}),
+        json!({"status": "unavailable", "value": []}),
+        json!({"status": "available", "value": [{
+            "id": "billing.policy",
+            "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": "policy",
+            "before_kind": "policy",
+            "before_status": "draft",
+            "after_status": "verified"
+        }]}),
+        json!({"status": "available", "value": [{
+            "id": "billing.credits",
+            "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": "decision",
+            "before_kind": "policy",
+            "before_status": "active",
+            "after_status": "accepted"
+        }]}),
+        json!({"status": "available", "value": [{
+            "id": "billing.credits",
+            "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": "claim",
+            "before_kind": "claim",
+            "before_status": "verified",
+            "after_status": "verified"
+        }]}),
+    ] {
+        let mut forged = complete.clone();
+        forged["authority_promotions"] = authority_promotions;
+        assert!(
+            !validator.is_valid(&forged),
+            "forged promotion facts passed"
+        );
+    }
+
+    let mut unavailable_complete = complete.clone();
+    unavailable_complete["authority_promotions"] = json!({"status": "unavailable"});
+    assert!(!validator.is_valid(&unavailable_complete));
+
+    let mut available_error = error;
+    available_error["authority_promotions"] = json!({"status": "available", "value": []});
+    assert!(!validator.is_valid(&available_error));
 }
 
 #[test]

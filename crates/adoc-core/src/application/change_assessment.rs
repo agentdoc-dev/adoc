@@ -245,6 +245,16 @@ pub struct KnowledgeChanges {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AuthorityPromotion {
+    pub id: String,
+    pub content_hash: String,
+    pub kind: String,
+    pub before_kind: Option<String>,
+    pub before_status: Option<String>,
+    pub after_status: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PolicyChanges {
     pub status: String,
     pub changed: bool,
@@ -298,6 +308,7 @@ pub struct ChangeAssessmentEnvelope {
     pub paths: Availability<Vec<AssessedPath>>,
     pub objects: Availability<Vec<AssessmentObject>>,
     pub knowledge_changes: Availability<KnowledgeChanges>,
+    pub authority_promotions: Availability<Vec<AuthorityPromotion>>,
     pub policy_changes: PolicyChanges,
     pub required_reviewers: Vec<AssessmentReviewer>,
     pub proof_obligations: Vec<AssessmentObligation>,
@@ -733,6 +744,7 @@ fn complete_envelope(input: CompleteInput<'_>) -> ChangeAssessmentEnvelope {
         })
         .collect::<Vec<_>>();
     let knowledge_changes = knowledge_changes(&diff);
+    let authority_promotions = authority_promotions(&diff);
     let (reviewers, obligations) =
         review_requirements(&objects, &knowledge_changes, policy_changed);
     let signals = lifecycle_signals(&head_objects);
@@ -805,6 +817,7 @@ fn complete_envelope(input: CompleteInput<'_>) -> ChangeAssessmentEnvelope {
         paths: available(paths),
         objects: available(objects),
         knowledge_changes: available(knowledge_changes),
+        authority_promotions: available(authority_promotions),
         policy_changes: PolicyChanges {
             status: "available".to_string(),
             changed: policy_changed,
@@ -1038,6 +1051,39 @@ fn knowledge_changes(diff: &ObjectDiff) -> KnowledgeChanges {
             .map(|node| knowledge_change(node, Some(&node.content_hash), None, "deleted"))
             .collect(),
     }
+}
+
+fn authority_promotions(diff: &ObjectDiff) -> Vec<AuthorityPromotion> {
+    let mut promotions = diff
+        .created
+        .iter()
+        .filter_map(|node| {
+            let after_status = node.status.as_ref()?;
+            is_authoritative_subject(&node.kind, Some(after_status)).then(|| AuthorityPromotion {
+                id: node.id.clone(),
+                content_hash: node.content_hash.clone(),
+                kind: node.kind.clone(),
+                before_kind: None,
+                before_status: None,
+                after_status: after_status.clone(),
+            })
+        })
+        .chain(diff.changed.iter().filter_map(|change| {
+            let after_status = change.head.status.as_ref()?;
+            (is_authoritative_subject(&change.head.kind, Some(after_status))
+                && !is_authoritative_subject(&change.base.kind, change.base.status.as_deref()))
+            .then(|| AuthorityPromotion {
+                id: change.id.clone(),
+                content_hash: change.head.content_hash.clone(),
+                kind: change.head.kind.clone(),
+                before_kind: Some(change.base.kind.clone()),
+                before_status: change.base.status.clone(),
+                after_status: after_status.clone(),
+            })
+        }))
+        .collect::<Vec<_>>();
+    promotions.sort_by(|left, right| left.id.cmp(&right.id));
+    promotions
 }
 
 fn knowledge_change(
@@ -1528,6 +1574,7 @@ fn empty_envelope(
         paths: unavailable(),
         objects: unavailable(),
         knowledge_changes: unavailable(),
+        authority_promotions: unavailable(),
         policy_changes: PolicyChanges {
             status: "unavailable".to_string(),
             changed: false,
@@ -1740,9 +1787,10 @@ fn compact_json<T: Serialize>(value: &T) -> Result<Vec<u8>, serde_json::Error> {
 #[cfg(test)]
 mod tests {
     use super::{
-        compact_json, graph_schema_version, is_authoritative_subject, lifecycle_signals,
-        object_set_json, path_matches_exclusion, reviewers_of,
+        authority_promotions, compact_json, graph_schema_version, is_authoritative_subject,
+        lifecycle_signals, object_set_json, path_matches_exclusion, reviewers_of,
     };
+    use crate::domain::review::object_diff::ObjectDiff;
     use crate::domain::review::object_diff::test_support::test_node;
     use serde::ser::Error as _;
 
@@ -1817,6 +1865,126 @@ mod tests {
         ] {
             assert!(!is_authoritative_subject(pair.0, pair.1), "{pair:?}");
         }
+    }
+
+    #[test]
+    fn promotions_into_each_authority_pair_are_detected() {
+        for (kind, before, after) in [
+            ("claim", "draft", "verified"),
+            ("decision", "proposed", "accepted"),
+            ("api", "draft", "verified"),
+            ("policy", "draft", "active"),
+            ("procedure", "draft", "verified"),
+        ] {
+            let mut base = test_node(&format!("billing.{kind}"), "sha256:base");
+            base.kind = kind.to_string();
+            base.status = Some(before.to_string());
+            let mut head = base.clone();
+            head.content_hash = "sha256:head".to_string();
+            head.status = Some(after.to_string());
+
+            let promotions = authority_promotions(&ObjectDiff::compute(&[base], &[head]));
+
+            assert_eq!(promotions.len(), 1, "{kind}/{after}");
+            assert_eq!(promotions[0].id, format!("billing.{kind}"));
+            assert_eq!(promotions[0].content_hash, "sha256:head");
+            assert_eq!(promotions[0].kind, kind);
+            assert_eq!(promotions[0].before_kind.as_deref(), Some(kind));
+            assert_eq!(promotions[0].before_status.as_deref(), Some(before));
+            assert_eq!(promotions[0].after_status, after);
+        }
+    }
+
+    #[test]
+    fn kind_only_transition_into_authority_is_detected() {
+        let mut base = test_node("billing.credits", "sha256:base");
+        base.kind = "example".to_string();
+        base.status = Some("verified".to_string());
+        let mut head = base.clone();
+        head.kind = "claim".to_string();
+        head.content_hash = "sha256:head".to_string();
+
+        let promotions = authority_promotions(&ObjectDiff::compute(&[base], &[head]));
+
+        assert_eq!(promotions.len(), 1);
+        assert_eq!(promotions[0].kind, "claim");
+        assert_eq!(promotions[0].before_kind.as_deref(), Some("example"));
+        assert_eq!(promotions[0].before_status.as_deref(), Some("verified"));
+        assert_eq!(promotions[0].after_status, "verified");
+    }
+
+    #[test]
+    fn created_authoritative_object_is_a_promotion_with_empty_before_status() {
+        let mut created = test_node("billing.ready", "sha256:ready");
+        created.status = Some("verified".to_string());
+
+        let promotions = authority_promotions(&ObjectDiff::compute(&[], &[created]));
+
+        assert_eq!(promotions.len(), 1);
+        assert_eq!(promotions[0].id, "billing.ready");
+        assert_eq!(promotions[0].before_kind, None);
+        assert_eq!(promotions[0].before_status, None);
+        assert_eq!(promotions[0].after_status, "verified");
+        assert_eq!(
+            serde_json::to_value(&promotions[0]).expect("promotion serializes")["before_status"],
+            serde_json::Value::Null
+        );
+    }
+
+    #[test]
+    fn non_authority_same_status_and_existing_authority_changes_are_not_promotions() {
+        let mut non_authority_base = test_node("billing.draft", "sha256:draft-base");
+        non_authority_base.status = Some("draft".to_string());
+        let mut non_authority_head = non_authority_base.clone();
+        non_authority_head.content_hash = "sha256:draft-head".to_string();
+        non_authority_head.status = Some("deprecated".to_string());
+
+        let mut same_status_base = test_node("billing.same", "sha256:same-base");
+        same_status_base.status = Some("verified".to_string());
+        let mut same_status_head = same_status_base.clone();
+        same_status_head.content_hash = "sha256:same-head".to_string();
+
+        let mut authority_base = test_node("billing.authority", "sha256:authority-base");
+        authority_base.status = Some("verified".to_string());
+        let mut authority_head = authority_base.clone();
+        authority_head.kind = "decision".to_string();
+        authority_head.status = Some("accepted".to_string());
+        authority_head.content_hash = "sha256:authority-head".to_string();
+
+        let promotions = authority_promotions(&ObjectDiff::compute(
+            &[non_authority_base, same_status_base, authority_base],
+            &[non_authority_head, same_status_head, authority_head],
+        ));
+
+        assert!(promotions.is_empty());
+    }
+
+    #[test]
+    fn promotions_are_byte_stable_in_object_id_order() {
+        let base = test_node("a.changed", "sha256:a-base");
+        let mut head = base.clone();
+        head.content_hash = "sha256:a-head".to_string();
+        head.status = Some("verified".to_string());
+        let mut created = test_node("z.created", "sha256:z-head");
+        created.status = Some("verified".to_string());
+
+        let first = authority_promotions(&ObjectDiff::compute(
+            std::slice::from_ref(&base),
+            &[created.clone(), head.clone()],
+        ));
+        let second = authority_promotions(&ObjectDiff::compute(&[base], &[head, created]));
+
+        assert_eq!(
+            first
+                .iter()
+                .map(|entry| entry.id.as_str())
+                .collect::<Vec<_>>(),
+            ["a.changed", "z.created"]
+        );
+        assert_eq!(
+            compact_json(&first).expect("promotions serialize"),
+            compact_json(&second).expect("promotions serialize")
+        );
     }
 
     #[test]

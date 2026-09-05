@@ -18,11 +18,11 @@ pub use application::change_assessment::{
     AssessedPath, AssessmentCompleteness, AssessmentConfig, AssessmentDiagnostic, AssessmentMatch,
     AssessmentObject, AssessmentObjectReason, AssessmentObligation, AssessmentOutcome,
     AssessmentPolicy, AssessmentReviewer, AssessmentSignal, AssessmentSnapshot,
-    AssessmentSnapshots, AssessmentSource, AssessmentSummary, AssessmentValidation, Availability,
-    CHANGE_ASSESSMENT_SCHEMA_VERSION, ChangeAssessmentEnvelope, ChangeAssessmentInput,
-    KnowledgeChange, KnowledgeChanges, KnowledgeSnapshot, PathClassification, PolicyChanges,
-    REPOSITORY_BASELINE_SCHEMA_VERSION, RepositoryBaselineEnvelope, RepositoryBaselineReadiness,
-    SnapshotConfig,
+    AssessmentSnapshots, AssessmentSource, AssessmentSummary, AssessmentValidation,
+    AuthorityPromotion, Availability, CHANGE_ASSESSMENT_SCHEMA_VERSION, ChangeAssessmentEnvelope,
+    ChangeAssessmentInput, KnowledgeChange, KnowledgeChanges, KnowledgeSnapshot,
+    PathClassification, PolicyChanges, REPOSITORY_BASELINE_SCHEMA_VERSION,
+    RepositoryBaselineEnvelope, RepositoryBaselineReadiness, SnapshotConfig,
 };
 pub use application::compile::{
     BuildArtifacts, BuildEmbeddingMode, BuildInput, CompileInput, CompileResult,

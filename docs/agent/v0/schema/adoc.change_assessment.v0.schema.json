@@ -23,6 +23,7 @@
     "paths": { "$ref": "#/$defs/pathAvailability" },
     "objects": { "$ref": "#/$defs/objectAvailability" },
     "knowledge_changes": { "$ref": "#/$defs/knowledgeChangesAvailability" },
+    "authority_promotions": { "$ref": "#/$defs/authorityPromotionsAvailability" },
     "policy_changes": { "$ref": "#/$defs/policyChanges" },
     "required_reviewers": { "type": "array", "items": { "$ref": "#/$defs/reviewer" } },
     "proof_obligations": { "type": "array", "items": { "$ref": "#/$defs/obligation" } },
@@ -32,19 +33,29 @@
   "allOf": [
     {
       "if": { "properties": { "completeness": { "const": "complete" } }, "required": ["completeness"] },
-      "then": { "properties": { "outcome": { "enum": ["pass", "review_required", "uncovered"] } } }
+      "then": { "properties": {
+        "outcome": { "enum": ["pass", "review_required", "uncovered"] },
+        "authority_promotions": { "properties": { "status": { "const": "available" } } }
+      } }
     },
     {
       "if": { "properties": { "completeness": { "const": "partial" } }, "required": ["completeness"] },
-      "then": { "properties": { "outcome": { "const": "not_evaluated" } } }
+      "then": { "properties": {
+        "outcome": { "const": "not_evaluated" },
+        "authority_promotions": { "properties": { "status": { "const": "unavailable" } } }
+      } }
     },
     {
       "if": { "properties": { "completeness": { "const": "error" } }, "required": ["completeness"] },
-      "then": { "properties": { "outcome": { "enum": ["invalid", "not_evaluated"] } } }
+      "then": { "properties": {
+        "outcome": { "enum": ["invalid", "not_evaluated"] },
+        "authority_promotions": { "properties": { "status": { "const": "unavailable" } } }
+      } }
     }
   ],
   "$defs": {
     "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "objectId": { "type": "string", "pattern": "^[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?)+$" },
     "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
     "availability": { "type": "string", "enum": ["available", "unavailable"] },
     "snapshot": {
@@ -255,6 +266,54 @@
         "status": { "$ref": "#/$defs/availability" },
         "value": { "$ref": "#/$defs/knowledgeChanges" }
       }
+    },
+    "authorityPromotion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "content_hash", "kind", "before_kind", "before_status", "after_status"],
+      "properties": {
+        "id": { "$ref": "#/$defs/objectId" },
+        "content_hash": { "$ref": "#/$defs/sha256" },
+        "kind": { "enum": ["claim", "decision", "api", "policy", "procedure"] },
+        "before_kind": { "oneOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }] },
+        "before_status": { "oneOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }] },
+        "after_status": { "enum": ["verified", "accepted", "active"] }
+      },
+      "oneOf": [
+        { "properties": { "kind": { "const": "claim" }, "after_status": { "const": "verified" } } },
+        { "properties": { "kind": { "const": "decision" }, "after_status": { "const": "accepted" } } },
+        { "properties": { "kind": { "const": "api" }, "after_status": { "const": "verified" } } },
+        { "properties": { "kind": { "const": "policy" }, "after_status": { "const": "active" } } },
+        { "properties": { "kind": { "const": "procedure" }, "after_status": { "const": "verified" } } }
+      ],
+      "allOf": [
+        {
+          "if": { "properties": { "before_kind": { "type": "null" } } },
+          "then": { "properties": { "before_status": { "type": "null" } } }
+        },
+        {
+          "not": { "anyOf": [
+            { "properties": { "before_kind": { "const": "claim" }, "before_status": { "const": "verified" } } },
+            { "properties": { "before_kind": { "const": "decision" }, "before_status": { "const": "accepted" } } },
+            { "properties": { "before_kind": { "const": "api" }, "before_status": { "const": "verified" } } },
+            { "properties": { "before_kind": { "const": "policy" }, "before_status": { "const": "active" } } },
+            { "properties": { "before_kind": { "const": "procedure" }, "before_status": { "const": "verified" } } }
+          ] }
+        }
+      ]
+    },
+    "authorityPromotionsAvailability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "$ref": "#/$defs/availability" },
+        "value": { "type": "array", "items": { "$ref": "#/$defs/authorityPromotion" }, "uniqueItems": true }
+      },
+      "oneOf": [
+        { "properties": { "status": { "const": "available" } }, "required": ["value"] },
+        { "properties": { "status": { "const": "unavailable" } }, "not": { "required": ["value"] } }
+      ]
     },
     "policyChanges": {
       "type": "object",
