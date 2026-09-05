@@ -3,9 +3,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use adoc_core::{
-    GitRef, ObjectDiffEnvelope, RepositoryBaselineEnvelope, ReviewEnvelope, ReviewInput,
-    SnapshotSelector, diff_objects, load_review_from_git, load_review_with_changed_files_from_git,
-    parse_patch_from_value, review_with_patch,
+    GitRef, ObjectDiffEnvelope, ReviewEnvelope, ReviewInput, SnapshotSelector, diff_objects,
+    load_review_from_git, load_review_with_changed_files_from_git, parse_patch_from_value,
+    review_with_patch,
 };
 use adoc_local::{AssessmentInput, LocalContext, RepositoryBaselineInput, UnrestrictedPathPolicy};
 use adoc_mcp::{
@@ -1251,65 +1251,59 @@ fn serialized_repository_baseline_matches_published_schema_for_all_readiness_rea
     assert_eq!(unresolved["paths"]["status"], "unavailable");
     assert_ne!(unresolved["diagnostics"], json!([]));
 
-    let worktree_assessment = context
-        .assess_changes(AssessmentInput {
-            base_ref: exact_head.clone(),
-            head_ref: None,
+    write(
+        &root.join("docs/index.adoc"),
+        &source().replace(
+            "status: draft\n",
+            "status: verified\nowner: team-docs\nverified_at: 2026-09-05\nsource: test\nimpacts: [src/lib.rs]\n",
+        ),
+    );
+    run_git(root, &["add", "-A"]);
+    run_git(root, &["commit", "-m", "verify coverage"]);
+    let ready_head = fs::read_to_string(root.join(".git/refs/heads/main"))
+        .expect("ready ref is readable")
+        .trim()
+        .to_string();
+    let ready_baseline = context
+        .repository_baseline(RepositoryBaselineInput {
+            git_ref: ready_head,
             as_of: Some("2026-09-05".parse().expect("fixed evaluation date")),
         })
-        .expect("worktree assessment runs")
+        .expect("ready repository baseline runs")
         .envelope;
-    assert!(RepositoryBaselineEnvelope::try_from(worktree_assessment).is_err());
+    let ready_baseline =
+        serde_json::to_value(ready_baseline).expect("ready repository baseline serializes");
+    assert_eq!(
+        ready_baseline["readiness"],
+        json!({ "ready": true, "reason": "ready" })
+    );
 
-    let assessment = context
-        .assess_changes(AssessmentInput {
-            base_ref: exact_head.clone(),
-            head_ref: Some(exact_head),
+    write(&root.join("docs/index.adoc"), source());
+    run_git(root, &["add", "-A"]);
+    run_git(root, &["commit", "-m", "remove coverage"]);
+    let uncovered_head = fs::read_to_string(root.join(".git/refs/heads/main"))
+        .expect("uncovered ref is readable")
+        .trim()
+        .to_string();
+    let uncovered_baseline = context
+        .repository_baseline(RepositoryBaselineInput {
+            git_ref: uncovered_head,
             as_of: Some("2026-09-05".parse().expect("fixed evaluation date")),
         })
-        .expect("assessment runs")
+        .expect("uncovered repository baseline runs")
         .envelope;
-    let mut ready = assessment.clone();
-    ready.validation.errors_full = 0;
-    ready.summary.provisional = 0;
-    ready.summary.uncovered = 0;
-
-    let mut invalid_source = ready.clone();
-    invalid_source.validation.errors_full = 1;
-    invalid_source.summary.provisional = 1;
-    invalid_source.summary.uncovered = 1;
-
-    let mut provisional_paths = ready.clone();
-    provisional_paths.summary.provisional = 1;
-    provisional_paths.summary.uncovered = 1;
-
-    let mut uncovered_paths = ready.clone();
-    uncovered_paths.summary.uncovered = 1;
+    let uncovered_baseline =
+        serde_json::to_value(uncovered_baseline).expect("uncovered repository baseline serializes");
+    assert_eq!(
+        uncovered_baseline["readiness"],
+        json!({ "ready": false, "reason": "uncovered_paths" })
+    );
 
     let schema_name = "adoc.repository_baseline.v0.schema.json";
-    assert_valid(schema_name, &produced);
-    assert_valid(schema_name, &unresolved);
-    let mut ready_baseline = None;
-    for (expected_ready, expected_reason, assessment) in [
-        (true, "ready", ready),
-        (false, "invalid_source", invalid_source),
-        (false, "provisional_paths", provisional_paths),
-        (false, "uncovered_paths", uncovered_paths),
-    ] {
-        let baseline = serde_json::to_value(
-            RepositoryBaselineEnvelope::try_from(assessment)
-                .expect("immutable assessment becomes a repository baseline"),
-        )
-        .expect("repository baseline serializes");
-        assert_eq!(baseline["readiness"]["ready"], expected_ready);
-        assert_eq!(baseline["readiness"]["reason"], expected_reason);
-        assert_valid(schema_name, &baseline);
-        if expected_ready {
-            ready_baseline = Some(baseline);
-        }
+    for baseline in [&produced, &unresolved, &ready_baseline, &uncovered_baseline] {
+        assert_valid(schema_name, baseline);
     }
 
-    let ready_baseline = ready_baseline.expect("ready baseline retained");
     let mut unsupported = produced.clone();
     unsupported["schema_version"] = json!("adoc.repository_baseline.v99");
     assert!(!schema_accepts(schema_name, &unsupported));

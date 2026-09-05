@@ -332,48 +332,6 @@ pub struct RepositoryBaselineEnvelope {
     pub diagnostics: Vec<AssessmentDiagnostic>,
 }
 
-impl TryFrom<ChangeAssessmentEnvelope> for RepositoryBaselineEnvelope {
-    type Error = &'static str;
-
-    fn try_from(assessment: ChangeAssessmentEnvelope) -> Result<Self, Self::Error> {
-        if !assessment.snapshots.head.immutable
-            || assessment.snapshots.head.strategy.is_some()
-            || assessment.snapshots.head.worktree_state.is_some()
-        {
-            return Err("repository baselines require an immutable Git ref");
-        }
-        let ready = assessment.is_complete()
-            && assessment.validation.errors_full == 0
-            && assessment.summary.provisional == 0
-            && assessment.summary.uncovered == 0;
-        let reason = if !assessment.is_complete() || assessment.validation.errors_full > 0 {
-            "invalid_source"
-        } else if assessment.summary.provisional > 0 {
-            "provisional_paths"
-        } else if assessment.summary.uncovered > 0 {
-            "uncovered_paths"
-        } else {
-            "ready"
-        };
-        Ok(Self {
-            schema_version: REPOSITORY_BASELINE_SCHEMA_VERSION,
-            readiness: RepositoryBaselineReadiness {
-                ready,
-                reason: reason.to_string(),
-            },
-            evaluation_date: assessment.evaluation_date,
-            snapshot: assessment.snapshots.head,
-            knowledge_snapshot: assessment.knowledge_snapshot,
-            assessment_config: assessment.assessment_config,
-            summary: assessment.summary,
-            validation: assessment.validation,
-            paths: assessment.paths,
-            objects: assessment.objects,
-            diagnostics: assessment.diagnostics,
-        })
-    }
-}
-
 pub(crate) fn unresolved_envelope(
     input: &ChangeAssessmentInput,
     error: SnapshotError,
