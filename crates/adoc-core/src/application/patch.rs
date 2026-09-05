@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 
-use crate::domain::diagnostic::{Diagnostic, Severity};
+use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::graph::{GraphArtifactDocument, GraphIndex};
 use crate::domain::obligation::ProofObligation;
 use crate::domain::patch::{
@@ -138,6 +138,17 @@ impl PatchCheckResult {
     }
 }
 
+pub(crate) fn artifact_failure_diagnostics(mut diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
+    // Only reader failures have artifact provenance; carried source
+    // diagnostics with the same code keep their validation-error meaning.
+    for diagnostic in &mut diagnostics {
+        if diagnostic.code == DiagnosticCode::SchemaVisibilityInvalid {
+            diagnostic.code = DiagnosticCode::IoArtifactMalformed;
+        }
+    }
+    diagnostics
+}
+
 pub(crate) fn check_patch_with_readers<G, P>(
     input: PatchInput,
     graph_reader: &G,
@@ -149,7 +160,9 @@ where
 {
     let graph_document = match graph_reader.read(&input.graph_artifact_path) {
         Ok(document) => document,
-        Err(diagnostics) => return PatchCheckResult::failure(diagnostics),
+        Err(diagnostics) => {
+            return PatchCheckResult::failure(artifact_failure_diagnostics(diagnostics));
+        }
     };
     let patch_document = match patch_reader.read(&input.patch_path) {
         Ok(document) => document,

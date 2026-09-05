@@ -51,6 +51,115 @@ fn repo() -> TestWorkspace {
 }
 
 #[test]
+#[cfg(unix)]
+fn assessment_does_not_skip_unreadable_child_config_for_parent_policy() {
+    let workspace = repo();
+    let config_path = workspace.root.join("agentdoc.config.yaml");
+    let mut config = std::fs::read_to_string(&config_path).expect("config readable");
+    config.push_str("retrieval_policy:\n  audience: restricted\n  allowed_visibilities: [public, internal, restricted]\n");
+    workspace.write("agentdoc.config.yaml", &config);
+    git(&workspace, &["add", "-A"]);
+    git(&workspace, &["commit", "-m", "parent policy"]);
+    let child = workspace.root.join("child");
+    std::fs::create_dir(&child).expect("child directory created");
+    let candidate = child.join("agentdoc.config.yaml");
+
+    for directory in [false, true] {
+        if directory {
+            std::fs::create_dir(&candidate).expect("config directory created");
+        } else {
+            std::os::unix::fs::symlink("missing-policy.yaml", &candidate)
+                .expect("dangling config created");
+        }
+        let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+            .current_dir(&child)
+            .args([
+                "assess-changes",
+                "--base",
+                "HEAD",
+                "--as-of",
+                "2026-07-22",
+                "--format",
+                "json",
+            ])
+            .output()
+            .expect("adoc assess-changes runs");
+        let value: serde_json::Value =
+            serde_json::from_slice(&output.stdout).expect("assessment JSON");
+        assert_eq!(output.status.code(), Some(2), "{value:#}");
+        assert_eq!(value["completeness"], "error");
+        assert_eq!(value["outcome"], "invalid");
+        assert_eq!(value["diagnostics"][0]["code"], "assessment.head_invalid");
+        assert_eq!(value["assessment_config"]["head"]["status"], "unavailable");
+        assert!(value["assessment_config"]["sha256"].is_null());
+        if directory {
+            std::fs::remove_dir(&candidate).expect("config directory removed");
+        } else {
+            std::fs::remove_file(&candidate).expect("dangling config removed");
+        }
+    }
+}
+
+#[test]
+#[cfg(unix)]
+fn pinned_assessment_and_baseline_use_snapshot_config_with_unreadable_worktree_config() {
+    let workspace = repo();
+    workspace.write(
+        "child/agentdoc.config.yaml",
+        "version: 1\nmode: strict\ndocs_path: docs\nembeddings:\n  provider: none\nretrieval_policy:\n  audience: public\n  allowed_visibilities: [public]\n",
+    );
+    workspace.write(
+        "child/docs/index.adoc",
+        "# Child @doc(team.child)\n\n::claim child.rule\nstatus: draft\n--\nChild rule.\n::\n",
+    );
+    git(&workspace, &["add", "-A"]);
+    git(&workspace, &["commit", "-m", "nested project"]);
+    let child = workspace.root.join("child");
+    let run = |args: &[&str]| {
+        let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+            .current_dir(&child)
+            .args(args)
+            .args(["--as-of", "2026-07-22", "--format", "json"])
+            .output()
+            .expect("assessment command runs");
+        assert!(
+            output.status.success(),
+            "{args:?}: {}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        output.stdout
+    };
+    let commands: [&[&str]; 2] = [
+        &["assess-changes", "--base", "HEAD", "--head", "HEAD"],
+        &["baseline", "--ref", "HEAD"],
+    ];
+    let expected = commands.map(run);
+    let candidate = child.join("agentdoc.config.yaml");
+    std::fs::remove_file(&candidate).expect("worktree config removed");
+    for directory in [false, true] {
+        if directory {
+            std::fs::create_dir(&candidate).expect("config directory created");
+        } else {
+            std::os::unix::fs::symlink("missing-policy.yaml", &candidate)
+                .expect("dangling config created");
+        }
+        for (args, expected) in commands.iter().zip(&expected) {
+            assert_eq!(
+                run(args),
+                *expected,
+                "{args:?} must use the snapshot config"
+            );
+        }
+        if directory {
+            std::fs::remove_dir(&candidate).expect("config directory removed");
+        } else {
+            std::fs::remove_file(&candidate).expect("dangling config removed");
+        }
+    }
+}
+
+#[test]
 fn assessment_supports_a_project_below_the_repository_root() {
     let workspace = TestWorkspace::new("assess-changes-nested-project");
     git(&workspace, &["init", "--initial-branch=main"]);

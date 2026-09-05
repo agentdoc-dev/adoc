@@ -620,6 +620,8 @@ struct NormalizedConfig<'a> {
     embeddings_provider: &'a str,
     mcp_patch_apply_enabled: bool,
     assessment_exclude_paths: &'a [String],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    retrieval_policy: Option<&'a crate::domain::retrieval::RetrievalPolicy>,
 }
 
 fn load_snapshot_config(root: &Path) -> Result<LoadedConfig, SnapshotConfigError> {
@@ -638,6 +640,7 @@ fn load_snapshot_config(root: &Path) -> Result<LoadedConfig, SnapshotConfigError
         },
         mcp_patch_apply_enabled: parsed.mcp_patch_apply_enabled,
         assessment_exclude_paths: &parsed.assessment_exclude_paths,
+        retrieval_policy: parsed.retrieval_policy.as_ref(),
     };
     let normalized_json = serde_json::to_vec(&normalized).map_err(|error| {
         SnapshotConfigError::Other(format!("could not normalize {CONFIG_PATH}: {error}"))
@@ -656,9 +659,9 @@ fn config_error(error: ProjectConfigDocumentError) -> SnapshotConfigError {
         ProjectConfigDocumentError::InvalidAssessmentPath { .. } => {
             SnapshotConfigError::InvalidAssessmentPath(message)
         }
-        ProjectConfigDocumentError::Parse(_) | ProjectConfigDocumentError::Invalid(_) => {
-            SnapshotConfigError::Other(message)
-        }
+        ProjectConfigDocumentError::Parse(_)
+        | ProjectConfigDocumentError::Invalid(_)
+        | ProjectConfigDocumentError::RetrievalPolicy(_) => SnapshotConfigError::Other(message),
     }
 }
 
@@ -1795,6 +1798,58 @@ mod tests {
     use serde::ser::Error as _;
 
     struct SerializationFailure;
+
+    #[test]
+    fn retrieval_authority_is_bound_without_changing_legacy_config_bytes() {
+        let workspace = tempfile::tempdir().unwrap();
+        let path = workspace.path().join(super::CONFIG_PATH);
+        let base = "version: 1\nmode: strict\ndocs_path: docs\n";
+        std::fs::write(&path, base).unwrap();
+        let legacy = super::load_snapshot_config(workspace.path())
+            .map_err(|error| error.message())
+            .unwrap();
+        assert_eq!(legacy.normalized_json,
+            br#"{"docs_path":"docs","outputs":[],"embeddings_provider":"local","mcp_patch_apply_enabled":false,"assessment_exclude_paths":[]}"#);
+        let legacy_bound = super::complete_config(&legacy, &legacy).unwrap().sha256;
+        let mut digests = std::collections::BTreeSet::from([legacy.sha256.clone()]);
+        for policy in [
+            "{audience: public, allowed_visibilities: [public], excluded_object_ids: [billing.hidden]}",
+            "{audience: public, allowed_visibilities: [public]}",
+            "{audience: internal, allowed_visibilities: [public]}",
+            "{audience: internal, allowed_visibilities: [public, internal]}",
+        ] {
+            std::fs::write(&path, format!("{base}retrieval_policy: {policy}\n")).unwrap();
+            let changed = super::load_snapshot_config(workspace.path())
+                .map_err(|error| error.message())
+                .unwrap();
+            assert!(digests.insert(changed.sha256.clone()), "{policy}");
+            assert_ne!(
+                super::complete_config(&legacy, &changed).unwrap().sha256,
+                legacy_bound
+            );
+        }
+    }
+
+    #[test]
+    fn retrieval_policy_errors_keep_snapshot_config_failure_classification() {
+        let error = super::parse_project_config(
+            "version: 1\nmode: strict\ndocs_path: docs\nretrieval_policy: {audience: private-policy-sentinel, allowed_visibilities: [public]}\n",
+        ).expect_err("invalid audience must fail config parsing");
+        assert!(matches!(
+            error,
+            super::ProjectConfigDocumentError::RetrievalPolicy(_)
+        ));
+        let error = super::config_error(error);
+        assert!(matches!(error, super::SnapshotConfigError::Other(_)));
+        for fallback in [
+            super::DiagnosticCode::AssessmentHeadInvalid,
+            super::DiagnosticCode::AssessmentBasePartial,
+        ] {
+            assert_eq!(error.code(fallback), fallback);
+        }
+        assert!(error.message().contains("agentdoc.config.yaml"));
+        assert!(!error.message().contains("private-policy-sentinel"));
+    }
 
     impl serde::Serialize for SerializationFailure {
         fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>

@@ -7,8 +7,8 @@ dual-version reader. Artifacts are derived outputs, so migration is
 deterministic regeneration from source, never an in-place transform.
 
 `adoc search` and `adoc why` no longer echo the artifact-supplied schema
-version or raw decoder payloads. Their diagnostics name the caller-selected
-artifact path and retain `schema.unsupported_version` plus safe rebuild
+version or raw decoder payloads. Their diagnostics name the resolved artifact
+path (from an explicit input or valid config) and retain `schema.unsupported_version` plus safe rebuild
 guidance, including the expected supported version. Trusted graph-artifact
 inspection can still name the version found in the artifact.
 
