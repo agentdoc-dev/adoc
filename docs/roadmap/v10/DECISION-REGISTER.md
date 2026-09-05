@@ -84,7 +84,7 @@ Decision work owed at a named slice start, tracked here so it cannot silently la
 <!-- decisions:obligations -->
 | ID | Obligation | Owed at | Provenance |
 | --- | --- | --- | --- |
-| O-01 | Repository-readiness true-up for `adoc.repository_baseline.v0`, which shipped in PR #140 without a decision record or contract registration: a retroactive ADR, a published schema, and a parity test must exist before Cloud ingestion consumes the envelope. Registry row: [`CONTRACT-REGISTRY.md`](CONTRACT-REGISTRY.md). | E4.6 slice start | V10.1.6 (historical), RT-21 |
+| O-01 | **Satisfied 2026-09-05 by [ADR-0064](../../adr/0064-repository-baseline-contract-true-up.md).** `adoc.repository_baseline.v0` shipped in PR #140 without a decision record or contract registration; the unchanged wire now has the retroactive ADR, published schema, producer/schema parity test, and Action bootstrap consumer evidence required before Cloud ingestion. Permanent row retained for provenance. Registry row: [`CONTRACT-REGISTRY.md`](CONTRACT-REGISTRY.md). | E4.6 slice start | V10.1.6 (historical), RT-21 |
 <!-- /decisions:obligations -->
 
 ## Required post-V1 commitments

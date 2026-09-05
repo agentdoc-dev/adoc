@@ -3,11 +3,11 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use adoc_core::{
-    GitRef, ObjectDiffEnvelope, ReviewEnvelope, ReviewInput, SnapshotSelector, diff_objects,
-    load_review_from_git, load_review_with_changed_files_from_git, parse_patch_from_value,
-    review_with_patch,
+    GitRef, ObjectDiffEnvelope, RepositoryBaselineEnvelope, ReviewEnvelope, ReviewInput,
+    SnapshotSelector, diff_objects, load_review_from_git, load_review_with_changed_files_from_git,
+    parse_patch_from_value, review_with_patch,
 };
-use adoc_local::{AssessmentInput, LocalContext, UnrestrictedPathPolicy};
+use adoc_local::{AssessmentInput, LocalContext, RepositoryBaselineInput, UnrestrictedPathPolicy};
 use adoc_mcp::{
     AdocPatchCheckParams, AdocReviewParams, AgentDocMcpServer, BuildParams, ContradictionsParams,
     GraphParams, ImpactedByParams, InitParams, PatchInput, ProjectStatusParams, SearchParams,
@@ -1035,6 +1035,10 @@ fn mcp_serves_schema_resources_byte_equal_to_on_disk_files() {
             "adoc.change_assessment.v0.schema.json",
         ),
         (
+            "adoc://agent/v0/schema/adoc.repository_baseline.v0.schema.json",
+            "adoc.repository_baseline.v0.schema.json",
+        ),
+        (
             "adoc://agent/v0/schema/adoc.migrate.report.v0.schema.json",
             "adoc.migrate.report.v0.schema.json",
         ),
@@ -1184,6 +1188,169 @@ fn validates_complete_and_error_change_assessments_and_rejects_illegal_tuples() 
     let schema = schema("adoc.change_assessment.v0.schema.json");
     let validator = jsonschema::validator_for(&schema).expect("schema compiles");
     assert!(!validator.is_valid(&illegal));
+}
+
+#[test]
+fn serialized_repository_baseline_matches_published_schema_for_all_readiness_reasons() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    run_git(root, &["init", "--initial-branch=main"]);
+    run_git(root, &["config", "user.email", "test@agentdoc.dev"]);
+    run_git(root, &["config", "user.name", "AgentDoc Test"]);
+    run_git(root, &["config", "commit.gpgsign", "false"]);
+    write(
+        &root.join("agentdoc.config.yaml"),
+        "version: 1\nmode: strict\ndocs_path: docs\nembeddings:\n  provider: none\n",
+    );
+    write(
+        &root.join("docs/index.adoc"),
+        &source().replace("status: draft\n", "status: draft\nimpacts: [src/lib.rs]\n"),
+    );
+    write(&root.join("src/lib.rs"), "pub fn billing_ready() {}\n");
+    run_git(root, &["add", "-A"]);
+    run_git(root, &["commit", "-m", "initial"]);
+    let exact_head = fs::read_to_string(root.join(".git/refs/heads/main"))
+        .expect("main ref is readable")
+        .trim()
+        .to_string();
+
+    let context = LocalContext::new(root.to_path_buf(), UnrestrictedPathPolicy);
+    let produced = context
+        .repository_baseline(RepositoryBaselineInput {
+            git_ref: exact_head.clone(),
+            as_of: Some("2026-09-05".parse().expect("fixed evaluation date")),
+        })
+        .expect("repository baseline runs")
+        .envelope;
+    let produced = serde_json::to_value(produced).expect("repository baseline serializes");
+    assert_eq!(produced["snapshot"]["immutable"], true);
+    assert_eq!(produced["snapshot"]["requested_ref"], exact_head);
+    assert_eq!(produced["snapshot"]["resolved_commit"], exact_head);
+    assert_eq!(produced["evaluation_date"], "2026-09-05");
+    let paths = produced["paths"]["value"]
+        .as_array()
+        .expect("baseline paths are available");
+    assert!(paths.iter().any(|path| path["matches"] != json!([])));
+    let objects = produced["objects"]["value"]
+        .as_array()
+        .expect("baseline objects are available");
+    assert!(objects.iter().any(|object| object["reasons"] != json!([])));
+
+    let unresolved = context
+        .repository_baseline(RepositoryBaselineInput {
+            git_ref: "missing-ref".to_string(),
+            as_of: None,
+        })
+        .expect("unresolved repository baseline is data")
+        .envelope;
+    let unresolved =
+        serde_json::to_value(unresolved).expect("unresolved repository baseline serializes");
+    assert_eq!(unresolved["readiness"]["reason"], "invalid_source");
+    assert_eq!(unresolved["paths"]["status"], "unavailable");
+    assert_ne!(unresolved["diagnostics"], json!([]));
+
+    let assessment = context
+        .assess_changes(AssessmentInput {
+            base_ref: exact_head.clone(),
+            head_ref: Some(exact_head),
+            as_of: Some("2026-09-05".parse().expect("fixed evaluation date")),
+        })
+        .expect("assessment runs")
+        .envelope;
+    let mut ready = assessment.clone();
+    ready.validation.errors_full = 0;
+    ready.summary.provisional = 0;
+    ready.summary.uncovered = 0;
+
+    let mut invalid_source = ready.clone();
+    invalid_source.validation.errors_full = 1;
+    invalid_source.summary.provisional = 1;
+    invalid_source.summary.uncovered = 1;
+
+    let mut provisional_paths = ready.clone();
+    provisional_paths.summary.provisional = 1;
+    provisional_paths.summary.uncovered = 1;
+
+    let mut uncovered_paths = ready.clone();
+    uncovered_paths.summary.uncovered = 1;
+
+    let schema_name = "adoc.repository_baseline.v0.schema.json";
+    assert_valid(schema_name, &produced);
+    assert_valid(schema_name, &unresolved);
+    let mut ready_baseline = None;
+    for (expected_ready, expected_reason, assessment) in [
+        (true, "ready", ready),
+        (false, "invalid_source", invalid_source),
+        (false, "provisional_paths", provisional_paths),
+        (false, "uncovered_paths", uncovered_paths),
+    ] {
+        let baseline = serde_json::to_value(RepositoryBaselineEnvelope::from(assessment))
+            .expect("repository baseline serializes");
+        assert_eq!(baseline["readiness"]["ready"], expected_ready);
+        assert_eq!(baseline["readiness"]["reason"], expected_reason);
+        assert_valid(schema_name, &baseline);
+        if expected_ready {
+            ready_baseline = Some(baseline);
+        }
+    }
+
+    let ready_baseline = ready_baseline.expect("ready baseline retained");
+    let mut unsupported = produced.clone();
+    unsupported["schema_version"] = json!("adoc.repository_baseline.v99");
+    assert!(!schema_accepts(schema_name, &unsupported));
+
+    let mut unknown_reason = produced.clone();
+    unknown_reason["readiness"]["reason"] = json!("unknown");
+    assert!(!schema_accepts(schema_name, &unknown_reason));
+
+    let mut ready_with_errors = ready_baseline.clone();
+    ready_with_errors["validation"]["errors_full"] = json!(1);
+    assert!(!schema_accepts(schema_name, &ready_with_errors));
+
+    let mut ready_with_uncovered_paths = ready_baseline.clone();
+    ready_with_uncovered_paths["summary"]["uncovered"] = json!(1);
+    assert!(!schema_accepts(schema_name, &ready_with_uncovered_paths));
+
+    let mut invalid_without_invalid_source = ready_baseline.clone();
+    invalid_without_invalid_source["readiness"] =
+        json!({ "ready": false, "reason": "invalid_source" });
+    assert!(!schema_accepts(
+        schema_name,
+        &invalid_without_invalid_source
+    ));
+
+    let mut mutable_ready = ready_baseline.clone();
+    mutable_ready["snapshot"]["immutable"] = json!(false);
+    assert!(!schema_accepts(schema_name, &mutable_ready));
+
+    let mut ready_without_knowledge = ready_baseline.clone();
+    ready_without_knowledge["knowledge_snapshot"] = json!({ "status": "unavailable" });
+    assert!(!schema_accepts(schema_name, &ready_without_knowledge));
+
+    let mut ready_without_objects = ready_baseline.clone();
+    ready_without_objects["objects"] = json!({ "status": "unavailable" });
+    assert!(!schema_accepts(schema_name, &ready_without_objects));
+
+    let mut available_without_value = ready_baseline;
+    available_without_value["paths"] = json!({ "status": "available" });
+    assert!(!schema_accepts(schema_name, &available_without_value));
+
+    let mut unavailable_with_value = unresolved;
+    unavailable_with_value["objects"]["value"] = json!([]);
+    assert!(!schema_accepts(schema_name, &unavailable_with_value));
+
+    let mut provisional_without_knowledge = invalid_without_invalid_source.clone();
+    provisional_without_knowledge["readiness"] =
+        json!({ "ready": false, "reason": "provisional_paths" });
+    provisional_without_knowledge["summary"]["provisional"] = json!(1);
+    provisional_without_knowledge["knowledge_snapshot"] = json!({ "status": "unavailable" });
+    assert!(!schema_accepts(schema_name, &provisional_without_knowledge));
+
+    let mut uncovered_without_objects = invalid_without_invalid_source;
+    uncovered_without_objects["readiness"] = json!({ "ready": false, "reason": "uncovered_paths" });
+    uncovered_without_objects["summary"]["uncovered"] = json!(1);
+    uncovered_without_objects["objects"] = json!({ "status": "unavailable" });
+    assert!(!schema_accepts(schema_name, &uncovered_without_objects));
 }
 
 /// V8.1.2/V8.1.3: the `adoc migrate` report envelope — built at the same
