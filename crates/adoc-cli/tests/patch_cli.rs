@@ -312,6 +312,161 @@ fn patch_help_lists_check_apply_and_artifact_flags() {
     assert!(stdout.contains("adoc patch --apply patch.json"));
 }
 
+fn patch_visibility_failure_workspace(
+    name: &str,
+    change_graph: impl FnOnce(&mut serde_json::Value),
+) -> TestWorkspace {
+    let workspace = build_apply_workspace(name);
+    let hash = content_hash(&workspace, "billing.credits");
+    workspace.write(
+        "patch.json",
+        &replace_body_patch("billing.credits", &hash).to_string(),
+    );
+    let mut graph: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(workspace.root.join("dist/docs.graph.json"))
+            .expect("graph artifact is readable"),
+    )
+    .expect("graph artifact is JSON");
+    change_graph(&mut graph);
+    workspace.write("dist/docs.graph.json", &graph.to_string());
+    workspace
+}
+
+fn invalidate_graph_visibility(graph: &mut serde_json::Value) {
+    let node = graph["nodes"]
+        .as_array_mut()
+        .expect("nodes array")
+        .iter_mut()
+        .find(|node| node["id"] == "billing.credits")
+        .expect("billing.credits node exists");
+    node["visibility"] = serde_json::Value::Null;
+}
+
+#[test]
+fn patch_check_decoder_visibility_failure_exits_two() {
+    let workspace = patch_visibility_failure_workspace(
+        "patch-check-decoder-visibility",
+        invalidate_graph_visibility,
+    );
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["patch", "--check", "patch.json", "--format", "json"])
+        .output()
+        .expect("adoc patch runs");
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout is JSON");
+    assert_eq!(envelope["valid"], false);
+    assert!(envelope.get("target").is_none());
+    assert_eq!(envelope["operation"], "");
+    assert_eq!(output.status.code(), Some(2), "{}", stdout(&output));
+    assert_eq!(envelope["diagnostics"][0]["code"], "io.artifact_malformed");
+    let help = envelope["diagnostics"][0]["help"]
+        .as_str()
+        .expect("repair guidance");
+    assert!(help.contains("adoc check") && help.contains("adoc build"));
+
+    let inline = adoc_core::check_patch_json(adoc_core::PatchJsonInput {
+        graph_artifact_path: workspace
+            .root
+            .join("dist/docs.graph.json")
+            .canonicalize()
+            .expect("artifact path resolves"),
+        patch: replace_body_patch("billing.credits", "sha256:unused"),
+    });
+    assert_eq!(
+        serde_json::to_value(&inline).expect("inline result serializes")["diagnostics"],
+        envelope["diagnostics"],
+        "path and inline checks must classify the same artifact failure identically"
+    );
+}
+
+#[test]
+fn patch_check_and_apply_carried_visibility_failure_still_exit_one() {
+    let workspace = patch_visibility_failure_workspace("patch-check-carried-visibility", |graph| {
+        // Carried source diagnostics need not have a span or object ID: neither
+        // field is a reliable discriminator for artifact-reader failures.
+        graph["diagnostics"] = serde_json::json!([{
+            "code": "schema.visibility_invalid",
+            "severity": "error",
+            "message": "Authored visibility needs repair.",
+            "span": null,
+            "object_id": null,
+            "help": "Repair the authored visibility."
+        }]);
+    });
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["patch", "--check", "patch.json", "--format", "json"])
+        .output()
+        .expect("adoc patch runs");
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout is JSON");
+    assert_eq!(output.status.code(), Some(1), "{}", stdout(&output));
+    assert_eq!(envelope["valid"], false);
+    assert!(envelope.get("target").is_none());
+    assert_eq!(envelope["operation"], "");
+    assert_eq!(envelope["diagnostics"].as_array().map(Vec::len), Some(1));
+    assert_eq!(
+        envelope["diagnostics"][0]["code"],
+        "schema.visibility_invalid"
+    );
+    assert_eq!(
+        envelope["diagnostics"][0]["message"],
+        "Authored visibility needs repair."
+    );
+
+    let source_path = workspace.root.join("docs/billing.adoc");
+    let original = std::fs::read(&source_path).expect("source readable");
+    let apply = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["patch", "--apply", "patch.json", "--format", "json"])
+        .output()
+        .expect("adoc patch apply runs");
+    let refusal: serde_json::Value = serde_json::from_slice(&apply.stdout).expect("stdout is JSON");
+    assert_eq!(apply.status.code(), Some(1), "{}", stdout(&apply));
+    assert_eq!(refusal["applied"], false);
+    assert_eq!(refusal["written_files"], serde_json::json!([]));
+    assert_eq!(refusal["diagnostics"], envelope["diagnostics"]);
+    assert_eq!(
+        std::fs::read(source_path).expect("source readable"),
+        original
+    );
+}
+
+#[test]
+fn patch_apply_decoder_visibility_failure_refuses_with_exit_one_and_no_write() {
+    let workspace = patch_visibility_failure_workspace(
+        "patch-apply-decoder-visibility",
+        invalidate_graph_visibility,
+    );
+    let source_path = workspace.root.join("docs/billing.adoc");
+    let original = std::fs::read(&source_path).expect("source readable");
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["patch", "--apply", "patch.json", "--format", "json"])
+        .output()
+        .expect("adoc patch runs");
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout is JSON");
+    assert_eq!(output.status.code(), Some(1), "{}", stdout(&output));
+    assert_eq!(envelope["applied"], false);
+    assert_eq!(envelope["written_files"], serde_json::json!([]));
+    assert_eq!(envelope["diagnostics"][0]["code"], "io.artifact_malformed");
+    assert_eq!(
+        std::fs::read(source_path).expect("source readable"),
+        original
+    );
+    let check = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["patch", "--check", "patch.json", "--format", "json"])
+        .output()
+        .expect("adoc patch check runs");
+    let check_envelope: serde_json::Value =
+        serde_json::from_slice(&check.stdout).expect("stdout is JSON");
+    assert_eq!(check.status.code(), Some(2));
+    assert_eq!(envelope["diagnostics"], check_envelope["diagnostics"]);
+}
+
 // ---------------------------------------------------------------------------
 // V6.4 TB1 — `adoc patch --apply`
 // ---------------------------------------------------------------------------

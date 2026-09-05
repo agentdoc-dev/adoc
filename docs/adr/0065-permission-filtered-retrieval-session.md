@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-09-05
-- Slice: E6.1.T1
+- Slices: E6.1.T1–T2
 
 ## Context
 
@@ -91,12 +91,50 @@ can retrieve changed carriers through lexical matching. If stale bindings leave
 no usable permitted vectors, semantic search refuses and hybrid falls back to
 lexical search. Withheld or absent carriers alone do not cause this refusal.
 Model errors retain the trusted active-provider identity. Decoder errors retain
-the caller-selected artifact path and trusted reader-supplied rebuild guidance,
+the resolved artifact path (from an explicit input or valid config) and trusted reader-supplied rebuild guidance,
 while suppressing artifact-controlled version values and decoder payload text.
 
-E6.1.T2 owns typed policy errors through config parsing and response assembly;
-T1 validates policy values at retrieval-session assembly. A generic config
-error conversion would lose T2's required audience/policy distinction.
+E6.1.T2 preserves typed policy errors through shared config parsing and local
+response assembly. An unreadable config, malformed YAML, or malformed present policy produces
+`retrieval.policy_invalid`; an absent, invalid, or noncanonical audience in a
+present policy produces `retrieval.audience_unresolved`. An omitted policy is
+valid; an explicit null policy is not. Search and why return empty records and
+exit 2 without parser snippets or filesystem details. This includes dangling
+config symlinks; discovery never substitutes a parent or default policy after a
+present config fails to load. Other semantic configuration errors, such as an
+unsupported config version/provider or a non-portable `docs_path`, retain
+`config.invalid` and exit 1. The graph decoder checks present object and field visibility before
+deserializing optional fields, so explicit null cannot become unclassified.
+Invalid classification produces `schema.visibility_invalid` for artifact
+inspection and safe `retrieval.visibility_unavailable` for retrieval. Valid
+field-level access enforcement remains E6.2.
+
+Policy validation is part of shared config parsing. Non-retrieval commands
+that load config, including build/check, also refuse malformed policy
+with `retrieval.policy_invalid` or `retrieval.audience_unresolved` and exit 1.
+Remove a null placeholder policy block to preserve omitted-policy behavior.
+Commands that already bypass config with explicit inputs retain that behavior;
+search/why always load policy and use the typed empty response with exit 2.
+Assessment and repository-baseline root selection use the same presence check;
+config contents and read failures still come from the selected Git/workdir snapshot.
+
+Graph JSON currently uses the decoder's last-member-wins map semantics:
+duplicate members collapse before classification validation, so earlier invalid
+or stricter values are not examined. E6.2.T2 must reject ambiguous duplicate
+object `visibility` and `field_visibility` members, including duplicate field
+names inside the latter map, at admission. YAML policy duplicates are already
+rejected. T2 does not claim strict duplicate-member rejection for graph JSON.
+
+Patch check and apply classify decoder visibility failures as
+`io.artifact_malformed`. Check exits 2 for this artifact failure; apply refuses
+before writing and exits 1. Carried source diagnostics retain their original
+validation codes. Artifact inspection still reports `schema.visibility_invalid`.
+
+Normalized assessment configuration digests include a present retrieval policy;
+omitting it preserves legacy config bytes. The existing `policy_changes` section
+still describes assessment exclusions and generated outputs, not authorization
+approval. Binding retrieval authority into the config digest does not grant it.
+
 E6.1.T3's performance gate must measure default-deny classified repositories
 as well as explicit policies. Borrowed validation and fewer repeated scans
 are measured optimizations for that gate; T1 keeps the conservative projection.

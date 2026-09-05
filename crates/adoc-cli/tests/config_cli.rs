@@ -476,6 +476,37 @@ fn config_why_and_search_use_configured_artifacts_unless_args_are_explicit() {
 }
 
 #[test]
+fn config_policy_errors_refuse_non_retrieval_commands_at_exit_one() {
+    let workspace = TestWorkspace::new("config-policy-build-errors");
+    write_valid_source(&workspace, "docs/index.adoc");
+    for (policy, code) in [
+        ("null", "retrieval.policy_invalid"),
+        (
+            "{audience: bogus, allowed_visibilities: [public]}",
+            "retrieval.audience_unresolved",
+        ),
+    ] {
+        workspace.write(
+            "agentdoc.config.yaml",
+            &format!("version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nretrieval_policy: {policy}\n"),
+        );
+        for command in ["build", "check"] {
+            let output = adoc_command()
+                .current_dir(&workspace.root)
+                .arg(command)
+                .output()
+                .expect("CLI runs");
+            assert_eq!(output.status.code(), Some(1), "{command}: {output:?}");
+            assert!(
+                stderr(&output).contains(&format!("error[{code}]")),
+                "{command}: {output:?}"
+            );
+            assert!(!workspace.root.join("dist").exists());
+        }
+    }
+}
+
+#[test]
 fn config_invalid_mode_provider_and_version_exit_with_config_errors() {
     let cases = [
         (

@@ -35,7 +35,7 @@ use adoc_core::{
 use adoc_core::{MigrateMode, MigrateReportEnvelope};
 use serde::Serialize;
 
-use crate::config::CONFIG_FILE_NAME;
+use crate::config::{CONFIG_FILE_NAME, config_path_present};
 use crate::{EmbeddingsProvider, LocalContext, LocalError, PathPolicy, ProjectConfig};
 
 const DEFAULT_GRAPH_ARTIFACT_PATH: &str = "dist/docs.graph.json";
@@ -874,7 +874,19 @@ where
     P: PathPolicy,
 {
     let (artifact, config) =
-        resolve_graph_artifact_for_read(context, input.artifact.as_deref(), true)?;
+        match resolve_graph_artifact_for_read(context, input.artifact.as_deref(), true) {
+            Ok(resolved) => resolved,
+            Err(error) => {
+                let diagnostic = retrieval_config_diagnostic(error)?;
+                return Ok(WhyOutcome {
+                    artifact: resolve_graph_artifact_path_with_config(input.artifact, None),
+                    records: Vec::new(),
+                    diagnostics: vec![diagnostic],
+                    duration: Duration::ZERO,
+                    exit_code: 2,
+                });
+            }
+        };
     let load_result = load_retrieval_session_with_embedding_provider(
         RetrievalInput {
             artifact_path: artifact.clone(),
@@ -1093,7 +1105,16 @@ where
         .map(|path| context.path_policy().resolve_read_path(path))
         .transpose()?;
     // An explicit artifact changes the data source, never the policy source.
-    let config = ProjectConfig::discover_from(context.config_start())?;
+    let config = match ProjectConfig::discover_from(context.config_start()) {
+        Ok(config) => config,
+        Err(error) => {
+            return Ok(search_outcome(
+                Vec::new(),
+                vec![retrieval_config_diagnostic(error)?],
+                2,
+            ));
+        }
+    };
     // Policy discovery must not change the historical provider/path defaults
     // for a search whose relevant artifact paths are all explicit.
     let defaults_config = config.as_ref().filter(|_| {
@@ -1990,7 +2011,9 @@ fn assessment_project_root(start: &Path) -> Option<PathBuf> {
     let repository_root = git_project_root(start)?;
     let mut current = start.canonicalize().ok()?;
     loop {
-        if current.join(CONFIG_FILE_NAME).is_file() {
+        // Stop on present or inaccessible config paths; only the selected
+        // snapshot may supply config contents or report its read failure.
+        if config_path_present(&current.join(CONFIG_FILE_NAME)).unwrap_or(true) {
             return Some(current);
         }
         if current == repository_root || !current.pop() {
@@ -2079,6 +2102,27 @@ fn diagnostics_have_errors(diagnostics: &[Diagnostic]) -> bool {
     diagnostics
         .iter()
         .any(|diagnostic| diagnostic.severity == Severity::Error)
+}
+
+/// An unreadable or malformed config cannot establish retrieval authority.
+/// Preserve typed policy errors without exposing parser or filesystem details.
+fn retrieval_config_diagnostic(error: LocalError) -> Result<Diagnostic, LocalError> {
+    match error {
+        LocalError::RetrievalPolicy { diagnostic, .. } => return Ok(*diagnostic),
+        LocalError::ConfigParse { .. } | LocalError::ConfigRead { .. } => {}
+        error => return Err(error),
+    }
+    Ok(Diagnostic {
+        code: DiagnosticCode::RetrievalPolicyInvalid,
+        severity: Severity::Error,
+        message: format!(
+            "Config `{}` could not be read or parsed; retrieval policy cannot be established.",
+            CONFIG_FILE_NAME
+        ),
+        span: None,
+        object_id: None,
+        help: Some("Run `adoc check` to diagnose the config, then make it readable and valid before retrying retrieval.".to_string()),
+    })
 }
 
 fn merge_diagnostics(

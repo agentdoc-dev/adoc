@@ -336,6 +336,16 @@ fn safe_artifact_diagnostics(path: &Path, diagnostics: Vec<Diagnostic>) -> Vec<D
     diagnostics
         .into_iter()
         .map(|diagnostic| match diagnostic.code {
+            DiagnosticCode::SchemaVisibilityInvalid => Diagnostic::error(
+                DiagnosticCode::RetrievalVisibilityUnavailable,
+                format!(
+                    "Artifact `{}` has unavailable visibility metadata.",
+                    path.display()
+                ),
+            )
+            .with_help(
+                "Run `adoc check` to repair visibility and `adoc build` to rebuild the artifact.",
+            ),
             DiagnosticCode::IoArtifactMalformed | DiagnosticCode::SchemaUnsupportedVersion => {
                 let safe = Diagnostic::error(
                     diagnostic.code,
@@ -1052,6 +1062,101 @@ mod tests {
 
         fn read(&self, _path: &Path) -> Result<Self::Output, Vec<Diagnostic>> {
             Ok(self.document.clone())
+        }
+    }
+
+    #[test]
+    fn retrieval_decoder_visibility_error_discards_payload_and_help() {
+        struct InvalidVisibilityReader;
+        impl ArtifactReader for InvalidVisibilityReader {
+            type Output = GraphArtifactDocument;
+
+            fn read(&self, _path: &Path) -> Result<Self::Output, Vec<Diagnostic>> {
+                let position = crate::domain::diagnostic::SourcePosition {
+                    line: 1,
+                    column: 1,
+                    offset: 0,
+                };
+                Err(vec![
+                    Diagnostic::error(DiagnosticCode::SchemaVisibilityInvalid, "private-payload")
+                        .with_object_id("private.object")
+                        .with_span(crate::domain::diagnostic::SourceSpan {
+                            file: "private-source.adoc".into(),
+                            start: position,
+                            end: position,
+                        })
+                        .with_help("private-repair-payload"),
+                ])
+            }
+        }
+
+        for explicit_policy in [false, true] {
+            let result = load_retrieval_session_with_readers(
+                RetrievalInput {
+                    artifact_path: "caller.graph.json".into(),
+                    search_artifact_path: None,
+                    policy: explicit_policy.then(|| RetrievalPolicy {
+                        audience: "public".into(),
+                        allowed_visibilities: BTreeSet::from(["public".into()]),
+                        excluded_object_ids: BTreeSet::new(),
+                    }),
+                },
+                &StubSearchArtifactReader {
+                    document: search_document("sha256:unused"),
+                },
+                &InvalidVisibilityReader,
+                None,
+            );
+            assert!(result.session.is_none());
+            let expected = Diagnostic::error(
+                DiagnosticCode::RetrievalVisibilityUnavailable,
+                "Artifact `caller.graph.json` has unavailable visibility metadata.",
+            )
+            .with_help(
+                "Run `adoc check` to repair visibility and `adoc build` to rebuild the artifact.",
+            );
+            assert_eq!(
+                serde_json::to_value(&result.diagnostics).unwrap(),
+                serde_json::to_value([expected]).unwrap(),
+            );
+        }
+    }
+
+    #[test]
+    fn retrieval_decoder_other_errors_preserve_codes_and_repair_help() {
+        let workspace = tempfile::tempdir().unwrap();
+        let path = workspace.path().join("caller.graph.json");
+        for (contents, code, help) in [
+            (
+                "{",
+                DiagnosticCode::IoArtifactMalformed,
+                "Rebuild docs.graph.json from the source workspace.".to_string(),
+            ),
+            (
+                r#"{"schema_version":"private-version-payload","nodes":[{"type":"knowledge_object","visibility":null}]}"#,
+                DiagnosticCode::SchemaUnsupportedVersion,
+                format!(
+                    "Expected schema_version 'adoc.graph.v6'. {}",
+                    DiagnosticCode::SchemaUnsupportedVersion.default_help()
+                ),
+            ),
+        ] {
+            std::fs::write(&path, contents).unwrap();
+            let result = crate::load_retrieval_session(RetrievalInput {
+                artifact_path: path.clone(),
+                search_artifact_path: None,
+                policy: None,
+            });
+            assert!(result.session.is_none());
+            let expected = Diagnostic::error(
+                code,
+                format!("Artifact `{}` could not be loaded.", path.display()),
+            )
+            .with_help(help);
+            assert_eq!(
+                serde_json::to_value(&result.diagnostics).unwrap(),
+                serde_json::to_value([expected]).unwrap()
+            );
         }
     }
 

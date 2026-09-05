@@ -715,7 +715,11 @@ pub fn check_patch_json(input: PatchJsonInput) -> PatchCheckResult {
     let graph_document =
         match infrastructure::artifact::GraphJsonArtifact.read(&input.graph_artifact_path) {
             Ok(document) => document,
-            Err(diagnostics) => return application::patch::PatchCheckResult::failure(diagnostics),
+            Err(diagnostics) => {
+                return application::patch::PatchCheckResult::failure(
+                    application::patch::artifact_failure_diagnostics(diagnostics),
+                );
+            }
         };
     let patch_document = match infrastructure::artifact::read_patch_document_value(
         input.patch,

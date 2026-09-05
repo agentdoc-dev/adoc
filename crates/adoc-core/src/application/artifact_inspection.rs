@@ -227,10 +227,12 @@ fn load_status_for_reader_diagnostics(diagnostics: &[Diagnostic]) -> ArtifactLoa
     {
         return ArtifactLoadStatus::UnsupportedVersion;
     }
-    if diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.code == DiagnosticCode::IoArtifactMalformed)
-    {
+    if diagnostics.iter().any(|diagnostic| {
+        matches!(
+            diagnostic.code,
+            DiagnosticCode::IoArtifactMalformed | DiagnosticCode::SchemaVisibilityInvalid
+        )
+    }) {
         return ArtifactLoadStatus::Malformed;
     }
     ArtifactLoadStatus::Unreadable
@@ -284,6 +286,7 @@ fn deterministic_quality_diagnostic(path: &Path) -> Diagnostic {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::infrastructure::artifact::{
         graph_json::SUPPORTED_GRAPH_SCHEMA_VERSION, search_json::SUPPORTED_SEARCH_SCHEMA_VERSION,
     };
@@ -292,5 +295,36 @@ mod tests {
     fn graph_schema_constants_match_readers() {
         assert_eq!(SUPPORTED_GRAPH_SCHEMA_VERSION, "adoc.graph.v6");
         assert_eq!(SUPPORTED_SEARCH_SCHEMA_VERSION, "adoc.search.v2");
+    }
+
+    #[test]
+    fn graph_inspection_classifies_invalid_visibility_as_malformed() {
+        let workspace = tempfile::tempdir().unwrap();
+        let path = workspace.path().join("invalid.graph.json");
+        for field in ["visibility", "field_visibility"] {
+            let artifact = serde_json::json!({
+                "schema_version": SUPPORTED_GRAPH_SCHEMA_VERSION,
+                "repository_identity": null,
+                "nodes": [{"type": "knowledge_object", field: null}],
+                "edges": [],
+                "diagnostics": []
+            });
+            std::fs::write(&path, serde_json::to_vec(&artifact).unwrap()).unwrap();
+            let result = crate::inspect_graph_artifact(GraphArtifactInspectionInput {
+                graph_artifact_path: path.clone(),
+            });
+            assert_eq!(result.load_status, ArtifactLoadStatus::Malformed);
+            assert!(result.exists);
+            assert_eq!(result.object_count, None);
+            assert_eq!(
+                result.schema_version.as_deref(),
+                Some(SUPPORTED_GRAPH_SCHEMA_VERSION)
+            );
+            assert_eq!(result.diagnostics.len(), 1);
+            assert_eq!(
+                result.diagnostics[0].code,
+                DiagnosticCode::SchemaVisibilityInvalid
+            );
+        }
     }
 }

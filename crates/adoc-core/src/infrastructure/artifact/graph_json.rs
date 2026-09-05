@@ -21,6 +21,7 @@ use crate::domain::knowledge_object::{
     contradiction::Contradiction, policy::Policy, projection::MetadataField,
 };
 use crate::domain::ports::{artifact_reader::ArtifactReader, artifact_writer::ArtifactWriter};
+use crate::domain::retrieval::canonical_visibility;
 use crate::domain::value_objects::evidence_kind::EvidenceKind;
 use crate::domain::value_objects::visibility::{Visibility, parse_field_visibility};
 
@@ -76,6 +77,40 @@ pub(crate) fn parse_graph_artifact_document(
                 DiagnosticCode::SchemaUnsupportedVersion.default_help()
             )),
         ]);
+    }
+
+    // Inspect presence before serde turns an explicit null into an absent Option.
+    let valid_visibility =
+        |value: &serde_json::Value| value.as_str().and_then(canonical_visibility).is_some();
+    for node in value
+        .get("nodes")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|node| {
+            node.get("type").and_then(serde_json::Value::as_str) == Some("knowledge_object")
+        })
+    {
+        if node
+            .get(VISIBILITY_FIELD)
+            .is_some_and(|value| !valid_visibility(value))
+            || node.get(FIELD_VISIBILITY_FIELD).is_some_and(|value| {
+                value.as_object().is_none_or(|fields| {
+                    fields.iter().any(|(field, value)| {
+                        let trimmed = crate::domain::values::trim_ascii_edges(field);
+                        trimmed.is_empty() || trimmed != field || !valid_visibility(value)
+                    })
+                })
+            })
+        {
+            return Err(vec![
+                Diagnostic::error(
+                    DiagnosticCode::SchemaVisibilityInvalid,
+                    format!("Artifact '{}' contains invalid visibility metadata.", path.display()),
+                )
+                .with_help("Run `adoc check` to repair visibility and `adoc build` to rebuild the artifact."),
+            ]);
+        }
     }
 
     let document = match serde_json::from_value::<GraphArtifactDocument>(value) {
@@ -935,6 +970,180 @@ mod tests {
     use crate::domain::identity::PageId;
     use crate::domain::inline::InlineSegment;
     use crate::domain::ports::artifact_writer::ArtifactWriter;
+
+    fn decoder_fixture() -> serde_json::Value {
+        serde_json::json!({
+            "schema_version": SUPPORTED_GRAPH_SCHEMA_VERSION,
+            "repository_identity": null,
+            "nodes": [GraphNode::KnowledgeObject(make_ko_node(None, None))],
+            "edges": [],
+            "diagnostics": []
+        })
+    }
+
+    #[test]
+    fn graph_decoder_rejects_present_invalid_object_visibility() {
+        for value in [
+            serde_json::json!(null),
+            serde_json::json!(false),
+            serde_json::json!(1),
+            serde_json::json!([]),
+            serde_json::json!({}),
+            serde_json::json!("secret"),
+            serde_json::json!("Public"),
+            serde_json::json!(" public "),
+            serde_json::json!(""),
+        ] {
+            let mut artifact = decoder_fixture();
+            artifact["nodes"][0]["visibility"] = value.clone();
+            let diagnostics = parse_graph_artifact_document(
+                Path::new("caller.graph.json"),
+                &serde_json::to_vec(&artifact).unwrap(),
+            )
+            .expect_err("present invalid visibility must not default public");
+            assert_eq!(diagnostics.len(), 1);
+            assert_eq!(diagnostics[0].code, DiagnosticCode::SchemaVisibilityInvalid);
+            assert_eq!(
+                diagnostics[0].severity,
+                crate::domain::diagnostic::Severity::Error
+            );
+            assert!(
+                diagnostics[0]
+                    .help
+                    .as_ref()
+                    .is_some_and(|help| !help.is_empty())
+            );
+        }
+    }
+
+    #[test]
+    fn graph_decoder_rejects_present_invalid_field_visibility() {
+        for value in [
+            serde_json::json!(null),
+            serde_json::json!(false),
+            serde_json::json!(1),
+            serde_json::json!([]),
+            serde_json::json!("owner=restricted"),
+            serde_json::json!({"owner": null}),
+            serde_json::json!({"owner": false}),
+            serde_json::json!({"owner": 1}),
+            serde_json::json!({"owner": []}),
+            serde_json::json!({"owner": {}}),
+            serde_json::json!({"owner": "secret"}),
+            serde_json::json!({"owner": "Public"}),
+            serde_json::json!({"owner": " restricted "}),
+            serde_json::json!({"owner": ""}),
+            serde_json::json!({"owner": "public", "body": "secret"}),
+        ] {
+            let mut artifact = decoder_fixture();
+            artifact["nodes"][0]["field_visibility"] = value.clone();
+            let diagnostics = parse_graph_artifact_document(
+                Path::new("caller.graph.json"),
+                &serde_json::to_vec(&artifact).unwrap(),
+            )
+            .expect_err("invalid field visibility must refuse");
+            assert_eq!(diagnostics.len(), 1);
+            assert_eq!(diagnostics[0].code, DiagnosticCode::SchemaVisibilityInvalid);
+        }
+    }
+
+    #[test]
+    fn graph_decoder_rejects_empty_or_noncanonical_field_visibility_names() {
+        for field in ["", " \t\r\n ", "  owner  ", "\towner", "owner\r\n"] {
+            let mut artifact = decoder_fixture();
+            artifact["nodes"][0]["field_visibility"] = serde_json::json!({field: "public"});
+            let diagnostics = parse_graph_artifact_document(
+                Path::new("caller.graph.json"),
+                &serde_json::to_vec(&artifact).unwrap(),
+            )
+            .expect_err("field visibility requires a nonempty canonical field name");
+            assert_eq!(diagnostics[0].code, DiagnosticCode::SchemaVisibilityInvalid);
+        }
+    }
+
+    #[test]
+    fn graph_decoder_accepts_omitted_and_canonical_visibility_metadata() {
+        for visibility in [None, Some("public"), Some("internal"), Some("restricted")] {
+            for fields in [
+                None,
+                Some(serde_json::json!({})),
+                Some(serde_json::json!({
+                    "owner": "internal", "body": "restricted", "unregistered_field": "public"
+                })),
+            ] {
+                let mut artifact = decoder_fixture();
+                if let Some(visibility) = visibility {
+                    artifact["nodes"][0]["visibility"] = serde_json::json!(visibility);
+                }
+                if let Some(fields) = &fields {
+                    artifact["nodes"][0]["field_visibility"] = fields.clone();
+                }
+                let document = parse_graph_artifact_document(
+                    Path::new("caller.graph.json"),
+                    &serde_json::to_vec(&artifact).unwrap(),
+                )
+                .expect("canonical visibility metadata remains accepted");
+                let object = document.nodes[0].as_knowledge_object().unwrap();
+                assert_eq!(object.visibility.as_deref(), visibility);
+                assert_eq!(
+                    serde_json::to_value(&object.field_visibility).unwrap(),
+                    fields.unwrap_or_default()
+                );
+                if visibility.is_none() {
+                    assert!(
+                        crate::domain::retrieval::RetrievalPolicy::permits(None, object).unwrap()
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn graph_decoder_preserves_json_and_version_error_precedence() {
+        let path = Path::new("caller.graph.json");
+        let diagnostics = parse_graph_artifact_document(path, b"{").unwrap_err();
+        assert_eq!(diagnostics[0].code, DiagnosticCode::IoArtifactMalformed);
+        assert_eq!(
+            diagnostics[0].help.as_deref(),
+            Some("Rebuild docs.graph.json from the source workspace.")
+        );
+
+        let mut artifact = decoder_fixture();
+        artifact["nodes"][0]["body"] = serde_json::json!(false);
+        let diagnostics =
+            parse_graph_artifact_document(path, &serde_json::to_vec(&artifact).unwrap())
+                .unwrap_err();
+        assert_eq!(diagnostics[0].code, DiagnosticCode::IoArtifactMalformed);
+
+        artifact["nodes"][0]["visibility"] = serde_json::Value::Null;
+        let diagnostics =
+            parse_graph_artifact_document(path, &serde_json::to_vec(&artifact).unwrap())
+                .unwrap_err();
+        assert_eq!(diagnostics[0].code, DiagnosticCode::SchemaVisibilityInvalid);
+
+        for version in ["adoc.graph.v5", "adoc.graph.v99"] {
+            artifact["schema_version"] = serde_json::json!(version);
+            let diagnostics =
+                parse_graph_artifact_document(path, &serde_json::to_vec(&artifact).unwrap())
+                    .unwrap_err();
+            assert_eq!(diagnostics.len(), 1);
+            assert_eq!(
+                diagnostics[0].code,
+                DiagnosticCode::SchemaUnsupportedVersion
+            );
+            assert_eq!(
+                diagnostics[0].help.as_deref(),
+                Some(
+                    format!(
+                        "Expected schema_version '{}'. {}",
+                        SUPPORTED_GRAPH_SCHEMA_VERSION,
+                        DiagnosticCode::SchemaUnsupportedVersion.default_help()
+                    )
+                    .as_str()
+                )
+            );
+        }
+    }
 
     fn dummy_span() -> SourceSpan {
         SourceSpan {

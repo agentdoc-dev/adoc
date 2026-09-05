@@ -8,6 +8,14 @@ use crate::LocalError;
 
 pub(crate) const CONFIG_FILE_NAME: &str = "agentdoc.config.yaml";
 
+pub(crate) fn config_path_present(path: &Path) -> std::io::Result<bool> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ProjectConfig {
     pub path: PathBuf,
@@ -46,8 +54,15 @@ impl ProjectConfig {
 
         loop {
             let candidate = current_dir.join(CONFIG_FILE_NAME);
-            if candidate.exists() {
-                return Self::read(&candidate).map(Some);
+            match config_path_present(&candidate) {
+                Ok(true) => return Self::read(&candidate).map(Some),
+                Ok(false) => {}
+                Err(source) => {
+                    return Err(LocalError::ConfigRead {
+                        path: candidate,
+                        source,
+                    });
+                }
             }
 
             if current_dir.parent().is_none() {
@@ -74,6 +89,12 @@ impl ProjectConfig {
             source,
         })?;
         let parsed = parse_project_config(&text).map_err(|error| match error {
+            ProjectConfigDocumentError::RetrievalPolicy(diagnostic) => {
+                LocalError::RetrievalPolicy {
+                    path: path.to_path_buf(),
+                    diagnostic,
+                }
+            }
             ProjectConfigDocumentError::Parse(source) => LocalError::ConfigParse {
                 path: path.to_path_buf(),
                 source: Box::new(source),
@@ -153,6 +174,32 @@ mod tests {
     }
 
     const BASE_CONFIG: &str = "version: 1\nmode: strict\ndocs_path: docs\n";
+
+    #[test]
+    #[cfg(unix)]
+    fn dangling_config_symlink_never_falls_back_to_parent_policy() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join(CONFIG_FILE_NAME), BASE_CONFIG).unwrap();
+        let child = dir.path().join("child");
+        fs::create_dir(&child).unwrap();
+        let candidate = child.join(CONFIG_FILE_NAME);
+        std::os::unix::fs::symlink("missing-policy.yaml", &candidate).unwrap();
+        let candidate = fs::canonicalize(&child).unwrap().join(CONFIG_FILE_NAME);
+        assert!(matches!(ProjectConfig::discover_from(&child),
+            Err(LocalError::ConfigRead { path, .. }) if path == candidate));
+    }
+
+    #[test]
+    fn config_directory_never_falls_back_to_parent_policy() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join(CONFIG_FILE_NAME), BASE_CONFIG).unwrap();
+        let child = dir.path().join("child");
+        let candidate = child.join(CONFIG_FILE_NAME);
+        fs::create_dir_all(&candidate).unwrap();
+        let candidate = fs::canonicalize(candidate).unwrap();
+        assert!(matches!(ProjectConfig::discover_from(&child),
+            Err(LocalError::ConfigRead { path, .. }) if path == candidate));
+    }
 
     #[test]
     fn docs_path_must_be_a_portable_project_relative_path() {

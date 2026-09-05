@@ -3,7 +3,8 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use super::retrieval::RetrievalPolicy;
+use super::diagnostic::{Diagnostic, DiagnosticCode};
+use super::retrieval::{RetrievalPolicy, canonical_visibility};
 use super::source::LogicalPath;
 
 #[derive(Debug, Clone)]
@@ -37,6 +38,8 @@ pub enum ProjectConfigDocumentError {
     Parse(#[from] serde_saphyr::Error),
     #[error("{0}")]
     Invalid(String),
+    #[error("invalid retrieval policy: {}", .0.message)]
+    RetrievalPolicy(Box<Diagnostic>),
     #[error(
         "assessment.exclude_paths entry {entry:?} must be an exact portable project-relative file or a directory prefix ending in `/`"
     )]
@@ -85,7 +88,39 @@ struct RawAssessment {
 }
 
 pub fn parse_project_config(text: &str) -> Result<ParsedProjectConfig, ProjectConfigDocumentError> {
-    let raw: RawProjectConfig = serde_saphyr::from_str(text)?;
+    // ponytail: preflight small configs for typed errors; replace the two parses
+    // with presence-preserving deserialization if T3's benchmarks require it.
+    let value: serde_json::Value = serde_saphyr::from_str(text)?;
+    let validated_policy = if let Some(policy) = value.get("retrieval_policy") {
+        if policy.is_object()
+            && policy
+                .get("audience")
+                .and_then(serde_json::Value::as_str)
+                .and_then(canonical_visibility)
+                .is_none()
+        {
+            return Err(ProjectConfigDocumentError::RetrievalPolicy(Box::new(
+                Diagnostic::error(
+                    DiagnosticCode::RetrievalAudienceUnresolved,
+                    "Retrieval audience must be public, internal, or restricted.",
+                ),
+            )));
+        }
+        let policy: RetrievalPolicy = serde_json::from_value(policy.clone()).map_err(|_| {
+            ProjectConfigDocumentError::RetrievalPolicy(Box::new(Diagnostic::error(
+                DiagnosticCode::RetrievalPolicyInvalid,
+                "Retrieval policy must contain only the supported fields with their required types.",
+            )))
+        })?;
+        policy
+            .validate()
+            .map_err(ProjectConfigDocumentError::RetrievalPolicy)?;
+        Some(policy)
+    } else {
+        None
+    };
+    let mut raw: RawProjectConfig = serde_saphyr::from_str(text)?;
+    raw.retrieval_policy = validated_policy;
     if raw.version != 1 {
         return Err(ProjectConfigDocumentError::Invalid(format!(
             "unsupported version {}; expected 1",
@@ -183,6 +218,160 @@ fn portable_docs_path(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explicit_null_retrieval_policy_is_invalid() {
+        let error = parse_project_config(
+            "version: 1\nmode: strict\ndocs_path: docs\nretrieval_policy: null\n",
+        )
+        .expect_err("explicit null policy must not be treated as absent");
+        let ProjectConfigDocumentError::RetrievalPolicy(diagnostic) = error else {
+            panic!("expected typed policy diagnostic: {error:?}");
+        };
+        assert_eq!(diagnostic.code, DiagnosticCode::RetrievalPolicyInvalid);
+    }
+
+    #[test]
+    fn unresolved_retrieval_audience_has_its_own_diagnostic() {
+        for audience in [
+            None,
+            Some("null"),
+            Some("17"),
+            Some("true"),
+            Some("[]"),
+            Some("{}"),
+            Some("''"),
+            Some("unknown"),
+            Some("' public'"),
+            Some("Public"),
+        ] {
+            let audience = audience
+                .map(|value| format!("  audience: {value}\n"))
+                .unwrap_or_default();
+            let error = parse_project_config(&format!(
+                "version: 1\nmode: strict\ndocs_path: docs\nretrieval_policy:\n{audience}  allowed_visibilities: [public]\n"
+            )).expect_err("unresolved audience must fail");
+            let ProjectConfigDocumentError::RetrievalPolicy(diagnostic) = error else {
+                panic!("expected typed audience diagnostic: {error:?}");
+            };
+            assert_eq!(
+                diagnostic.code,
+                DiagnosticCode::RetrievalAudienceUnresolved,
+                "{audience:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn unresolved_audience_precedes_other_policy_errors() {
+        let error = parse_project_config(
+            "version: 1\nmode: strict\ndocs_path: docs\nretrieval_policy: {audience: unknown, allowed_visibilities: wrong, unexpected: true}\n",
+        ).expect_err("mixed invalid policy must fail");
+        let ProjectConfigDocumentError::RetrievalPolicy(diagnostic) = error else {
+            panic!("expected typed audience diagnostic: {error:?}");
+        };
+        assert_eq!(diagnostic.code, DiagnosticCode::RetrievalAudienceUnresolved);
+    }
+
+    #[test]
+    fn malformed_retrieval_policy_shapes_and_values_have_safe_typed_errors() {
+        for policy in [
+            "null",
+            "[]",
+            "true",
+            "17",
+            "private-policy-sentinel",
+            "{audience: public}",
+            "{audience: public, allowed_visibilities: null}",
+            "{audience: public, allowed_visibilities: public}",
+            "{audience: public, allowed_visibilities: [17]}",
+            "{audience: public, allowed_visibilities: [private-policy-sentinel]}",
+            "{audience: public, allowed_visibilities: [' public']}",
+            "{audience: public, allowed_visibilities: [public], excluded_object_ids: null}",
+            "{audience: public, allowed_visibilities: [public], excluded_object_ids: billing.hidden}",
+            "{audience: public, allowed_visibilities: [public], excluded_object_ids: [true]}",
+            "{audience: public, allowed_visibilities: [public], excluded_object_ids: [private-policy-sentinel]}",
+            "{audience: public, allowed_visibilities: [public], private-policy-sentinel: true}",
+        ] {
+            let error = parse_project_config(&format!(
+                "version: 1\nmode: strict\ndocs_path: docs\nretrieval_policy: {policy}\n"
+            ))
+            .expect_err("malformed policy must fail");
+            let ProjectConfigDocumentError::RetrievalPolicy(diagnostic) = error else {
+                panic!("expected typed policy diagnostic for {policy}: {error:?}");
+            };
+            assert_eq!(
+                diagnostic.code,
+                DiagnosticCode::RetrievalPolicyInvalid,
+                "{policy}"
+            );
+            assert_eq!(
+                diagnostic.severity,
+                super::super::diagnostic::Severity::Error
+            );
+            assert!(diagnostic.help.is_some());
+            assert!(diagnostic.span.is_none() && diagnostic.object_id.is_none());
+            assert!(
+                !serde_json::to_string(&diagnostic)
+                    .unwrap()
+                    .contains("private-policy-sentinel")
+            );
+        }
+    }
+
+    #[test]
+    fn absent_and_valid_retrieval_policies_preserve_config_defaults() {
+        let base = "version: 1\nmode: strict\ndocs_path: docs\n";
+        let absent = parse_project_config(base).unwrap();
+        assert!(absent.retrieval_policy.is_none());
+        assert_eq!(absent.embeddings_provider, EmbeddingsProvider::Local);
+        for audience in ["public", "internal", "restricted"] {
+            let parsed = parse_project_config(&format!(
+                "{base}retrieval_policy: {{audience: {audience}, allowed_visibilities: [restricted, public, internal, public]}}\n"
+            )).expect("canonical policy parses");
+            let policy = parsed.retrieval_policy.unwrap();
+            assert_eq!(policy.audience, audience);
+            assert_eq!(
+                policy.allowed_visibilities,
+                BTreeSet::from(["public".into(), "internal".into(), "restricted".into()])
+            );
+            assert!(policy.excluded_object_ids.is_empty());
+            assert_eq!(parsed.docs_path, absent.docs_path);
+            assert_eq!(parsed.embeddings_provider, absent.embeddings_provider);
+        }
+        let parsed = parse_project_config(&format!(
+            "{base}retrieval_policy: {{audience: public, allowed_visibilities: [], excluded_object_ids: [billing.hidden]}}\n"
+        )).expect("empty allowlist is valid deny-all policy");
+        let policy = parsed.retrieval_policy.unwrap();
+        assert!(policy.allowed_visibilities.is_empty());
+        assert_eq!(
+            policy.excluded_object_ids,
+            BTreeSet::from(["billing.hidden".into()])
+        );
+    }
+
+    #[test]
+    fn malformed_yaml_and_duplicate_keys_remain_parse_errors() {
+        let base = "version: 1\nmode: strict\ndocs_path: docs\n";
+        for config in [
+            "version: [\n".to_string(),
+            format!("{base}version: 1\n"),
+            format!(
+                "{base}retrieval_policy: null\nretrieval_policy: {{audience: public, allowed_visibilities: []}}\n"
+            ),
+            format!(
+                "{base}retrieval_policy: {{audience: public, audience: restricted, allowed_visibilities: []}}\n"
+            ),
+        ] {
+            assert!(
+                matches!(
+                    parse_project_config(&config),
+                    Err(ProjectConfigDocumentError::Parse(_))
+                ),
+                "{config}"
+            );
+        }
+    }
 
     #[test]
     fn parses_complete_shipped_configuration() {

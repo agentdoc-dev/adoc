@@ -57,8 +57,16 @@ fn explicit_artifacts_ignore_broken_config_only_for_non_policy_drivers() {
         workspace.write("agentdoc.config.yaml", "version: [\n");
         let explicit = run(true);
         if needs_policy {
-            assert!(!explicit.status.success(), "{args:?} must discover policy");
-            assert!(stderr(&explicit).contains("config.parse"));
+            assert_eq!(
+                explicit.status.code(),
+                Some(2),
+                "{args:?} must discover policy"
+            );
+            let envelope: Value = serde_json::from_slice(&explicit.stdout).unwrap();
+            assert_eq!(
+                envelope["diagnostics"][0]["code"],
+                "retrieval.policy_invalid"
+            );
         } else {
             assert!(explicit.status.success(), "{args:?}: {}", stderr(&explicit));
             assert_eq!(
@@ -72,7 +80,16 @@ fn explicit_artifacts_ignore_broken_config_only_for_non_policy_drivers() {
             !implicit.status.success(),
             "{args:?} must resolve config defaults"
         );
-        assert!(stderr(&implicit).contains("config.parse"));
+        if needs_policy {
+            assert_eq!(implicit.status.code(), Some(2));
+            let envelope: Value = serde_json::from_slice(&implicit.stdout).unwrap();
+            assert_eq!(
+                envelope["diagnostics"][0]["code"],
+                "retrieval.policy_invalid"
+            );
+        } else {
+            assert!(stderr(&implicit).contains("config.parse"));
+        }
         fs::remove_file(workspace.root.join("agentdoc.config.yaml")).unwrap();
     }
 }

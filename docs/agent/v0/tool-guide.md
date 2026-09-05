@@ -12,7 +12,7 @@ V2.2 MCP tools are the supported local agent workflow for AgentDoc projects.
 
 `refresh: "build"` follows the same local build behavior as `adoc_build`. Embeddings honor project config unless `no_embeddings` is true. If project status returns artifact diagnostics, carry them into the answer or handoff; `search.deterministic_quality` means the project is using repeatable hash embeddings rather than semantic-model quality.
 
-## Standalone retrieval policy (E6.1.T1)
+## Standalone retrieval policy (E6.1.T1–T2)
 
 `search` and `why` discover local retrieval policy even with an explicit
 `--artifact`. For example, an operator can configure:
@@ -30,6 +30,22 @@ on those paths. Local
 policy is trusted operator configuration, not a multi-user authentication
 boundary. Unknown policy keys fail closed. Existing unclassified repositories
 without the block preserve their existing retrieval behavior.
+
+An unreadable config, malformed YAML, or malformed policy block returns
+`retrieval.policy_invalid`. A dangling config symlink cannot select a parent or
+default policy.
+A present policy with a missing or invalid audience returns
+`retrieval.audience_unresolved`. Explicit null policy is invalid; omit the block
+to use the public/unclassified default. Invalid present object or field visibility,
+including null, returns `retrieval.visibility_unavailable`. Search and why return
+no records and exit 2 with these typed diagnostics, in JSON or plain output.
+Repair the config or classification and rebuild invalid artifacts before retrying.
+
+Malformed policy also refuses non-retrieval commands that load config, including
+`build` and `check`, with a `retrieval.policy_invalid` or
+`retrieval.audience_unresolved` error and exit 1. This includes null policy
+placeholders: remove the block instead. Existing explicit-input paths that bypass
+config still do so; search/why always load policy and use exit 2 as above.
 
 This first projection conservatively matches denied ID text in complete
 Knowledge Objects and prose blocks. That can also withhold namespace descendants,
