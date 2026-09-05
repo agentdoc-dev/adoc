@@ -652,6 +652,99 @@ fn e5_3_gate_result_and_closed_reason_set_are_shipped() {
 }
 
 #[test]
+fn e5_cloud_prerelease_contracts_are_registered_exactly() {
+    let doc = registry();
+    let planned = anchored_ids(&doc, "registry:envelopes-planned");
+    let planned_block =
+        support::doc_scan::anchored_block(&doc, REGISTRY, "registry:envelopes-planned");
+    let expected_envelopes = BTreeSet::from([
+        "agentdoc.cloud.activation_gate_evidence.v0",
+        "agentdoc.cloud.approval_gate_fact.v0",
+        "agentdoc.cloud.approved_proposal_promotion.v0",
+        "agentdoc.cloud.gate_emergency_fact.v0",
+        "agentdoc.cloud.gate_emergency_receipt.v0",
+        "agentdoc.cloud.gate_evidence_set.v0",
+        "agentdoc.cloud.github_check_publication_failure.v0",
+        "agentdoc.cloud.github_negative_verdict_acceptance.v0",
+        "agentdoc.cloud.internal_integrated_trace.v0",
+        "agentdoc.cloud.promotion_gate_fact.v0",
+        "agentdoc.cloud.proposal_coverage.v0",
+        "agentdoc.cloud.proposal_disposition_acceptance.v0",
+        "agentdoc.cloud.terminal_gate_evidence.v0",
+    ]);
+    for &id in &expected_envelopes {
+        assert!(
+            planned.contains(id),
+            "E5 Cloud pre-release envelope missing: {id}"
+        );
+        let row = planned_block
+            .lines()
+            .find(|line| line.trim_start().starts_with(&format!("| `{id}` |")))
+            .expect("planned Cloud envelope row");
+        assert_eq!(
+            row.split('|').nth(2).map(str::trim),
+            Some("cloud"),
+            "E5 Cloud pre-release envelope has wrong owner: {row}"
+        );
+    }
+    let actual_envelopes: BTreeSet<_> = planned
+        .iter()
+        .map(String::as_str)
+        .filter(|id| {
+            id.starts_with("agentdoc.cloud.")
+                && planned_block
+                    .lines()
+                    .find(|line| line.trim_start().starts_with(&format!("| `{id}` |")))
+                    .is_some_and(|row| {
+                        row.split('|').nth(2).map(str::trim) == Some("cloud")
+                            && row
+                                .split('|')
+                                .nth(3)
+                                .is_some_and(|slice| slice.trim().starts_with("E5"))
+                    })
+        })
+        .collect();
+    assert_eq!(actual_envelopes, expected_envelopes);
+
+    let cloud_codes = anchored_ids(&doc, "registry:cloud-codes");
+    let gate_codes = anchored_ids(&doc, "registry:gate-codes");
+    let expected_codes = BTreeSet::from([
+        "gate.check_decision_head_mismatch",
+        "gate.check_publish_context_invalid",
+        "gate.check_publish_failure_record_failed",
+        "gate.check_publish_prepare_failed",
+        "gate.check_publish_receipt_failed",
+        "gate.check_render_failed",
+        "gate.negative_verdict_unrenderable",
+        "governance.approved_promotion_invalid",
+        "governance.promotion_not_authorized",
+        "governance.trace_incomplete",
+    ]);
+    for &code in &expected_codes {
+        assert!(
+            cloud_codes.contains(code),
+            "E5 Cloud pre-release code missing: {code}"
+        );
+        assert!(
+            !gate_codes.contains(code),
+            "Cloud code must not enter the gate-result reason set: {code}"
+        );
+    }
+    let cloud_block = support::doc_scan::anchored_block(&doc, REGISTRY, "registry:cloud-codes");
+    let actual_codes: BTreeSet<_> = cloud_codes
+        .iter()
+        .map(String::as_str)
+        .filter(|code| {
+            cloud_block
+                .lines()
+                .find(|line| line.trim_start().starts_with(&format!("| `{code}` |")))
+                .is_some_and(|row| row.contains("implemented in Cloud v0.1.0 pre-release"))
+        })
+        .collect();
+    assert_eq!(actual_codes, expected_codes);
+}
+
+#[test]
 fn e4_5_cloud_capability_trust_codes_are_registered_exactly() {
     let registered = anchored_ids(&registry(), "registry:cloud-codes");
     for code in [
