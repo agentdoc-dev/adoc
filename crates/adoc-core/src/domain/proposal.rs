@@ -88,6 +88,21 @@ pub struct ProposalPatchInput {
     pub patch_bytes: Vec<u8>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProposalDispositionKind {
+    NoChangeRequired,
+}
+
+/// Reference to Cloud's authenticated acceptance of no patch for one finding.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProposalDispositionInput {
+    pub finding_id: String,
+    pub disposition: ProposalDispositionKind,
+    pub acceptance_receipt_digest: String,
+}
+
 /// A patch input whose bytes the application layer already parsed.
 pub(crate) struct ParsedProposalPatch {
     pub(crate) input: ProposalPatchInput,
@@ -151,7 +166,7 @@ impl ContentBinding {
 ///
 /// ```compile_fail
 /// // Private fields (E0451): no literal construction outside adoc-core. All
-/// // six fields are named so only field privacy can fail this.
+/// // Every field is named so only field privacy can fail this.
 /// let record = adoc_core::ProposalRecord {
 ///     schema_version: todo!(),
 ///     proposal_set_digest: todo!(),
@@ -159,6 +174,7 @@ impl ContentBinding {
 ///     bindings: todo!(),
 ///     content_bindings: todo!(),
 ///     patches: todo!(),
+///     dispositions: todo!(),
 /// };
 /// ```
 ///
@@ -175,6 +191,8 @@ pub struct ProposalRecord {
     bindings: ProposalBindings,
     content_bindings: Vec<ContentBinding>,
     patches: Vec<ProposalPatch>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    dispositions: Vec<ProposalDispositionInput>,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -213,9 +231,22 @@ impl ProposalRecord {
     pub(crate) fn assemble(
         bindings: ProposalBindings,
         patches: Vec<ParsedProposalPatch>,
+        mut dispositions: Vec<ProposalDispositionInput>,
         supersedes: Option<String>,
     ) -> Result<Self, ProposalRecordError> {
         validate_bindings(&bindings)?;
+        for disposition in &dispositions {
+            validate_disposition(disposition)?;
+        }
+        dispositions.sort_by(|left, right| left.finding_id.cmp(&right.finding_id));
+        if dispositions
+            .windows(2)
+            .any(|pair| pair[0].finding_id == pair[1].finding_id)
+        {
+            return Err(ProposalRecordError::BindingInvalid {
+                field: "dispositions.finding_id".to_string(),
+            });
+        }
         if patches.is_empty() {
             return Err(ProposalRecordError::PatchInvalid {
                 message: "a proposal record needs at least one patch".to_string(),
@@ -257,6 +288,16 @@ impl ProposalRecord {
             .into_iter()
             .map(|patch| assemble_patch(patch, &mut sequences))
             .collect::<Result<Vec<_>, _>>()?;
+        let patch_finding_ids = patches
+            .iter()
+            .map(|patch| patch.finding_id())
+            .collect::<BTreeSet<_>>();
+        if dispositions
+            .iter()
+            .any(|entry| patch_finding_ids.contains(entry.finding_id.as_str()))
+        {
+            return Err(binding_invalid("dispositions.finding_id"));
+        }
         let mut content_bindings = Vec::new();
         for (object_id, sequence) in sequences {
             if let Some(content_hash) = sequence.head_hash(&object_id)? {
@@ -299,6 +340,7 @@ impl ProposalRecord {
             bindings,
             content_bindings,
             patches,
+            dispositions,
         })
     }
 
@@ -322,6 +364,10 @@ impl ProposalRecord {
 
     pub fn content_bindings(&self) -> &[ContentBinding] {
         &self.content_bindings
+    }
+
+    pub fn dispositions(&self) -> &[ProposalDispositionInput] {
+        &self.dispositions
     }
 
     pub fn to_canonical_json(&self) -> Result<String, ProposalRecordError> {
@@ -361,6 +407,16 @@ fn validate_bindings(bindings: &ProposalBindings) -> Result<(), ProposalRecordEr
         if !is_sha256_digest(value) {
             return Err(binding_invalid(field));
         }
+    }
+    Ok(())
+}
+
+fn validate_disposition(disposition: &ProposalDispositionInput) -> Result<(), ProposalRecordError> {
+    if !is_semantic_context_text(&disposition.finding_id) {
+        return Err(binding_invalid("dispositions.finding_id"));
+    }
+    if !is_sha256_digest(&disposition.acceptance_receipt_digest) {
+        return Err(binding_invalid("dispositions.acceptance_receipt_digest"));
     }
     Ok(())
 }
@@ -742,6 +798,8 @@ pub(crate) struct RawProposalRecord {
     pub(crate) bindings: ProposalBindings,
     pub(crate) content_bindings: Vec<RawContentBinding>,
     pub(crate) patches: Vec<RawProposalPatch>,
+    #[serde(default)]
+    pub(crate) dispositions: Vec<ProposalDispositionInput>,
 }
 
 #[derive(Debug, Deserialize)]

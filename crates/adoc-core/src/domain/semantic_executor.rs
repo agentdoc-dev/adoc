@@ -139,6 +139,12 @@ impl SemanticExecutorRequest {
     pub fn to_canonical_json(&self) -> Result<String, SemanticExecutorError> {
         pretty_json(self)
     }
+
+    pub fn to_digest_bytes(&self) -> Result<Vec<u8>, SemanticExecutorError> {
+        serde_json::to_vec(self).map_err(|error| SemanticExecutorError::Serialization {
+            message: error.to_string(),
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -392,10 +398,7 @@ fn receipt(
     assessment_digest: Option<String>,
     failure_code: Option<String>,
 ) -> Result<SemanticExecutorReceipt, SemanticExecutorError> {
-    let request_json =
-        serde_json::to_vec(request).map_err(|error| SemanticExecutorError::Serialization {
-            message: error.to_string(),
-        })?;
+    let request_json = request.to_digest_bytes()?;
     Ok(SemanticExecutorReceipt {
         schema_version: SEMANTIC_EXECUTOR_RECEIPT_SCHEMA_VERSION.to_string(),
         request_id: request.request_id.clone(),

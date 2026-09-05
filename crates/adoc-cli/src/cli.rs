@@ -723,7 +723,7 @@ pub(crate) enum Commands {
         about = "Build the canonical adoc.proposal.v0 record from exact patch files and their bindings."
     )]
     ProposalRecord {
-        /// Producer input: bindings, optional superseded digest, and one entry per patch file.
+        /// Producer input: bindings, patch files, and optional supersedes/dispositions.
         #[arg(long, value_name = "INPUT_JSON")]
         input: PathBuf,
         #[arg(long, value_name = "RECORD_JSON")]
@@ -745,6 +745,9 @@ pub(crate) enum Commands {
         receipt: PathBuf,
         #[arg(long, value_name = "VALIDATED_ASSESSMENT_JSON")]
         validated_assessment: PathBuf,
+        /// Write the exact compact validated request bytes bound by the receipt digest.
+        #[arg(long, value_name = "VALIDATED_REQUEST_JSON")]
+        validated_request: Option<PathBuf>,
         /// Authenticated reviewing Principal supplied by the trusted caller, not the request file.
         #[arg(long, requires = "requesting_principal_id", value_parser = parse_semantic_text)]
         reviewing_principal_id: Option<String>,

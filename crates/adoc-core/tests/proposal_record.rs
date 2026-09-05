@@ -5,7 +5,8 @@ use std::path::PathBuf;
 
 use adoc_core::{
     ExactRevision, PROPOSAL_SCHEMA_VERSION, ProposalBindings, ProposalChangeRequest,
-    ProposalPatchInput, ProposalRecord, ProposalRecordError, build_proposal_record,
+    ProposalDispositionInput, ProposalDispositionKind, ProposalPatchInput, ProposalRecord,
+    ProposalRecordError, build_proposal_record, build_proposal_record_with_dispositions,
     is_semantic_context_text, validate_proposal_record,
 };
 use serde_json::{Value, json};
@@ -101,6 +102,267 @@ fn record() -> ProposalRecord {
     .expect("record builds")
 }
 
+fn disposition(finding_id: &str) -> ProposalDispositionInput {
+    ProposalDispositionInput {
+        finding_id: finding_id.to_string(),
+        disposition: ProposalDispositionKind::NoChangeRequired,
+        acceptance_receipt_digest: D.to_string(),
+    }
+}
+
+#[test]
+fn accepted_no_change_disposition_does_not_change_patch_set_identity() {
+    let patch = patch_input(
+        "finding-001",
+        "docs/billing.adoc",
+        "billing.kb",
+        &create_patch("billing.proposed"),
+    );
+    let without = build_proposal_record(bindings(), vec![patch.clone()], None).expect("builds");
+    let with = build_proposal_record_with_dispositions(
+        bindings(),
+        vec![patch],
+        vec![disposition("finding-002")],
+        None,
+    )
+    .expect("accepted disposition builds");
+
+    assert_eq!(with.proposal_set_digest(), without.proposal_set_digest());
+    let value: Value = serde_json::from_str(&with.to_canonical_json().expect("serializes"))
+        .expect("record is JSON");
+    assert_eq!(value["dispositions"][0]["finding_id"], "finding-002");
+    assert_eq!(
+        value["dispositions"][0]["disposition"],
+        "no_change_required"
+    );
+}
+
+#[test]
+fn published_schema_accepts_a_receipted_no_change_disposition() {
+    let record = build_proposal_record_with_dispositions(
+        bindings(),
+        vec![patch_input(
+            "finding-001",
+            "docs/billing.adoc",
+            "billing.kb",
+            &create_patch("billing.proposed"),
+        )],
+        vec![disposition("finding-002")],
+        None,
+    )
+    .expect("accepted disposition builds");
+    let instance: Value = serde_json::from_str(&record.to_canonical_json().expect("serializes"))
+        .expect("record is JSON");
+
+    assert!(
+        jsonschema::validator_for(&schema())
+            .expect("schema compiles")
+            .is_valid(&instance)
+    );
+
+    let mut duplicated = instance;
+    duplicated["dispositions"] = json!([disposition("finding-002"), disposition("finding-002")]);
+    assert!(
+        !jsonschema::validator_for(&schema())
+            .expect("schema compiles")
+            .is_valid(&duplicated)
+    );
+}
+
+#[test]
+fn proposal_dispositions_are_canonical_and_require_a_receipt_digest() {
+    let patch = patch_input(
+        "finding-001",
+        "docs/billing.adoc",
+        "billing.kb",
+        &create_patch("billing.proposed"),
+    );
+    let record = build_proposal_record_with_dispositions(
+        bindings(),
+        vec![patch.clone()],
+        vec![disposition("finding-003"), disposition("finding-002")],
+        None,
+    )
+    .expect("dispositions build");
+    let ids: Vec<_> = record
+        .dispositions()
+        .iter()
+        .map(|entry| entry.finding_id.as_str())
+        .collect();
+    assert_eq!(ids, ["finding-002", "finding-003"]);
+
+    let mut invalid_receipt = disposition("finding-002");
+    invalid_receipt.acceptance_receipt_digest = "not-a-digest".to_string();
+    assert!(matches!(
+        build_proposal_record_with_dispositions(
+            bindings(),
+            vec![patch.clone()],
+            vec![invalid_receipt],
+            None,
+        ),
+        Err(ProposalRecordError::BindingInvalid { ref field })
+            if field == "dispositions.acceptance_receipt_digest"
+    ));
+
+    assert!(matches!(
+        build_proposal_record_with_dispositions(
+            bindings(),
+            vec![patch],
+            vec![disposition("finding-002"), disposition("finding-002")],
+            None,
+        ),
+        Err(ProposalRecordError::BindingInvalid { ref field })
+            if field == "dispositions.finding_id"
+    ));
+}
+
+#[test]
+fn one_finding_cannot_have_both_a_patch_and_no_change_disposition() {
+    let error = build_proposal_record_with_dispositions(
+        bindings(),
+        vec![patch_input(
+            "finding-001",
+            "docs/billing.adoc",
+            "billing.kb",
+            &create_patch("billing.proposed"),
+        )],
+        vec![disposition("finding-001")],
+        None,
+    )
+    .expect_err("one finding needs exactly one proposal disposition");
+
+    assert!(matches!(
+        error,
+        ProposalRecordError::BindingInvalid { ref field }
+            if field == "dispositions.finding_id"
+    ));
+}
+
+#[test]
+fn patch_revision_preserves_accepted_no_change_dispositions() {
+    let original = build_proposal_record_with_dispositions(
+        bindings(),
+        vec![patch_input(
+            "finding-001",
+            "docs/billing.adoc",
+            "billing.kb",
+            &create_patch("billing.proposed"),
+        )],
+        vec![disposition("finding-002"), disposition("finding-003")],
+        None,
+    )
+    .expect("proposal builds");
+
+    let revised = original
+        .revise(vec![patch_input(
+            "finding-001",
+            "docs/billing.adoc",
+            "billing.kb",
+            &create_patch("billing.revised"),
+        )])
+        .expect("revision builds");
+
+    assert_eq!(revised.dispositions(), original.dispositions());
+
+    let disposition_replaced_by_patch = original
+        .revise(vec![patch_input(
+            "finding-002",
+            "docs/billing.adoc",
+            "billing.kb",
+            &create_patch("billing.contradiction"),
+        )])
+        .expect("a patch supersedes the retained no-change disposition");
+
+    assert_eq!(
+        disposition_replaced_by_patch
+            .dispositions()
+            .iter()
+            .map(|disposition| disposition.finding_id.as_str())
+            .collect::<Vec<_>>(),
+        ["finding-003"],
+        "only the disposition the new patch supersedes is dropped"
+    );
+}
+
+#[test]
+fn wire_validation_rejects_noncanonical_disposition_arrays() {
+    let record = build_proposal_record_with_dispositions(
+        bindings(),
+        vec![patch_input(
+            "finding-001",
+            "docs/billing.adoc",
+            "billing.kb",
+            &create_patch("billing.proposed"),
+        )],
+        vec![disposition("finding-002"), disposition("finding-003")],
+        None,
+    )
+    .expect("proposal builds");
+    let canonical = record.to_canonical_json().expect("serializes");
+    assert!(validate_proposal_record(canonical.as_bytes()).is_ok());
+
+    let mut unsorted: Value = serde_json::from_str(&canonical).expect("proposal is JSON");
+    unsorted["dispositions"]
+        .as_array_mut()
+        .expect("dispositions")
+        .swap(0, 1);
+    assert!(validate_proposal_record(&serde_json::to_vec(&unsorted).expect("serializes")).is_err());
+
+    let mut overlapping: Value = serde_json::from_str(&canonical).expect("proposal is JSON");
+    overlapping["dispositions"][0]["finding_id"] = json!("finding-001");
+    assert!(
+        validate_proposal_record(&serde_json::to_vec(&overlapping).expect("serializes")).is_err()
+    );
+
+    let mut explicitly_empty: Value = serde_json::from_str(&canonical).expect("proposal is JSON");
+    explicitly_empty["dispositions"] = json!([]);
+    assert!(
+        validate_proposal_record(&serde_json::to_vec(&explicitly_empty).expect("serializes"))
+            .is_err()
+    );
+}
+
+#[test]
+fn wire_validation_rejects_duplicate_top_level_members_before_normalization() {
+    let record = build_proposal_record_with_dispositions(
+        bindings(),
+        vec![patch_input(
+            "finding-001",
+            "docs/billing.adoc",
+            "billing.kb",
+            &create_patch("billing.proposed"),
+        )],
+        vec![disposition("finding-002")],
+        None,
+    )
+    .expect("proposal builds");
+    let canonical = record.to_canonical_json().expect("proposal serializes");
+
+    let duplicated_dispositions = canonical.replacen(
+        "\"dispositions\": [",
+        "\"dispositions\": [],\n  \"dispositions\": [",
+        1,
+    );
+    let digest_member = format!(
+        "\"proposal_set_digest\": \"{}\"",
+        record.proposal_set_digest()
+    );
+    let duplicated_digest = canonical.replacen(
+        &digest_member,
+        &format!("\"proposal_set_digest\": \"{A}\",\n  {digest_member}"),
+        1,
+    );
+
+    for (member, document) in [
+        ("dispositions", duplicated_dispositions),
+        ("proposal_set_digest", duplicated_digest),
+    ] {
+        validate_proposal_record(document.as_bytes()).expect_err(&format!(
+            "duplicate {member} members must not be normalized"
+        ));
+    }
+}
+
 fn sha256(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     let mut hex = String::from("sha256:");
@@ -153,6 +415,7 @@ fn proposal_set_digest_hashes_the_ordered_patch_digests_exactly() {
     assert_eq!(record.proposal_set_digest(), sha256(&set_bytes));
     assert_eq!(value["proposal_set_digest"], record.proposal_set_digest());
     assert_eq!(value["supersedes"], Value::Null);
+    assert!(value.get("dispositions").is_none());
     assert_eq!(
         value["content_bindings"],
         json!([{"object_id": "billing.credits", "content_hash": D}])

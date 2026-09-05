@@ -346,6 +346,48 @@ fn completion_digests_the_validator_owned_canonical_assessment() {
 }
 
 #[test]
+fn request_digest_bytes_ignore_input_key_order_and_whitespace() {
+    let document = request("codex", "codex", "gpt-5.6-codex");
+    let object = document.as_object().expect("request is an object");
+    let reordered = format!(
+        "{{{}}}",
+        object
+            .iter()
+            .rev()
+            .map(|(key, value)| format!(
+                "{} : {}",
+                serde_json::to_string(key).expect("key serializes"),
+                serde_json::to_string_pretty(value).expect("value serializes")
+            ))
+            .collect::<Vec<_>>()
+            .join(",\n")
+    );
+    let compact = serde_json::to_vec(&document).expect("request serializes");
+    let first = validate_semantic_executor_request(&compact).expect("compact request validates");
+    let second = validate_semantic_executor_request(reordered.as_bytes())
+        .expect("reordered request validates");
+
+    let bytes = first.to_digest_bytes().expect("digest bytes serialize");
+    assert_eq!(
+        bytes,
+        second.to_digest_bytes().expect("digest bytes serialize")
+    );
+    let receipt = fail_semantic_execution(&first, "provider_failed").expect("receipt builds");
+    let receipt: Value =
+        serde_json::from_str(&receipt.to_canonical_json().expect("receipt serializes"))
+            .expect("receipt JSON");
+    let expected = format!(
+        "sha256:{}",
+        Sha256::digest(&bytes)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    );
+
+    assert_eq!(receipt["request_digest"], expected);
+}
+
+#[test]
 fn failed_invocation_is_a_typed_receipt_without_an_assessment_digest() {
     let request = validate_semantic_executor_request(
         &serde_json::to_vec(&request("claude_code", "claude-code", "claude-sonnet-5"))

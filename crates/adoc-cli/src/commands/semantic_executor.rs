@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::commands::artifact_paths::{ensure_distinct_paths, remove_stale};
+use crate::commands::artifact_paths::{ensure_distinct_paths, remove_stale, write_atomic};
 use adoc_core::{
     DiagnosticCode, HumanReviewExpectedBindings, SemanticExecutorError,
     build_semantic_context_from_document, complete_semantic_execution, fail_semantic_execution,
@@ -37,27 +37,35 @@ pub(crate) fn semantic_context(input: PathBuf, out: PathBuf) -> i32 {
     0
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn semantic_executor(
     request_path: PathBuf,
     assessment_path: PathBuf,
     failure_code: Option<String>,
     receipt_path: PathBuf,
     validated_assessment_path: PathBuf,
+    validated_request_path: Option<PathBuf>,
     reviewing_principal_id: Option<String>,
     requesting_principal_id: Option<String>,
 ) -> i32 {
-    if let Err(message) = ensure_distinct_paths(&[
-        &request_path,
-        &assessment_path,
-        &receipt_path,
-        &validated_assessment_path,
-    ]) {
+    let mut paths = vec![
+        request_path.as_path(),
+        assessment_path.as_path(),
+        receipt_path.as_path(),
+        validated_assessment_path.as_path(),
+    ];
+    if let Some(path) = &validated_request_path {
+        paths.push(path);
+    }
+    if let Err(message) = ensure_distinct_paths(&paths) {
         return fail(&message);
     }
-    for path in [&receipt_path, &validated_assessment_path] {
-        if let Err(message) = remove_stale(path) {
-            return fail(&message);
-        }
+    let output_paths = [receipt_path.as_path(), validated_assessment_path.as_path()]
+        .into_iter()
+        .chain(validated_request_path.as_deref())
+        .collect::<Vec<_>>();
+    if let Err(message) = remove_outputs(&output_paths) {
+        return fail(&message);
     }
     let request_bytes = match fs::read(&request_path) {
         Ok(bytes) => bytes,
@@ -71,6 +79,13 @@ pub(crate) fn semantic_executor(
     let request = match validate_semantic_executor_request(&request_bytes) {
         Ok(request) => request,
         Err(error) => return fail(&error.to_string()),
+    };
+    let validated_request_bytes = match &validated_request_path {
+        Some(_) => match request.to_digest_bytes() {
+            Ok(bytes) => Some(bytes),
+            Err(error) => return fail(&error.to_string()),
+        },
+        None => None,
     };
     let expected_human_review = match (reviewing_principal_id, requesting_principal_id) {
         (Some(reviewing_principal_id), Some(requesting_principal_id)) => {
@@ -88,6 +103,9 @@ pub(crate) fn semantic_executor(
             &code,
             "semantic executor invocation failed before candidate validation",
             &receipt_path,
+            validated_request_path
+                .as_deref()
+                .zip(validated_request_bytes.as_deref()),
         );
     }
     let assessment_bytes = match bounded_assessment(&assessment_path) {
@@ -98,6 +116,9 @@ pub(crate) fn semantic_executor(
                 "assessment.semantic_schema_invalid",
                 &message,
                 &receipt_path,
+                validated_request_path
+                    .as_deref()
+                    .zip(validated_request_bytes.as_deref()),
             );
         }
     };
@@ -115,6 +136,9 @@ pub(crate) fn semantic_executor(
                 error.diagnostic_code().as_str(),
                 &error.to_string(),
                 &receipt_path,
+                validated_request_path
+                    .as_deref()
+                    .zip(validated_request_bytes.as_deref()),
             );
         }
     };
@@ -128,7 +152,15 @@ pub(crate) fn semantic_executor(
                     }
                     _ => DiagnosticCode::AssessmentSemanticSchemaInvalid.as_str(),
                 };
-                return record_failure(&request, code, &error.to_string(), &receipt_path);
+                return record_failure(
+                    &request,
+                    code,
+                    &error.to_string(),
+                    &receipt_path,
+                    validated_request_path
+                        .as_deref()
+                        .zip(validated_request_bytes.as_deref()),
+                );
             }
         };
     let assessment_json = match assessment.to_canonical_json() {
@@ -139,22 +171,19 @@ pub(crate) fn semantic_executor(
         Ok(json) => json,
         Err(error) => return fail(&error.to_string()),
     };
-    if let Err(error) = fs::write(&validated_assessment_path, assessment_json) {
-        return fail(&format!(
-            "could not write {}: {error}",
-            validated_assessment_path.display()
-        ));
+    if let Err(message) = write_atomic(&validated_assessment_path, assessment_json.as_bytes()) {
+        return fail(&message);
     }
-    if let Err(error) = fs::write(&receipt_path, &receipt_json) {
-        if let Err(cleanup_error) = remove_stale(&validated_assessment_path) {
-            return fail(&format!(
-                "could not write {}: {error}; {cleanup_error}",
-                receipt_path.display()
-            ));
-        }
-        return fail(&format!(
-            "could not write {}: {error}",
-            receipt_path.display()
+    if let Err(message) = publish_receipt(
+        &receipt_path,
+        receipt_json.as_bytes(),
+        validated_request_path
+            .as_deref()
+            .zip(validated_request_bytes.as_deref()),
+    ) {
+        return fail(&cleanup_outputs(
+            message,
+            &[validated_assessment_path.as_path()],
         ));
     }
     print!("{receipt_json}");
@@ -175,6 +204,7 @@ fn record_failure(
     code: &str,
     message: &str,
     receipt_path: &Path,
+    validated_request: Option<(&Path, &[u8])>,
 ) -> i32 {
     let receipt = match fail_semantic_execution(request, code)
         .and_then(|receipt| receipt.to_canonical_json())
@@ -182,15 +212,50 @@ fn record_failure(
         Ok(json) => json,
         Err(error) => return fail(&error.to_string()),
     };
-    if let Err(error) = fs::write(receipt_path, &receipt) {
-        return fail(&format!(
-            "could not write {}: {error}",
-            receipt_path.display()
-        ));
+    if let Err(message) = publish_receipt(receipt_path, receipt.as_bytes(), validated_request) {
+        return fail(&message);
     }
     eprintln!("error[{code}] {message}");
     print!("{receipt}");
     2
+}
+
+fn publish_receipt(
+    receipt_path: &Path,
+    receipt: &[u8],
+    validated_request: Option<(&Path, &[u8])>,
+) -> Result<(), String> {
+    if let Some((path, bytes)) = validated_request {
+        write_atomic(path, bytes)?;
+    }
+    if let Err(message) = write_atomic(receipt_path, receipt) {
+        return Err(match validated_request {
+            Some((path, _)) => cleanup_outputs(message, &[path]),
+            None => message,
+        });
+    }
+    Ok(())
+}
+
+fn cleanup_outputs(mut message: String, paths: &[&Path]) -> String {
+    if let Err(cleanup_error) = remove_outputs(paths) {
+        message.push_str(&format!("; {cleanup_error}"));
+    }
+    message
+}
+
+fn remove_outputs(paths: &[&Path]) -> Result<(), String> {
+    let mut errors = Vec::new();
+    for path in paths {
+        if let Err(cleanup_error) = remove_stale(path) {
+            errors.push(cleanup_error);
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
 }
 
 fn fail(message: &str) -> i32 {

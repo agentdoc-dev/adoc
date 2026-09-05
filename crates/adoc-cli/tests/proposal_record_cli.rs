@@ -160,6 +160,76 @@ fn git_delivered_and_api_submitted_proposals_are_byte_equivalent() {
 }
 
 #[test]
+fn proposal_record_emits_receipted_no_change_dispositions() {
+    let workspace = TestWorkspace::new("proposal-record-dispositions");
+    write_patches(&workspace);
+    workspace.write(
+        "input.json",
+        &json!({
+            "bindings": bindings_json(),
+            "patches": entries(true),
+            "dispositions": [{
+                "finding_id": "finding-003",
+                "disposition": "no_change_required",
+                "acceptance_receipt_digest": D
+            }]
+        })
+        .to_string(),
+    );
+
+    let output = run(&workspace, "input.json", "record.json");
+
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    let record: Value = serde_json::from_slice(&output.stdout).expect("record is JSON");
+    assert_eq!(record["dispositions"][0]["finding_id"], "finding-003");
+    validate_proposal_record(&output.stdout).expect("emitted record validates");
+}
+
+#[test]
+fn proposal_record_rejects_invalid_no_change_dispositions() {
+    for (name, disposition) in [
+        (
+            "overlap",
+            json!({
+                "finding_id": "finding-001",
+                "disposition": "no_change_required",
+                "acceptance_receipt_digest": D
+            }),
+        ),
+        (
+            "receipt",
+            json!({
+                "finding_id": "finding-003",
+                "disposition": "no_change_required",
+                "acceptance_receipt_digest": "not-a-digest"
+            }),
+        ),
+    ] {
+        let workspace = TestWorkspace::new(name);
+        write_patches(&workspace);
+        workspace.write(
+            "input.json",
+            &json!({
+                "bindings": bindings_json(),
+                "patches": entries(true),
+                "dispositions": [disposition]
+            })
+            .to_string(),
+        );
+
+        let output = run(&workspace, "input.json", "record.json");
+
+        assert_eq!(output.status.code(), Some(2));
+        assert!(
+            stderr(&output).contains("[proposal_record.binding_invalid]"),
+            "{}",
+            stderr(&output)
+        );
+        assert!(!workspace.root.join("record.json").exists());
+    }
+}
+
+#[test]
 fn cross_links_are_identifiers_and_digests_only() {
     let workspace = TestWorkspace::new("proposal-record-links");
     write_patches(&workspace);

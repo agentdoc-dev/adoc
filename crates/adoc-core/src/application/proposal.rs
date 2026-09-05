@@ -7,8 +7,9 @@
 use serde_json::Value;
 
 use crate::domain::proposal::{
-    PROPOSAL_SCHEMA_VERSION, ParsedProposalPatch, ProposalBindings, ProposalPatchInput,
-    ProposalRecord, ProposalRecordError, RawProposalRecord, canonical_patch_bytes,
+    PROPOSAL_SCHEMA_VERSION, ParsedProposalPatch, ProposalBindings, ProposalDispositionInput,
+    ProposalPatchInput, ProposalRecord, ProposalRecordError, RawProposalRecord,
+    canonical_patch_bytes,
 };
 use crate::infrastructure::artifact::read_patch_document_value;
 
@@ -18,7 +19,24 @@ pub fn build_proposal_record(
     patches: Vec<ProposalPatchInput>,
     supersedes: Option<String>,
 ) -> Result<ProposalRecord, ProposalRecordError> {
-    let parsed = patches
+    ProposalRecord::assemble(bindings, parse_patches(patches)?, Vec::new(), supersedes)
+}
+
+/// Assemble a canonical proposal record with human-authorized per-finding
+/// no-change evidence. The patch-set digest remains patch-only.
+pub fn build_proposal_record_with_dispositions(
+    bindings: ProposalBindings,
+    patches: Vec<ProposalPatchInput>,
+    dispositions: Vec<ProposalDispositionInput>,
+    supersedes: Option<String>,
+) -> Result<ProposalRecord, ProposalRecordError> {
+    ProposalRecord::assemble(bindings, parse_patches(patches)?, dispositions, supersedes)
+}
+
+fn parse_patches(
+    patches: Vec<ProposalPatchInput>,
+) -> Result<Vec<ParsedProposalPatch>, ProposalRecordError> {
+    patches
         .into_iter()
         .map(|input| {
             let patch: Value = serde_json::from_slice(&input.patch_bytes).map_err(|error| {
@@ -31,22 +49,23 @@ pub fn build_proposal_record(
             })?;
             parse_patch(input, patch)
         })
-        .collect::<Result<Vec<_>, _>>()?;
-    ProposalRecord::assemble(bindings, parsed, supersedes)
+        .collect()
 }
 
 /// Read `adoc.proposal.v0` bytes and re-derive every digest and ordering;
 /// any field that does not match its canonical derivation fails closed.
 pub fn validate_proposal_record(bytes: &[u8]) -> Result<ProposalRecord, ProposalRecordError> {
+    // Deserialize the closed record before normalizing to `Value` so duplicate
+    // record or disposition members fail. The embedded patch intentionally
+    // remains a `Value`; its normalized form is canonicalized and validated below.
+    let raw: RawProposalRecord =
+        serde_json::from_slice(bytes).map_err(|error| ProposalRecordError::InvalidDocument {
+            message: error.to_string(),
+        })?;
     let received: Value =
         serde_json::from_slice(bytes).map_err(|error| ProposalRecordError::InvalidDocument {
             message: error.to_string(),
         })?;
-    let raw: RawProposalRecord = serde_json::from_value(received.clone()).map_err(|error| {
-        ProposalRecordError::InvalidDocument {
-            message: error.to_string(),
-        }
-    })?;
     if raw.schema_version != PROPOSAL_SCHEMA_VERSION {
         return Err(ProposalRecordError::UnsupportedVersion {
             version: raw.schema_version,
@@ -67,7 +86,7 @@ pub fn validate_proposal_record(bytes: &[u8]) -> Result<ProposalRecord, Proposal
             parse_patch(input, patch.patch)
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let rebuilt = ProposalRecord::assemble(raw.bindings, parsed, raw.supersedes)?;
+    let rebuilt = ProposalRecord::assemble(raw.bindings, parsed, raw.dispositions, raw.supersedes)?;
     let mismatch = |what: &str| ProposalRecordError::InvalidDocument {
         message: format!("{what} does not match its canonical derivation"),
     };
@@ -135,14 +154,29 @@ fn parse_patch(
 impl ProposalRecord {
     /// Mint the successor of this record from edited patch bytes. The new
     /// record supersedes this one by digest; byte-identical patches are not a
-    /// new version and fail with `proposal_record.revision_unchanged`.
+    /// new version and fail with `proposal_record.revision_unchanged`. A patch
+    /// for a previously dispositioned finding supersedes only that disposition,
+    /// which is dropped while unrelated dispositions carry forward. Because
+    /// dispositions are excluded from the patch-set digest, a disposition-only
+    /// change cannot mint a superseding record.
     pub fn revise(
         &self,
         patches: Vec<ProposalPatchInput>,
     ) -> Result<ProposalRecord, ProposalRecordError> {
-        build_proposal_record(
+        let dispositions = self
+            .dispositions()
+            .iter()
+            .filter(|disposition| {
+                patches
+                    .iter()
+                    .all(|patch| patch.finding_id.as_str() != disposition.finding_id.as_str())
+            })
+            .cloned()
+            .collect();
+        build_proposal_record_with_dispositions(
             self.bindings().clone(),
             patches,
+            dispositions,
             Some(self.proposal_set_digest().to_string()),
         )
     }

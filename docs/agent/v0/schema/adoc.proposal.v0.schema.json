@@ -193,6 +193,26 @@
           }
         }
       }
+    },
+    "dispositions": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Per-finding reference to Cloud's authenticated acceptance that a material semantic finding needs no patch. Sorted by finding_id; the authoritative validator requires unique finding IDs disjoint from every patches[*].finding_id. Cloud resolves acceptance_receipt_digest from its append-only receipt store and exact-matches workspace, repository, change request, head, bound semantic assessment, finding, human principal, authorization, and policy before accepting coverage. The evidence is not part of proposal_set_digest.",
+      "items": {
+        "type": "object",
+        "required": [
+          "finding_id",
+          "disposition",
+          "acceptance_receipt_digest"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "finding_id": { "$ref": "#/$defs/text" },
+          "disposition": { "const": "no_change_required" },
+          "acceptance_receipt_digest": { "$ref": "#/$defs/digest" }
+        }
+      }
     }
   },
   "$defs": {

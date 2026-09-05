@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "adoc://agent/v0/schema/agentdoc.cloud.gate_decision.v0.schema.json",
   "title": "AgentDoc Cloud Gate Decision",
-  "description": "E4.4 transport schema for the versioned gate decision. The owning domain slice defines payload semantics; this boundary preserves the JSON object verbatim and rejects non-exact operation versions.",
+  "description": "E4.4 transport schema for an E5.3 server-produced deterministic gate conclusion. The payload is the shared adoc.gate_result.v0 contract; Cloud owns evaluation.",
   "type": "object",
   "required": ["schema_version", "payload"],
   "properties": {
@@ -10,7 +10,7 @@
       "const": "agentdoc.cloud.gate_decision.v0"
     },
     "payload": {
-      "type": "object"
+      "$ref": "adoc://agent/v0/schema/adoc.gate_result.v0.schema.json"
     }
   },
   "additionalProperties": false

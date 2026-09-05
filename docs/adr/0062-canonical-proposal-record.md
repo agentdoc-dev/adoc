@@ -142,6 +142,24 @@ API.
    write, and exact-head preflight refuses that agent-proposed write with
    `patch.validation_failed`; trusted non-agent patches may still maintain the
    metadata. Intrinsic failures use `proposal_record.patch_invalid`.
+9. E5.3 adds optional `dispositions` for material findings that need no patch.
+   Each entry is closed to `no_change_required` and binds the finding ID to the
+   digest of a server-minted acceptance receipt in Cloud's append-only store.
+   That receipt binds workspace, repository, change request, head, semantic
+   assessment, finding, authenticated human principal, authorization decision,
+   and policy version. Entries are unique and canonical by finding ID. Empty
+   dispositions are omitted, preserving every existing `adoc.proposal.v0` byte
+   sequence. Dispositions do not change the patch-only `proposal_set_digest`;
+   when a revision adds a patch for a previously dispositioned finding, that
+   patch supersedes only the matching disposition, which is dropped while
+   unrelated dispositions carry forward. Because dispositions are excluded
+   from the digest, a disposition-only change cannot mint a superseding record
+   and fails with `proposal_record.revision_unchanged`.
+   Cloud resolves and exact-matches the receipt before treating the finding as
+   covered and persists the referenced evidence separately before returning a
+   duplicate proposal-set delivery. Model-authored prose or an unverified
+   disposition is never gate evidence. The E5.4 whole-run zero-proposal case
+   remains outside this record, whose `patches` array stays non-empty.
 
 ## Refuted alternatives
 
@@ -166,5 +184,5 @@ API.
   the bytes `adoc proposal-record` emits) next to `proposal_records` and
   recomputes the set digest from the embedded patches; approval (E5.2)
   binds to `proposal_set_digest` and `supersedes` drives invalidation.
-- The E5.3.T3 typed per-finding no-change disposition record joins this
-  envelope as an additive field.
+- E5.3.T3 adds the optional disposition field defined in §9 without changing
+  existing proposal bytes or patch-set identity.
