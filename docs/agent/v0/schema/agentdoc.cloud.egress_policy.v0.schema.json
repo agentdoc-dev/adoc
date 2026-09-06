@@ -2,16 +2,134 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "adoc://agent/v0/schema/agentdoc.cloud.egress_policy.v0.schema.json",
   "title": "AgentDoc Cloud Egress Policy",
-  "description": "E4.4 transport schema for the versioned data-egress policy. The owning domain slice defines payload semantics; this boundary preserves the JSON object verbatim and rejects non-exact operation versions.",
+  "description": "Exact-scope egress policy with seven closed, explicit transmission categories (E6.6.T1). Policies may target a canonical Cloud repository or a connector/native source scope. Unknown categories require a version decision. A failed exact-scope fetch uses all-disabled plus visible egress.policy_unavailable, never a cached or wider policy.",
   "type": "object",
-  "required": ["schema_version", "payload"],
+  "required": [
+    "schema_version",
+    "payload"
+  ],
   "properties": {
     "schema_version": {
       "const": "agentdoc.cloud.egress_policy.v0"
     },
     "payload": {
-      "type": "object"
+      "type": "object",
+      "required": [
+        "scope",
+        "categories"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "scope": {
+          "description": "Cloud subset of the existing authorization scope vocabulary. Workspace, connector instance and canonical Cloud repository identifiers are UUIDs, narrower than portable adoc nonEmpty identifiers; those portable types remain unchanged. Connector-scoped resource and container identifiers retain provider-owned text. knowledge_kind and object_id are deliberately absent. Scope workspace must match the authenticated Workspace. This record does not grant source access or transmission authority.",
+          "oneOf": [
+            {
+              "type": "object",
+              "required": [
+                "workspace_id",
+                "resource"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "workspace_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "resource": {
+                  "type": "object",
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "const": "repository"
+                    },
+                    "id": {
+                      "$ref": "#/$defs/uuid",
+                      "description": "Canonical Cloud workspace_repositories.id, not a provider-local repository name."
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "workspace_id",
+                "connector_id"
+              ],
+              "additionalProperties": false,
+              "dependentRequired": {
+                "resource": [
+                  "source_container_id"
+                ]
+              },
+              "properties": {
+                "workspace_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "connector_id": {
+                  "$ref": "#/$defs/uuid",
+                  "description": "Cloud source_connectors.id, an instance UUID rather than a provider label."
+                },
+                "source_container_id": {
+                  "$ref": "adoc://agent/v0/schema/adoc.authorization_decision.v0.schema.json#/$defs/nonEmpty",
+                  "description": "Provider-owned parent container or tenant/account identifier; required when naming a native resource."
+                },
+                "resource": {
+                  "$ref": "adoc://agent/v0/schema/adoc.authorization_decision.v0.schema.json#/$defs/sourceResource"
+                }
+              }
+            }
+          ]
+        },
+        "categories": {
+          "type": "object",
+          "description": "Every category requires an explicit boolean. False disables transmission; it does not disable local assessment execution or grant permission to transmit another category.",
+          "required": [
+            "raw_source",
+            "source_excerpts",
+            "pr_diffs",
+            "compiled_objects",
+            "embeddings",
+            "semantic_assessments",
+            "audit_metadata"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "raw_source": {
+              "type": "boolean"
+            },
+            "source_excerpts": {
+              "type": "boolean"
+            },
+            "pr_diffs": {
+              "type": "boolean"
+            },
+            "compiled_objects": {
+              "type": "boolean"
+            },
+            "embeddings": {
+              "type": "boolean"
+            },
+            "semantic_assessments": {
+              "type": "boolean"
+            },
+            "audit_metadata": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
     }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "maxLength": 36
+    }
+  }
 }

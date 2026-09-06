@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -95,6 +96,226 @@ fn schema_accepts(schema_name: &str, instance: &serde_json::Value) -> bool {
     validator_for(&schema).is_valid(instance)
 }
 
+fn cloud_egress_policy_fixture() -> serde_json::Value {
+    json!({
+        "schema_version": "agentdoc.cloud.egress_policy.v0",
+        "payload": {
+            "scope": {
+                "workspace_id": "10000000-0000-0000-0000-000000000001",
+                "resource": {"kind": "repository", "id": "30000000-0000-0000-0000-000000000001"}
+            },
+            "categories": {
+                "raw_source": false, "source_excerpts": false, "pr_diffs": false,
+                "compiled_objects": false, "embeddings": false,
+                "semantic_assessments": false, "audit_metadata": false
+            }
+        }
+    })
+}
+
+#[test]
+fn cloud_egress_policy_requires_exactly_seven_explicit_boolean_categories() {
+    let name = "agentdoc.cloud.egress_policy.v0.schema.json";
+    let policy = cloud_egress_policy_fixture();
+    assert_valid(name, &policy);
+    let expected: BTreeSet<_> = policy["payload"]["categories"]
+        .as_object()
+        .expect("categories")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        expected.len(),
+        7,
+        "the category vocabulary is closed at seven"
+    );
+    let schema = schema(name);
+    let categories = &schema["properties"]["payload"]["properties"]["categories"];
+    let required: BTreeSet<_> = categories["required"]
+        .as_array()
+        .expect("required categories")
+        .iter()
+        .map(|key| key.as_str().expect("category name"))
+        .collect();
+    let properties: BTreeSet<_> = categories["properties"]
+        .as_object()
+        .expect("category properties")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(required, expected, "required category vocabulary drifted");
+    assert_eq!(properties, expected, "optional category vocabulary widened");
+    let mut unknown = policy.clone();
+    unknown["payload"]["categories"]["future_category"] = json!(false);
+    assert!(
+        !schema_accepts(name, &unknown),
+        "unknown egress category accepted"
+    );
+
+    for key in policy["payload"]["categories"]
+        .as_object()
+        .expect("categories")
+        .keys()
+    {
+        let mut enabled = policy.clone();
+        enabled["payload"]["categories"][key] = json!(true);
+        assert_valid(name, &enabled);
+        let mut missing = policy.clone();
+        missing["payload"]["categories"]
+            .as_object_mut()
+            .expect("categories")
+            .remove(key);
+        assert!(!schema_accepts(name, &missing), "missing {key} accepted");
+        for value in [json!(null), json!("false"), json!(0), json!([]), json!({})] {
+            let mut invalid = policy.clone();
+            invalid["payload"]["categories"][key] = value;
+            assert!(!schema_accepts(name, &invalid), "nonboolean {key} accepted");
+        }
+    }
+}
+
+#[test]
+fn cloud_egress_policy_closes_the_wrapper_and_scope_binding() {
+    let name = "agentdoc.cloud.egress_policy.v0.schema.json";
+    let policy = cloud_egress_policy_fixture();
+    for pointer in ["", "/payload", "/payload/scope", "/payload/scope/resource"] {
+        let mut extra = policy.clone();
+        extra.pointer_mut(pointer).expect("object")["extra"] = json!(true);
+        assert!(
+            !schema_accepts(name, &extra),
+            "extra field at {pointer:?} accepted"
+        );
+    }
+    for pointer in [
+        "/schema_version",
+        "/payload",
+        "/payload/scope",
+        "/payload/scope/workspace_id",
+        "/payload/scope/resource",
+        "/payload/categories",
+    ] {
+        let mut invalid = policy.clone();
+        *invalid.pointer_mut(pointer).expect("field") = json!(null);
+        assert!(!schema_accepts(name, &invalid), "null {pointer} accepted");
+        let (parent, key) = pointer.rsplit_once('/').expect("field pointer");
+        let mut missing = policy.clone();
+        missing
+            .pointer_mut(parent)
+            .expect("parent object")
+            .as_object_mut()
+            .expect("object")
+            .remove(key);
+        assert!(
+            !schema_accepts(name, &missing),
+            "missing {pointer} accepted"
+        );
+    }
+    for repository in [
+        "",
+        "repository-1",
+        "ABCDEFAB-0000-0000-0000-000000000001",
+        "30000000-0000-0000-0000-000000000001\n",
+    ] {
+        let mut invalid = policy.clone();
+        invalid["payload"]["scope"]["resource"]["id"] = json!(repository);
+        assert!(
+            !schema_accepts(name, &invalid),
+            "malformed repository id {repository:?} accepted"
+        );
+    }
+    let mut version = policy;
+    version["schema_version"] = json!("agentdoc.cloud.egress_policy.v99");
+    assert!(
+        !schema_accepts(name, &version),
+        "unsupported policy version accepted"
+    );
+}
+
+#[test]
+fn cloud_egress_policy_requires_canonical_workspace_ids_in_both_scopes() {
+    let name = "agentdoc.cloud.egress_policy.v0.schema.json";
+    let mut policy = cloud_egress_policy_fixture();
+    for scope in [
+        policy["payload"]["scope"].clone(),
+        json!({
+            "workspace_id": "10000000-0000-0000-0000-000000000001",
+            "connector_id": "40000000-0000-0000-0000-000000000001"
+        }),
+    ] {
+        policy["payload"]["scope"] = scope.clone();
+        assert_valid(name, &policy);
+        for workspace in [
+            "not-a-uuid",
+            "ABCDEFAB-0000-0000-0000-000000000001",
+            "10000000-0000-0000-0000-000000000001\n",
+        ] {
+            policy["payload"]["scope"]["workspace_id"] = json!(workspace);
+            assert!(
+                !schema_accepts(name, &policy),
+                "malformed workspace id {workspace:?} accepted for scope {scope}"
+            );
+        }
+    }
+}
+
+#[test]
+fn cloud_egress_policy_preserves_connector_and_native_source_scopes() {
+    let name = "agentdoc.cloud.egress_policy.v0.schema.json";
+    let kinds = ["repository", "project", "space", "channel"];
+    let authorization = schema("adoc.authorization_decision.v0.schema.json");
+    let inherited_kinds: BTreeSet<_> =
+        authorization["$defs"]["sourceResource"]["properties"]["kind"]["enum"]
+            .as_array()
+            .expect("source resource kinds")
+            .iter()
+            .map(|kind| kind.as_str().expect("source resource kind"))
+            .collect();
+    assert_eq!(
+        inherited_kinds,
+        BTreeSet::from(kinds),
+        "inherited egress source-resource vocabulary drifted"
+    );
+    let connector = json!({
+        "workspace_id": "10000000-0000-0000-0000-000000000001",
+        "connector_id": "40000000-0000-0000-0000-000000000001"
+    });
+    let mut policy = cloud_egress_policy_fixture();
+    policy["payload"]["scope"] = connector.clone();
+    assert_valid(name, &policy);
+    let mut container = connector.clone();
+    container["source_container_id"] = json!("provider-account");
+    policy["payload"]["scope"] = container.clone();
+    assert_valid(name, &policy);
+    for kind in kinds {
+        let mut source = container.clone();
+        source["resource"] = json!({"kind": kind, "id": "native-source-id"});
+        policy["payload"]["scope"] = source;
+        assert_valid(name, &policy);
+    }
+    let no_container = json!({
+        "workspace_id": connector["workspace_id"],
+        "connector_id": connector["connector_id"],
+        "resource": {"kind": "channel", "id": "native-source-id"}
+    });
+    let invalid_scopes = [
+        json!({}),
+        json!({"workspace_id": connector["workspace_id"]}),
+        json!({"workspace_id": connector["workspace_id"], "source_container_id": "unbound"}),
+        json!({"workspace_id": connector["workspace_id"], "connector_id": "github"}),
+        json!({"workspace_id": connector["workspace_id"], "connector_id": connector["connector_id"], "source_container_id": " padded "}),
+        json!({"workspace_id": connector["workspace_id"], "connector_id": connector["connector_id"], "knowledge_kind": "claim"}),
+        json!({"workspace_id": connector["workspace_id"], "connector_id": connector["connector_id"], "source_container_id": "account", "resource": {"kind":"unknown", "id":"native"}}),
+        no_container,
+    ];
+    for scope in invalid_scopes {
+        policy["payload"]["scope"] = scope.clone();
+        assert!(
+            !schema_accepts(name, &policy),
+            "invalid scope accepted: {scope}"
+        );
+    }
+}
+
 #[test]
 fn cloud_operation_contracts_round_trip_and_reject_the_registered_unknown_version() {
     for id in [
@@ -121,6 +342,8 @@ fn cloud_operation_contracts_round_trip_and_reject_the_registered_unknown_versio
                 "result": "pass",
                 "reasons": []
             })
+        } else if id == "agentdoc.cloud.egress_policy.v0" {
+            cloud_egress_policy_fixture()["payload"].clone()
         } else {
             json!({ "fixture": "round-trip" })
         };
