@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/agentdoc.cloud.writeback_record.v0.schema.json",
+  "title": "AgentDoc Cloud Writeback Record",
+  "description": "Immutable projection lineage for E6.5. This schema does not authorize dispatch or prove stored-record, revision or payload joins; Cloud admission verifies those independently.",
+  "type": "object",
+  "required": ["schema_version", "writeback_id", "origin", "target", "idempotency_key", "payload_digest"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "agentdoc.cloud.writeback_record.v0" },
+    "writeback_id": { "$ref": "#/$defs/uuid" },
+    "origin": {
+      "type": "object",
+      "required": ["subject", "event_ordinal", "event_digest"],
+      "additionalProperties": false,
+      "properties": {
+        "subject": {
+          "type": "object",
+          "description": "Canonical Cloud Workspace, managed-object and managed-version UUIDs. These are a narrower admissible set than portable adoc managed-subject strings; this contract does not change those portable identity types.",
+          "required": ["canonical", "version_id"],
+          "additionalProperties": false,
+          "properties": {
+            "canonical": {
+              "type": "object",
+              "required": ["workspace_id", "canonical_id"],
+              "additionalProperties": false,
+              "properties": {
+                "workspace_id": { "$ref": "#/$defs/uuid" },
+                "canonical_id": { "$ref": "#/$defs/uuid" }
+              }
+            },
+            "version_id": { "$ref": "#/$defs/uuid" }
+          }
+        },
+        "event_ordinal": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "description": "Exact zero-based ordinal within the origin Workspace event log, encoded as a canonical decimal string. Never export the store-global event seq. Cloud binds Workspace, ordinal, subject and event_digest to the same retained event."
+        },
+        "event_digest": {
+          "$ref": "#/$defs/digest",
+          "description": "Retained chained event-record digest: SHA-256 of the UTF-8 encoding of prev_digest || event_bytes. Both operands are stored text: event_bytes must serialize the exact managed-state JSON object, and prev_digest is the preceding record's sha256-prefixed digest string, or empty at genesis. This is the stored record_digest, not a hash of event_bytes alone."
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "required": ["connector_id", "source_binding_id", "source_binding_digest", "revision_precondition"],
+      "additionalProperties": false,
+      "properties": {
+        "connector_id": {
+          "$ref": "#/$defs/uuid",
+          "description": "Cloud connector-instance UUID, not the provider label (such as github) in Source Binding.binding.connector. Cloud verifies that the bound Source Record belongs to this instance and that its provider matches the binding."
+        },
+        "source_binding_id": {
+          "$ref": "#/$defs/text",
+          "description": "Exported textual Source Binding ID, not the private Cloud row UUID. Resolve in the origin Workspace and named Cloud connector instance."
+        },
+        "source_binding_digest": {
+          "$ref": "#/$defs/digest",
+          "description": "The retained Cloud source_bindings.record_digest: sha256-prefixed SHA-256 of source_bindings.record_bytes (bytea), the exact admitted UTF-8 adoc.source_binding.v0 envelope bytes. Do not reserialize JSON or hash the database row, textual binding ID, or source-revision content instead."
+        },
+        "revision_precondition": {
+          "$ref": "#/$defs/text",
+          "description": "Required exact observed native target revision; never an implicit current revision. Independent of the optional revision in the Source Binding envelope."
+        }
+      }
+    },
+    "idempotency_key": {
+      "type": "string",
+      "pattern": "^[!-~]{1,200}$",
+      "description": "Unique within the origin Workspace's writeback operation. Retries reuse this key and the same writeback_id and complete record; reuse with different lineage or payload is a conflict, never another effect. writeback_id identifies the immutable record; this key identifies its logical request."
+    },
+    "payload_digest": {
+      "$ref": "#/$defs/digest",
+      "description": "SHA-256 of exact outgoing payload bytes. A lineage marker alone never establishes payload equivalence or suppresses a new observation."
+    }
+  },
+  "$defs": {
+    "text": {
+      "type": "string",
+      "not": { "pattern": "[\\u0000-\\u001f\\u007f-\\u009f]" },
+      "pattern": "^\\S(?:[^\\r\\n\\u2028\\u2029]*\\S)?$"
+    },
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}

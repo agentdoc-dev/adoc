@@ -507,6 +507,25 @@ fn e4_4_cloud_operation_contracts_are_registered_exactly() {
 }
 
 #[test]
+fn e6_5_writeback_schema_publication_keeps_cloud_contract_planned() {
+    let doc = registry();
+    let id = "agentdoc.cloud.writeback_record.v0";
+    assert!(anchored_ids(&doc, "registry:envelopes-planned").contains(id));
+    for anchor in ANCHORS.iter().copied().filter(|anchor| {
+        anchor.starts_with("registry:envelopes-") && *anchor != "registry:envelopes-planned"
+    }) {
+        assert!(!anchored_ids(&doc, anchor).contains(id));
+    }
+    let block = support::doc_scan::anchored_block(&doc, REGISTRY, "registry:envelopes-planned");
+    let row = block
+        .lines()
+        .find(|line| line.trim_start().starts_with(&format!("| `{id}` |")))
+        .expect("planned writeback contract row");
+    assert_eq!(row.split('|').nth(2).map(str::trim), Some("cloud"));
+    assert_eq!(row.split('|').nth(3).map(str::trim), Some("E6.5"));
+}
+
+#[test]
 fn connector_capability_manifest_is_shipped_by_its_contract_owner() {
     let doc = registry();
     let shipped = anchored_ids(&doc, "registry:envelopes-shipped-adoc");
