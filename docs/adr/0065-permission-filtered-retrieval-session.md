@@ -56,43 +56,46 @@ are never partially scrubbed while retaining the old content hash or vector.
 The closure checks complete Knowledge Object and prose block nodes, including
 non-response fields that contribute to hashes. Page nodes are not retrieval
 records and are outside this scan. Partial-field retrieval is E6.2 work.
-`graph`, `stale`, `contradictions`, and `impacted-by` still expose unfiltered
-artifact data in this tracer; E6.1.T3 closes those paths. This is not yet a
-complete privacy boundary. The tool guide includes the visibility upgrade
+`graph`, `stale`, `contradictions`, and `impacted-by` now reuse the same core
+projection before graph indexes and related-status views are assembled.
+The tool guide includes the visibility upgrade
 notice and an explicit all-classes local policy recipe for valid classifications.
 That recipe cannot bypass `schema.visibility_invalid`; source repair and rebuild
-remain required. A CLI control pins unfiltered graph reads under an explicit
-exclusion policy for T1; T3 replaces that assertion with policy exclusion.
+remain required. A CLI control pins graph exclusion under an explicit policy,
+including when the artifact path is supplied directly.
 
 Untrusted artifact decoder text is sanitized even without a policy: decoding
-can fail before authored visibility is known. Projected reads omit artifact
-warnings, which can quote denied content without an Object ID. Conditional
-warning withholding is not yet whole-response presence/absence parity:
-E6.1.T3 must close that diagnostic signal along with graph drivers, counts,
-and timing. Adding a new conditional warning or retaining unauthenticated
-warning prose by substring alone does not establish that property. When visibility
-or explicit policy supplies excluded IDs, carried build errors refuse the session
-with one generic `retrieval.visibility_unavailable` Error and check/build guidance;
-original diagnostic details and counts are withheld. For these artifact errors,
-search and why return no records and exit 2. With no excluded IDs, legacy carried diagnostics
-and refusal on errors remain unchanged pending the T3 compatibility decision.
-The all-public/no-policy CLI control also returns no records and exit 2 for
-carried source errors; classification changes diagnostic disclosure, not the
-existing refusal behavior.
-Structural corruption or a carried `schema.visibility_invalid` diagnostic
-still refuses the session, even without policy: missing metadata cannot be
-assumed public after a producer reports classification failure. Full build
-diagnostics remain available to the trusted artifact operator. Search-artifact
-model mismatch and hash drift use fixed message shapes with no corpus hashes
-or artifact-controlled model text, regardless of whether filtering changed data.
+can fail before authored visibility is known. Retrieval always omits carried
+artifact warnings, which can quote denied content without an Object ID.
+Carried build errors and graph-index validation failures refuse the session
+with one generic `retrieval.visibility_unavailable` error and check/build guidance;
+original diagnostic details and counts are withheld regardless of whether the
+artifact contains excluded IDs. Search and why return no records and exit 2.
+Structural corruption or a carried `schema.visibility_invalid` diagnostic still
+refuses the session: missing metadata cannot be assumed public after a producer
+reports classification failure. Full `adoc check` and `adoc build` diagnostics
+remain available to the trusted artifact operator.
+
+This E6.1.T3 compatibility change intentionally removes unsafe legacy retrieval
+warning text and normalizes carried-error disclosure even for an all-public
+artifact. Conditional suppression would disclose whether excluded content was
+present. The existing fail-closed outcome for carried errors is unchanged.
+Successful plain/styled `why` retains the artifact basename and optional trust
+footer, but no longer receives or prints execution time. The coarse timing gate
+still measures the actual process; removing printed timing is not a timing waiver.
+
+Search checks each permitted carrier's kind and existing Embedding Composition
+hash. Whole-corpus manifest hash differences no longer trigger a warning, because
+hidden or absent carriers can change that hash without changing the visible index.
 If some permitted vectors are stale, semantic search retains the valid vectors
-and exits 0 with a warning that semantic results may be incomplete; hybrid search
-can retrieve changed carriers through lexical matching. If stale bindings leave
-no usable permitted vectors, semantic search refuses and hybrid falls back to
-lexical search. Withheld or absent carriers alone do not cause this refusal.
+and exits 0 with a fixed warning that semantic results may be incomplete; hybrid
+search can retrieve changed carriers through lexical matching. If stale bindings
+leave no usable permitted vectors, semantic search refuses and hybrid falls back
+to lexical search. Withheld or absent carriers alone do not cause this refusal.
 Model errors retain the trusted active-provider identity. Decoder errors retain
-the resolved artifact path (from an explicit input or valid config) and trusted reader-supplied rebuild guidance,
-while suppressing artifact-controlled version values and decoder payload text.
+the resolved artifact path (from an explicit input or valid config) and trusted
+reader-supplied rebuild guidance, while suppressing artifact-controlled version
+values and decoder payload text.
 
 E6.1.T2 preserves typed policy errors through shared config parsing and local
 response assembly. An unreadable config, malformed YAML, or malformed present policy produces

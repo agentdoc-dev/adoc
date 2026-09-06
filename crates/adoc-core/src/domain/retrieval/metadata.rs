@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::domain::graph::GraphKnowledgeObjectNode;
+use crate::domain::graph::{GraphKnowledgeObjectNode, ProseBlockKind};
 
 pub(crate) const OWNER_FIELD: &str = "owner";
 pub(crate) const VERIFIED_AT_FIELD: &str = "verified_at";
@@ -74,6 +74,12 @@ pub(crate) fn embedding_input(object: &GraphKnowledgeObjectNode) -> String {
         "{}: {}\n[id: {}] [status: {}] [owner: {}]",
         object.kind, body, object.id, status, owner
     )
+}
+
+/// ADR-0040 cost controls: code stays lexical-only; prose needs five tokens.
+// ponytail: whitespace-token count matches the producer's existing cost gate.
+pub(crate) fn prose_is_embeddable(kind: ProseBlockKind, content_text: &str) -> bool {
+    kind != ProseBlockKind::CodeBlock && content_text.split_whitespace().take(5).count() == 5
 }
 
 /// V1.7.2 (ADR-0040): the prose Embedding Composition — `prose: {text}` plus

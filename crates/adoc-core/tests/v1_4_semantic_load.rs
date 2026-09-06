@@ -73,10 +73,9 @@ fn unrelated_hash_drift_keeps_current_semantic_entries_loaded() {
         session.has_semantic_index(),
         "unrelated graph drift must preserve current composition-bound vectors"
     );
-    let drift = result
-        .diagnostics
-        .iter()
-        .find(|d| d.code == DiagnosticCode::SearchHashDrift)
-        .expect("SearchHashDrift must be emitted");
-    assert_eq!(drift.severity, Severity::Warning);
+    assert!(
+        result.diagnostics.is_empty(),
+        "unrelated manifest drift must not warn when all permitted vectors are current: {:?}",
+        result.diagnostics
+    );
 }

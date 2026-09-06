@@ -283,7 +283,6 @@ fn indent_body(body: &str, indent: &str) -> String {
 mod tests {
     use std::collections::BTreeMap;
     use std::path::PathBuf;
-    use std::time::Duration;
 
     use adoc_core::{RetrievalRecord, RetrievalRelations, RetrievalSource};
     use chrono::NaiveDate;
@@ -322,7 +321,6 @@ mod tests {
         RenderMeta {
             artifact: PathBuf::from("docs.graph.json"),
             trust: None,
-            duration: Duration::ZERO,
         }
     }
 
@@ -492,7 +490,7 @@ mod tests {
                 "\n",
                 "Source: docs/decisions.adoc:7:1\n",
                 "\n",
-                "✓ rendered from docs.graph.json · 0.00s\n",
+                "✓ rendered from docs.graph.json\n",
             )
         );
     }
@@ -772,7 +770,6 @@ mod tests {
         view.footer = Some(RenderMeta {
             artifact: PathBuf::from("/tmp/adoc-retrieval-dist/docs.graph.json"),
             trust: Some("team".to_string()),
-            duration: Duration::from_millis(60),
         });
         let raw = render(&view);
         // owo_colors emits ESC[32m for green fg and ESC[39m to reset.
@@ -783,17 +780,16 @@ mod tests {
     }
 
     #[test]
-    fn styled_footer_visible_text_contains_trust_and_duration() {
+    fn styled_footer_visible_text_contains_trust() {
         let record = make_record("billing.credits", "claim");
         let mut view = view_for(record);
         view.footer = Some(RenderMeta {
             artifact: PathBuf::from("/tmp/docs.graph.json"),
             trust: Some("team".to_string()),
-            duration: Duration::from_millis(60),
         });
         let stripped = strip_ansi(&render(&view));
         assert!(
-            stripped.ends_with("\n✓ rendered from docs.graph.json · trust: team · 0.06s\n"),
+            stripped.ends_with("\n✓ rendered from docs.graph.json · trust: team\n"),
             "stripped styled footer must match plain shape; got: {stripped:?}"
         );
     }

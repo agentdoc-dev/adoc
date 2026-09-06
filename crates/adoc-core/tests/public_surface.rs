@@ -241,6 +241,7 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _: GraphRelationKind = GraphRelationKind::Supersedes;
     let _: GraphDirection = GraphDirection::Both;
     let _: GraphInput = GraphInput {
+        policy: None,
         graph_artifact_path: PathBuf::from("/missing-docs-graph-json-for-surface-test"),
     };
     let graph_load = GraphLoadResult {

@@ -222,7 +222,6 @@ fn render_relation_targets(output: &mut String, relation: &str, targets: &[Strin
 mod tests {
     use std::collections::BTreeMap;
     use std::path::PathBuf;
-    use std::time::Duration;
 
     use adoc_core::{RetrievalRecord, RetrievalRelations, RetrievalSource};
     use chrono::NaiveDate;
@@ -261,7 +260,6 @@ mod tests {
         RenderMeta {
             artifact: PathBuf::from("docs.graph.json"),
             trust: None,
-            duration: Duration::ZERO,
         }
     }
 
@@ -408,7 +406,7 @@ mod tests {
                 "\n",
                 "Source: docs/decisions.adoc:7:1\n",
                 "\n",
-                "✓ rendered from docs.graph.json · 0.00s\n",
+                "✓ rendered from docs.graph.json\n",
             )
         );
     }
@@ -469,7 +467,7 @@ mod tests {
                 "- related_to: billing.credits.decrement-after-success\n",
                 "- related_to: billing.credits.reconciliation\n",
                 "\n",
-                "✓ rendered from docs.graph.json · 0.00s\n",
+                "✓ rendered from docs.graph.json\n",
             )
         );
     }
@@ -664,18 +662,17 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[test]
-    fn plain_footer_emits_check_basename_and_duration() {
+    fn plain_footer_emits_check_basename_and_trust() {
         let record = make_record("billing.credits", "claim");
         let mut view = view_for(record);
         view.footer = Some(RenderMeta {
             artifact: PathBuf::from("/tmp/adoc-retrieval-dist/docs.graph.json"),
             trust: Some("team".to_string()),
-            duration: Duration::from_millis(60),
         });
         let text = render(&view);
         assert!(
-            text.ends_with("\n✓ rendered from docs.graph.json · trust: team · 0.06s\n"),
-            "plain footer line must end the output with trust and duration, got: {text:?}"
+            text.ends_with("\n✓ rendered from docs.graph.json · trust: team\n"),
+            "plain footer line must end the output with trust, got: {text:?}"
         );
     }
 
@@ -686,11 +683,10 @@ mod tests {
         view.footer = Some(RenderMeta {
             artifact: PathBuf::from("/tmp/docs.graph.json"),
             trust: None,
-            duration: Duration::from_millis(60),
         });
         let text = render(&view);
         assert!(
-            text.ends_with("\n✓ rendered from docs.graph.json · 0.06s\n"),
+            text.ends_with("\n✓ rendered from docs.graph.json\n"),
             "plain footer must omit trust segment when trust is None, got: {text:?}"
         );
         assert!(

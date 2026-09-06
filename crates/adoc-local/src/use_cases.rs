@@ -856,17 +856,23 @@ where
 /// Load the graph session for a read command. The session is usable only
 /// when it loaded AND its diagnostics carry no errors; otherwise the caller
 /// ships its command-specific empty envelope with these load diagnostics.
-fn load_graph_session_for_query(
-    graph_artifact: PathBuf,
-) -> (Option<GraphSession>, Vec<Diagnostic>) {
+fn load_graph_session_for_query<P: PathPolicy>(
+    context: &LocalContext<P>,
+    artifact: Option<&Path>,
+) -> Result<(Option<GraphSession>, Vec<Diagnostic>), LocalError> {
+    let (graph_artifact, config) = match resolve_graph_artifact_for_read(context, artifact, true) {
+        Ok(resolved) => resolved,
+        Err(error) => return Ok((None, vec![retrieval_config_diagnostic(error)?])),
+    };
     let load_result = load_graph_session(CoreGraphInput {
+        policy: config.and_then(|config| config.retrieval_policy),
         graph_artifact_path: graph_artifact,
     });
     let diagnostics = load_result.diagnostics;
     let session = load_result
         .session
         .filter(|_| !diagnostics_have_errors(&diagnostics));
-    (session, diagnostics)
+    Ok((session, diagnostics))
 }
 
 fn why_with_context<P>(context: &LocalContext<P>, input: WhyInput) -> Result<WhyOutcome, LocalError>
@@ -937,9 +943,8 @@ fn graph_with_context<P>(
 where
     P: PathPolicy,
 {
-    let (graph_artifact, _) =
-        resolve_graph_artifact_for_read(context, input.artifact.as_deref(), false)?;
-    let (session, mut diagnostics) = load_graph_session_for_query(graph_artifact);
+    let (session, mut diagnostics) =
+        load_graph_session_for_query(context, input.artifact.as_deref())?;
     let Some(session) = session else {
         let exit_code = graph_exit_code_for_diagnostics(&diagnostics);
         return Ok(GraphOutcome {
@@ -983,9 +988,7 @@ fn stale_with_context<P>(
 where
     P: PathPolicy,
 {
-    let (graph_artifact, _) =
-        resolve_graph_artifact_for_read(context, input.artifact.as_deref(), false)?;
-    let (session, diagnostics) = load_graph_session_for_query(graph_artifact);
+    let (session, diagnostics) = load_graph_session_for_query(context, input.artifact.as_deref())?;
     let Some(session) = session else {
         let exit_code = signal_query_exit_code(&diagnostics);
         return Ok(StaleOutcome {
@@ -1009,9 +1012,7 @@ fn contradictions_with_context<P>(
 where
     P: PathPolicy,
 {
-    let (graph_artifact, _) =
-        resolve_graph_artifact_for_read(context, input.artifact.as_deref(), false)?;
-    let (session, diagnostics) = load_graph_session_for_query(graph_artifact);
+    let (session, diagnostics) = load_graph_session_for_query(context, input.artifact.as_deref())?;
     let Some(session) = session else {
         let exit_code = signal_query_exit_code(&diagnostics);
         return Ok(ContradictionsOutcome {
@@ -1060,9 +1061,7 @@ where
         }
     };
 
-    let (graph_artifact, _) =
-        resolve_graph_artifact_for_read(context, input.artifact.as_deref(), false)?;
-    let (session, diagnostics) = load_graph_session_for_query(graph_artifact);
+    let (session, diagnostics) = load_graph_session_for_query(context, input.artifact.as_deref())?;
     let Some(session) = session else {
         let exit_code = impacted_exit_code(&diagnostics);
         return Ok(ImpactedOutcome {
