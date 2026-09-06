@@ -1,0 +1,32 @@
+{
+  "base_commit": "1b452e60eeba0010a28eb5d9f6a97d1a65b2195a",
+  "source_patch_sha256": "26167d73d7b776fa6c2abccadf38a69c70c2215856379f733b8e07c0957df7e5",
+  "untracked_source_sha256": {
+    "crates/adoc-cli/tests/permission_parity_cli.rs": "753431fd7eb5b427d4e10227ddaca6522fd1d4003925eaad0a71adb490b31048",
+    "crates/adoc-local/tests/permission_graph_signals.rs": "6feb1105f564789bd1e92f57aa7891e27e8c624900df25d80ad27081ed72e0ff"
+  },
+  "files": {
+    "Cargo.lock": "dc18161fc86bf582b4634c7c0c201e222de48d60b340e4abf2b76397be970bca",
+    "Cargo.toml": "5c2ea7007ee689ce2dd336103b528f176d8481bd7d265f39552def97c2258155",
+    "rust-toolchain.toml": "7d21c66a15f41bad66b82ed06a289f5dc8a6e3751951d2696bbf20ce296f2b0f",
+    "crates/adoc-cli/tests/retrieval_pilot.rs": "ee1c89fc45f86efae3e2c99522846e211f4c4c1108a52a7f4f034ee2e1cc7374",
+    "crates/adoc-cli/tests/permission_parity_cli.rs": "753431fd7eb5b427d4e10227ddaca6522fd1d4003925eaad0a71adb490b31048"
+  },
+  "baseline_binary_sha256": {
+    "pre-t1-adoc": "9b4ad1331514d79f5c772ad3ba2ad73cbcd2c25bf828afe8fa2f6b71b6476d6f",
+    "base-adoc": "ea5f25fd63a56a878f6accca63567ce85e46ca24e7b5307629428b28ec390451"
+  },
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+  "host": "Darwin alexs-macbook-pro-klrplqgp.scvpn.io 25.5.0 Darwin Kernel Version 25.5.0: Mon Apr 27 20:38:56 PDT 2026; root:xnu-12377.121.6~2/RELEASE_ARM64_T6000 arm64",
+  "candidate_binary_sha256": "e98bedabf6d1be57cc85ae87857f8c8d412562a23c3ead0b1b4194373d8c2f56",
+  "complete_source_listing_sha256": "0917068390caa50bc724f0dfb43952132bcc62df8c00f5fff347de91e830e00b",
+  "precision_experiment": {
+    "measured_pairs": 51,
+    "warmup_pairs": 3,
+    "limit": 1.1,
+    "source_listing_sha256": "5bc34d5c3e2f954b40cec42cc128395e2c761878a151fa523498c90c95e837d3",
+    "source_patch_sha256": "dc5bd48b3ab4b558687b4be9e2ea8c8efb21240d39ffbacf872ac76a7efa7cab",
+    "runner_sha256": "36d389dcff0285cc9689f70a8aa7d9dad68a3e2f269ca39ec12aacefb7b1ec21",
+    "candidate_binary_sha256": "e98bedabf6d1be57cc85ae87857f8c8d412562a23c3ead0b1b4194373d8c2f56"
+  }
+}

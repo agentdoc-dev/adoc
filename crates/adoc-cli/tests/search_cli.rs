@@ -476,7 +476,7 @@ fn search_cli_json_invalid_filter_exits_1_with_envelope_diagnostics_and_no_stder
 }
 
 #[test]
-fn search_cli_json_success_includes_loaded_artifact_warnings() {
+fn search_cli_json_success_omits_carried_artifact_warnings() {
     let workspace = TestWorkspace::new("search-json-artifact-warning");
     workspace.write("dist/docs.graph.json", &artifact_with_diagnostic("warning"));
 
@@ -489,8 +489,7 @@ fn search_cli_json_success_includes_loaded_artifact_warnings() {
     assert!(output.status.success());
     assert!(output.stderr.is_empty());
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("stdout is JSON");
-    assert_eq!(value["diagnostics"][0]["severity"], "warning");
-    assert_eq!(value["diagnostics"][0]["code"], "parse.raw_html");
+    assert_eq!(value["diagnostics"], serde_json::json!([]));
     assert!(
         !value["records"]
             .as_array()
@@ -500,7 +499,7 @@ fn search_cli_json_success_includes_loaded_artifact_warnings() {
 }
 
 #[test]
-fn search_cli_text_success_prints_loaded_artifact_warnings_to_stderr() {
+fn search_cli_text_success_omits_carried_artifact_warnings() {
     let workspace = TestWorkspace::new("search-text-artifact-warning");
     workspace.write("dist/docs.graph.json", &artifact_with_diagnostic("warning"));
 
@@ -512,7 +511,7 @@ fn search_cli_text_success_prints_loaded_artifact_warnings_to_stderr() {
 
     assert!(output.status.success());
     assert!(String::from_utf8_lossy(&output.stdout).contains("Object:"));
-    assert!(String::from_utf8_lossy(&output.stderr).contains("warning[parse.raw_html]"));
+    assert!(output.stderr.is_empty());
 }
 
 #[test]
@@ -531,7 +530,11 @@ fn search_cli_loaded_artifact_errors_exit_2() {
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("stdout is JSON");
     assert_eq!(value["records"], serde_json::json!([]));
     assert_eq!(value["diagnostics"][0]["severity"], "error");
-    assert_eq!(value["diagnostics"][0]["code"], "parse.raw_html");
+    assert_eq!(
+        value["diagnostics"][0]["code"],
+        "retrieval.visibility_unavailable"
+    );
+    assert_eq!(value["diagnostics"].as_array().unwrap().len(), 1);
 }
 
 // ---------------------------------------------------------------------------

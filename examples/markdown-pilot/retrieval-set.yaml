@@ -11,9 +11,9 @@
 # embedding model: exact Object ID pins rank first, and strong matches stay
 # inside a top-5 window of the fused top-10 pool.
 #
-# Every case lists the pilot's full compat diagnostic budget: the retrieval
-# envelope carries the graph artifact's load diagnostics, and this corpus
-# compiles with exactly these four warning codes.
+# Retrieval excludes carried corpus diagnostics, so these cases require an
+# empty diagnostic budget. The pilot's full compat warning budget remains
+# covered by the build/check tests.
 
 - name: lexical blended KO-first settlement paraphrase
   query: "settlement posts once"
@@ -22,11 +22,7 @@
   top: 10
   expected_ids: [billing.settlement.posts-once]
   must_appear_in_top: 1
-  expected_diagnostics:
-    - compat.unknown_extension
-    - compat.raw_html_quarantined
-    - compat.unsafe_link_dropped
-    - compat.unsafe_image_src_dropped
+  expected_diagnostics: []
 
 - name: lexical blended KO-first webhook signature beats tutorial prose
   query: "webhook signature required"
@@ -35,11 +31,7 @@
   top: 10
   expected_ids: [billing.webhooks.signature-required]
   must_appear_in_top: 1
-  expected_diagnostics:
-    - compat.unknown_extension
-    - compat.raw_html_quarantined
-    - compat.unsafe_link_dropped
-    - compat.unsafe_image_src_dropped
+  expected_diagnostics: []
 
 - name: hybrid blended exact object id pins above prose
   query: "billing.refunds.issue-credit"
@@ -47,11 +39,7 @@
   top: 10
   expected_ids: [billing.refunds.issue-credit]
   must_appear_in_top: 1
-  expected_diagnostics:
-    - compat.unknown_extension
-    - compat.raw_html_quarantined
-    - compat.unsafe_link_dropped
-    - compat.unsafe_image_src_dropped
+  expected_diagnostics: []
 
 - name: hybrid blended KO stays in the fused window
   query: "settlement posts once"
@@ -59,11 +47,7 @@
   top: 10
   expected_ids: [billing.settlement.posts-once]
   must_appear_in_top: 5
-  expected_diagnostics:
-    - compat.unknown_extension
-    - compat.raw_html_quarantined
-    - compat.unsafe_link_dropped
-    - compat.unsafe_image_src_dropped
+  expected_diagnostics: []
 
 - name: hybrid blended prose stays in the fused window
   query: "standby health dashboard"
@@ -71,11 +55,7 @@
   top: 10
   expected_ids: ["runbooks.db-failover#block-0003"]
   must_appear_in_top: 5
-  expected_diagnostics:
-    - compat.unknown_extension
-    - compat.raw_html_quarantined
-    - compat.unsafe_link_dropped
-    - compat.unsafe_image_src_dropped
+  expected_diagnostics: []
 
 - name: lexical blended prose-first ordered procedure list
   query: "quiesce write traffic"
@@ -84,11 +64,7 @@
   top: 10
   expected_ids: ["runbooks.db-failover#block-0007"]
   must_appear_in_top: 1
-  expected_diagnostics:
-    - compat.unknown_extension
-    - compat.raw_html_quarantined
-    - compat.unsafe_link_dropped
-    - compat.unsafe_image_src_dropped
+  expected_diagnostics: []
 
 - name: lexical blended prose-first tutorial paragraph
   query: "sandbox workspace test cards"
@@ -97,11 +73,7 @@
   top: 10
   expected_ids: ["tutorials.getting-started#block-0003"]
   must_appear_in_top: 1
-  expected_diagnostics:
-    - compat.unknown_extension
-    - compat.raw_html_quarantined
-    - compat.unsafe_link_dropped
-    - compat.unsafe_image_src_dropped
+  expected_diagnostics: []
 
 - name: lexical blended prose-first post-incident follow-up
   query: "post-incident review within twenty-four hours"
@@ -110,11 +82,7 @@
   top: 10
   expected_ids: ["runbooks.db-failover#block-0009"]
   must_appear_in_top: 1
-  expected_diagnostics:
-    - compat.unknown_extension
-    - compat.raw_html_quarantined
-    - compat.unsafe_link_dropped
-    - compat.unsafe_image_src_dropped
+  expected_diagnostics: []
 
 - name: lexical blended prose-first rate-limit header list
   query: "X-RateLimit-Remaining"
@@ -123,11 +91,7 @@
   top: 10
   expected_ids: ["api.rate-limits#block-0004"]
   must_appear_in_top: 1
-  expected_diagnostics:
-    - compat.unknown_extension
-    - compat.raw_html_quarantined
-    - compat.unsafe_link_dropped
-    - compat.unsafe_image_src_dropped
+  expected_diagnostics: []
 
 - name: lexical prose-only scope stays prose
   query: "refund audit"
@@ -136,11 +100,7 @@
   top: 10
   expected_ids: ["api.refunds#block-0004", "api.refunds#block-0001"]
   must_appear_in_top: 3
-  expected_diagnostics:
-    - compat.unknown_extension
-    - compat.raw_html_quarantined
-    - compat.unsafe_link_dropped
-    - compat.unsafe_image_src_dropped
+  expected_diagnostics: []
 
 - name: lexical objects-only kind filter on mixed corpus
   query: "ledger"
@@ -149,8 +109,4 @@
   must_appear_in_top: 1
   filters:
     kind: decision
-  expected_diagnostics:
-    - compat.unknown_extension
-    - compat.raw_html_quarantined
-    - compat.unsafe_link_dropped
-    - compat.unsafe_image_src_dropped
+  expected_diagnostics: []

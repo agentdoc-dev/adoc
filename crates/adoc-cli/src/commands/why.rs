@@ -52,7 +52,6 @@ pub(crate) fn why(object_id: String, artifact: Option<PathBuf>, resolved: Resolv
             // `adoc why` is Knowledge-Object-only (ADR-0040).
             PresentationEntry::Prose(_) => None,
         },
-        duration: outcome.duration,
     });
     let view = RetrievalView {
         records,

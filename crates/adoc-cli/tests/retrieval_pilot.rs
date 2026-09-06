@@ -139,6 +139,335 @@ const MARKDOWN_PILOT_SET: PilotRetrievalSet = PilotRetrievalSet {
     case_count: 8..=20,
 };
 
+// The only authorized cross-revision difference on untouched pilot bytes.
+// Baseline identities belong in the run report, not host-specific test constants.
+fn paired_output_compatibility(
+    pilot: &str,
+    carried: &Value,
+    baseline: &Output,
+    candidate: &Output,
+) -> Result<&'static str, &'static str> {
+    if baseline.status != candidate.status || baseline.stderr != candidate.stderr {
+        return Err("status or stderr changed");
+    }
+    let legacy: Value =
+        serde_json::from_slice(&baseline.stdout).map_err(|_| "invalid baseline JSON")?;
+    let current: Value =
+        serde_json::from_slice(&candidate.stdout).map_err(|_| "invalid candidate JSON")?;
+    let diagnostics = legacy["diagnostics"]
+        .as_array()
+        .ok_or("missing baseline diagnostics")?;
+    if current["diagnostics"] != serde_json::json!([]) {
+        return Err("candidate diagnostics are not empty");
+    }
+    if diagnostics.is_empty() {
+        return if baseline.stdout == candidate.stdout {
+            Ok("none")
+        } else {
+            Err("output bytes changed without carried diagnostics")
+        };
+    }
+    if pilot != "markdown-pilot" || &legacy["diagnostics"] != carried {
+        return Err("baseline diagnostics differ from the complete Markdown pilot diagnostics");
+    }
+    let mut counts = BTreeMap::new();
+    for diagnostic in diagnostics {
+        if diagnostic["severity"] != "warning" {
+            return Err("carried diagnostic is not a warning");
+        }
+        let code = diagnostic["code"]
+            .as_str()
+            .ok_or("missing diagnostic code")?;
+        *counts.entry(code).or_insert(0usize) += 1;
+    }
+    if counts
+        != BTreeMap::from([
+            ("compat.unknown_extension", 4),
+            ("compat.raw_html_quarantined", 2),
+            ("compat.unsafe_link_dropped", 1),
+            ("compat.unsafe_image_src_dropped", 1),
+        ])
+    {
+        return Err("unexpected Markdown compatibility warning budget");
+    }
+    // Use the production Diagnostic field order and existing pretty serializer;
+    // do not round-trip the envelope and hide unrelated byte differences.
+    let typed: Vec<adoc_core::Diagnostic> = serde_json::from_value(carried.clone())
+        .map_err(|_| "invalid registered carried diagnostics")?;
+    let rendered = serde_json::to_string_pretty(&typed)
+        .map_err(|_| "cannot serialize carried diagnostics")?
+        .replace('\n', "\n  ");
+    let fragment = format!("\n  \"diagnostics\": {rendered}");
+    let stdout =
+        std::str::from_utf8(&baseline.stdout).map_err(|_| "baseline stdout is not UTF-8")?;
+    if stdout.matches(&fragment).count() != 1 {
+        return Err("expected exactly one complete top-level diagnostics fragment");
+    }
+    let expected = stdout.replacen(&fragment, "\n  \"diagnostics\": []", 1);
+    if expected.as_bytes() != candidate.stdout {
+        return Err("output bytes changed beyond the authorized diagnostic removal");
+    }
+    Ok("markdown_carried_compat_warnings_removed")
+}
+
+#[test]
+#[cfg(unix)]
+fn paired_output_accepts_only_complete_carried_diagnostic_removal() {
+    use std::os::unix::process::ExitStatusExt;
+    use std::process::ExitStatus;
+
+    #[derive(serde::Serialize)]
+    struct Envelope<'a> {
+        records: Vec<Value>,
+        diagnostics: &'a [adoc_core::Diagnostic],
+    }
+    let diagnostics: Vec<adoc_core::Diagnostic> = [
+        ("compat.unknown_extension", 4),
+        ("compat.raw_html_quarantined", 2),
+        ("compat.unsafe_link_dropped", 1),
+        ("compat.unsafe_image_src_dropped", 1),
+    ]
+    .into_iter()
+    .flat_map(|(code, count)| {
+        (0..count).map(move |index| {
+            serde_json::from_value(serde_json::json!({
+                "code": code, "severity": "warning", "message": format!("{code} {index}"),
+                "span": null, "object_id": null, "help": "Inspect source with adoc check."
+            }))
+            .unwrap()
+        })
+    })
+    .collect();
+    let carried = serde_json::to_value(&diagnostics).unwrap();
+    let output = |diagnostics: &[adoc_core::Diagnostic], id: &str| Output {
+        status: ExitStatus::from_raw(0),
+        stdout: format!(
+            "{}\n",
+            serde_json::to_string_pretty(&Envelope {
+                records: vec![serde_json::json!({"id": id, "match": {"result_rank": 1}})],
+                diagnostics,
+            })
+            .unwrap()
+        )
+        .into_bytes(),
+        stderr: vec![],
+    };
+    let baseline = output(&diagnostics, "billing.visible");
+    let candidate = output(&[], "billing.visible");
+    assert_eq!(
+        paired_output_compatibility("markdown-pilot", &carried, &baseline, &candidate),
+        Ok("markdown_carried_compat_warnings_removed")
+    );
+    for pilot in ["billing-pilot", "markdown-pilot"] {
+        assert_eq!(
+            paired_output_compatibility(pilot, &carried, &candidate, &candidate),
+            Ok("none")
+        );
+    }
+    assert!(paired_output_compatibility("billing-pilot", &carried, &baseline, &candidate).is_err());
+    for change in ["record", "diagnostic", "status", "stderr", "format"] {
+        let mut changed = output(&[], "billing.visible");
+        match change {
+            "record" => changed = output(&[], "billing.other"),
+            "diagnostic" => changed = output(&diagnostics[..1], "billing.visible"),
+            "status" => changed.status = ExitStatus::from_raw(256),
+            "stderr" => changed.stderr = b"unexpected warning".to_vec(),
+            "format" => changed.stdout.push(b' '),
+            _ => unreachable!(),
+        }
+        assert!(
+            paired_output_compatibility("markdown-pilot", &carried, &baseline, &changed).is_err(),
+            "{change}"
+        );
+        assert!(
+            paired_output_compatibility("billing-pilot", &carried, &candidate, &changed).is_err(),
+            "{change}"
+        );
+    }
+    // Full payload equality and exact warning counts are separate requirements.
+    let mut changed = diagnostics.clone();
+    changed[0].help = Some("changed repair help".into());
+    assert!(
+        paired_output_compatibility(
+            "markdown-pilot",
+            &carried,
+            &output(&changed, "billing.visible"),
+            &candidate
+        )
+        .is_err()
+    );
+    for change in ["count", "code", "severity"] {
+        let mut changed = diagnostics.clone();
+        match change {
+            "count" => {
+                changed.pop();
+            }
+            "code" => changed[0].code = adoc_core::DiagnosticCode::IoArtifactMissing,
+            "severity" => changed[0].severity = adoc_core::Severity::Error,
+            _ => unreachable!(),
+        }
+        assert!(
+            paired_output_compatibility(
+                "markdown-pilot",
+                &serde_json::to_value(&changed).unwrap(),
+                &output(&changed, "billing.visible"),
+                &candidate
+            )
+            .is_err(),
+            "{change}"
+        );
+    }
+}
+
+/// E6.1 CLI overhead gate. Build both revisions with `cargo test --release
+/// -p adoc-cli --test retrieval_pilot --no-run --locked`, then supply the saved
+/// baseline executable through ADOC_RETRIEVAL_BASELINE_BIN. Both processes read
+/// the same pilot artifact bytes. The checked legacy Markdown diagnostic removal
+/// is reported explicitly; every other output byte must match. This includes
+/// startup/I/O and does not prove isolated predicate cost or hidden-present/absent
+/// timing privacy.
+/// Set ADOC_RETRIEVAL_NO_POLICY_ONLY=1 when comparing to a pre-policy baseline.
+#[test]
+#[ignore = "paired release benchmark; requires ADOC_RETRIEVAL_BASELINE_BIN"]
+#[allow(clippy::assertions_on_constants)] // Compile in debug, but refuse execution there.
+fn permission_retrieval_paired_release_gate() {
+    assert!(!cfg!(debug_assertions), "run this gate with --release");
+    let baseline = PathBuf::from(
+        std::env::var_os("ADOC_RETRIEVAL_BASELINE_BIN").expect("baseline release binary required"),
+    );
+    let candidate = PathBuf::from(env!("CARGO_BIN_EXE_adoc"));
+    let median = |samples: &[f64]| {
+        let mut sorted = samples.to_vec();
+        sorted.sort_by(f64::total_cmp);
+        sorted[sorted.len() / 2]
+    };
+    let mut failures = Vec::new();
+    for set in [&BILLING_PILOT_SET, &MARKDOWN_PILOT_SET] {
+        let pilot = build_pilot(
+            &repo_root(),
+            set.pilot_dir,
+            "permission-perf",
+            EmbeddingBackend::InMemory,
+        );
+        let nodes = pilot.graph_json["nodes"].as_array().unwrap();
+        assert!(nodes.iter().all(|node| node["visibility"].is_null()));
+        let object_id = nodes
+            .iter()
+            .find(|node| node["type"] == "knowledge_object")
+            .expect("pilot contains Knowledge Objects")["id"]
+            .as_str()
+            .unwrap();
+        let context = TestWorkspace::new("permission-perf-context");
+        for policy in [false, true] {
+            if policy && std::env::var_os("ADOC_RETRIEVAL_NO_POLICY_ONLY").is_some() {
+                continue;
+            }
+            if policy {
+                context.write("agentdoc.config.yaml", "version: 1\nmode: strict\ndocs_path: .\nretrieval_policy:\n  audience: public\n  allowed_visibilities: [public]\n  excluded_object_ids: []\n");
+            }
+            let mut commands = vec![
+                vec!["search", "credits", "--lexical"],
+                vec!["search", "credits", "--semantic"],
+                vec!["search", "credits"],
+                vec!["why", object_id],
+                vec!["graph", object_id, "--direction", "both"],
+                vec!["stale"],
+                vec!["contradictions", "--all"],
+                vec!["impacted-by", "src/billing.rs"],
+            ];
+            for args in &mut commands {
+                args.extend([
+                    "--artifact",
+                    pilot.artifact_path.to_str().unwrap(),
+                    "--format",
+                    "json",
+                ]);
+                if args[0] == "search" {
+                    args.extend([
+                        "--search-artifact",
+                        pilot.search_artifact_path.to_str().unwrap(),
+                    ]);
+                }
+                let run = |binary: &Path| {
+                    let mut command = Command::new(binary);
+                    EmbeddingBackend::InMemory.configure(&mut command);
+                    command
+                        .current_dir(&context.root)
+                        .args(&*args)
+                        .output()
+                        .unwrap()
+                };
+                let expected = run(&baseline);
+                assert!(
+                    matches!(expected.status.code(), Some(0 | 1)),
+                    "{args:?}: {expected:?}"
+                );
+                let actual = run(&candidate);
+                let compatibility_delta = paired_output_compatibility(
+                    set.pilot_dir,
+                    &pilot.graph_json["diagnostics"],
+                    &expected,
+                    &actual,
+                )
+                .unwrap_or_else(|error| panic!("{args:?}: {error}"));
+                let measure = |binary: &Path, expected: &Output| {
+                    let start = std::time::Instant::now();
+                    let outputs: Vec<_> = (0..5).map(|_| run(binary)).collect();
+                    let elapsed = start.elapsed().as_secs_f64() / 5.0;
+                    for output in outputs {
+                        assert_eq!(
+                            (&output.status, &output.stdout, &output.stderr),
+                            (&expected.status, &expected.stdout, &expected.stderr)
+                        );
+                    }
+                    elapsed
+                };
+                let mut base_samples = Vec::new();
+                let mut head_samples = Vec::new();
+                let mut ratios = Vec::new();
+                // Three warmup pairs, then 51 pairs; alternate AB/BA to limit order bias.
+                for pair in 0..54 {
+                    let (base, head) = if pair % 2 == 0 {
+                        (measure(&baseline, &expected), measure(&candidate, &actual))
+                    } else {
+                        let head = measure(&candidate, &actual);
+                        (measure(&baseline, &expected), head)
+                    };
+                    if pair >= 3 {
+                        base_samples.push(base);
+                        head_samples.push(head);
+                        ratios.push(head / base);
+                    }
+                }
+                let ratio = median(&ratios);
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "pilot": set.pilot_dir, "policy": policy, "args": args,
+                        "compatibility_delta": compatibility_delta,
+                        "measured_pairs": 51, "warmup_pairs": 3,
+                        "nodes": nodes.len(), "base_seconds": base_samples,
+                        "head_seconds": head_samples, "paired_ratios": ratios,
+                        "base_median_ms": median(&base_samples) * 1000.0,
+                        "head_median_ms": median(&head_samples) * 1000.0,
+                        "paired_median_ratio": ratio, "limit": 1.10, "passed": ratio <= 1.10,
+                    })
+                );
+                if ratio > 1.10 {
+                    failures.push(format!(
+                        "{} policy={policy} {args:?}: {ratio:.4}",
+                        set.pilot_dir
+                    ));
+                }
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "CLI overhead exceeds 1.10: {failures:#?}"
+    );
+}
+
 #[test]
 fn retrieval_set_queries_pass_against_billing_pilot() {
     run_retrieval_set(

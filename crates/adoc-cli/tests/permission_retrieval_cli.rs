@@ -46,6 +46,7 @@ fn carried_source_errors_refuse_search_and_why_without_raw_diagnostics() {
         }
         process.output().expect("CLI runs")
     };
+    let mut projected_responses = Vec::new();
     for command in ["search", "why"] {
         let output = run(command, "json");
         assert_eq!(output.status.code(), Some(2), "{output:?}");
@@ -86,14 +87,18 @@ fn carried_source_errors_refuse_search_and_why_without_raw_diagnostics() {
                 !text.contains("billing.internal") && !text.contains("private-schema-sentinel")
             );
         }
+        projected_responses.push((output, plain));
     }
 
-    // The same carried errors refuse an all-public corpus without policy too.
+    // The same carried errors refuse an all-public corpus without policy too,
+    // without changing any observable diagnostic fields or counts.
     let path = workspace.root.join("dist/docs.graph.json");
     let mut graph: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
     graph["nodes"][1]["visibility"] = json!("public");
     fs::write(path, graph.to_string()).unwrap();
-    for command in ["search", "why"] {
+    for (command, (projected_json, projected_plain)) in
+        ["search", "why"].into_iter().zip(projected_responses)
+    {
         let output = run(command, "json");
         assert_eq!(output.status.code(), Some(2), "{output:?}");
         let envelope: Value = serde_json::from_slice(&output.stdout).expect("retrieval JSON");
@@ -102,21 +107,38 @@ fn carried_source_errors_refuse_search_and_why_without_raw_diagnostics() {
             "{envelope}"
         );
         let diagnostics = envelope["diagnostics"].as_array().unwrap();
-        assert_eq!(diagnostics.len(), 2, "{envelope}");
+        assert_eq!(diagnostics.len(), 1, "{envelope}");
         assert!(
             diagnostics.iter().all(|diagnostic| {
-                diagnostic["code"] == "schema.unknown_field" && diagnostic["severity"] == "error"
+                diagnostic["code"] == "retrieval.visibility_unavailable"
+                    && diagnostic["severity"] == "error"
             }),
             "{envelope}"
         );
         let plain = run(command, "plain");
         assert_eq!(plain.status.code(), Some(2));
         assert!(plain.stdout.is_empty(), "{plain:?}");
+        assert_eq!(
+            (output.status, output.stdout, output.stderr),
+            (
+                projected_json.status,
+                projected_json.stdout,
+                projected_json.stderr
+            )
+        );
+        assert_eq!(
+            (plain.status, plain.stdout, plain.stderr),
+            (
+                projected_plain.status,
+                projected_plain.stdout,
+                projected_plain.stderr
+            )
+        );
     }
 }
 
 #[test]
-fn project_policy_excludes_search_and_why_even_with_explicit_artifact() {
+fn project_policy_excludes_graph_search_and_why_even_with_explicit_artifact() {
     let workspace = TestWorkspace::new("permission-retrieval");
     workspace.write(
         "dist/docs.graph.json",
@@ -126,8 +148,6 @@ fn project_policy_excludes_search_and_why_even_with_explicit_artifact() {
     let config = "version: 1\nmode: strict\ndocs_path: .\nretrieval_policy:\n  audience: public\n  allowed_visibilities: [public]\n  excluded_object_ids: [billing.refunds.issue-credit]\n";
     workspace.write("agentdoc.config.yaml", config);
 
-    // Transitional T1 behavior: graph still reads the unfiltered artifact.
-    // Replace this control with policy exclusion when E6.1.T3 closes graph reads.
     let graph = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
         .args([
@@ -140,17 +160,11 @@ fn project_policy_excludes_search_and_why_even_with_explicit_artifact() {
         ])
         .output()
         .expect("graph CLI runs");
-    assert!(graph.status.success(), "{graph:?}");
+    assert_eq!(graph.status.code(), Some(3), "{graph:?}");
     let graph: serde_json::Value = serde_json::from_slice(&graph.stdout).expect("graph JSON");
-    assert_eq!(graph["root"], "billing.refunds.issue-credit");
-    assert!(
-        graph["nodes"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|node| node["id"] == "billing.refunds.issue-credit"),
-        "{graph}"
-    );
+    assert!(graph["nodes"].as_array().unwrap().is_empty(), "{graph}");
+    assert!(graph["edges"].as_array().unwrap().is_empty(), "{graph}");
+    assert_eq!(graph["diagnostics"][0]["code"], "graph.object_not_found");
 
     for command in ["search", "why"] {
         let run = |object_id| {

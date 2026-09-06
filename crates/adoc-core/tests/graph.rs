@@ -72,6 +72,7 @@ fn load_session(graph_json: String) -> adoc_core::GraphSession {
     let graph_artifact = write_temp_artifact("graph", ".graph.json", &graph_json);
 
     let result = load_graph_session(GraphInput {
+        policy: None,
         graph_artifact_path: graph_artifact.path().to_path_buf(),
     });
 
@@ -81,6 +82,50 @@ fn load_session(graph_json: String) -> adoc_core::GraphSession {
         result.diagnostics
     );
     result.session.expect("graph session loads")
+}
+
+#[test]
+fn hidden_graph_targets_match_absence_in_every_direction_and_relation() {
+    for relation in [
+        GraphRelationKind::DependsOn,
+        GraphRelationKind::Supersedes,
+        GraphRelationKind::RelatedTo,
+    ] {
+        let mut hidden = graph_node("billing.hidden");
+        hidden["visibility"] = json!("restricted");
+        let present = load_session(graph_document(
+            vec![graph_node("billing.visible"), hidden],
+            vec![
+                relation_edge("billing.visible", relation, "billing.hidden"),
+                relation_edge("billing.hidden", relation, "billing.visible"),
+            ],
+        ));
+        let absent = load_session(graph_document(vec![graph_node("billing.visible")], vec![]));
+        for direction in [
+            GraphDirection::Incoming,
+            GraphDirection::Outgoing,
+            GraphDirection::Both,
+        ] {
+            for root in ["billing.visible", "billing.hidden"] {
+                let query = GraphTraversalQuery {
+                    root_id: root.into(),
+                    direction,
+                    relations: vec![relation],
+                };
+                let envelope = |session, query| {
+                    serde_json::to_value(adoc_core::GraphTraversalEnvelope::from(traverse_graph(
+                        session, query,
+                    )))
+                    .unwrap()
+                };
+                assert_eq!(
+                    envelope(&present, query.clone()),
+                    envelope(&absent, query),
+                    "{root}, {direction:?}, {relation:?}"
+                );
+            }
+        }
+    }
 }
 
 fn build_graph_value(source: &str) -> Value {
@@ -741,6 +786,7 @@ fn graph_v5_reader_requires_repository_identity_member() {
     let artifact = write_temp_artifact("missing-repository-identity", ".graph.json", &graph_json);
 
     let result = load_graph_session(GraphInput {
+        policy: None,
         graph_artifact_path: artifact.path().to_path_buf(),
     });
 
@@ -921,6 +967,7 @@ fn build_workspace_emits_graph_artifact_with_deterministic_order_when_embeddings
 #[test]
 fn load_graph_session_rejects_missing_malformed_and_unsupported_artifacts() {
     let missing = load_graph_session(GraphInput {
+        policy: None,
         graph_artifact_path: PathBuf::from("/tmp/adoc-missing-docs.graph.json"),
     });
     assert!(missing.session.is_none());
@@ -931,6 +978,7 @@ fn load_graph_session_rejects_missing_malformed_and_unsupported_artifacts() {
 
     let malformed_artifact = write_temp_artifact("malformed", ".graph.json", "{");
     let malformed = load_graph_session(GraphInput {
+        policy: None,
         graph_artifact_path: malformed_artifact.path().to_path_buf(),
     });
     assert!(malformed.session.is_none());
@@ -945,6 +993,7 @@ fn load_graph_session_rejects_missing_malformed_and_unsupported_artifacts() {
         r#"{"schema_version":"adoc.graph.v99","nodes":[],"edges":[],"diagnostics":[]}"#,
     );
     let unsupported = load_graph_session(GraphInput {
+        policy: None,
         graph_artifact_path: unsupported_artifact.path().to_path_buf(),
     });
     assert!(unsupported.session.is_none());
