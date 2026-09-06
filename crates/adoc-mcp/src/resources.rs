@@ -151,6 +151,14 @@ const RESOURCES: &[AgentResource] = &[
         contents: include_str!("../../../docs/agent/v0/compat-guide.md"),
     },
     AgentResource {
+        uri: "adoc://agent/v0/writeback-record",
+        name: "agent-writeback-record",
+        title: "Cloud Writeback Record",
+        description: "Cloud writeback identity, event lineage, and admission bindings.",
+        mime_type: MARKDOWN,
+        contents: include_str!("../../../docs/agent/v0/writeback-record.md"),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/retrieval",
         name: "schema-retrieval",
         title: "Retrieval Schema Reference",
@@ -632,6 +640,16 @@ const RESOURCES: &[AgentResource] = &[
         mime_type: JSON_SCHEMA,
         contents: include_str!(
             "../../../docs/agent/v0/schema/agentdoc.cloud.work_result.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.writeback_record.v0.schema.json",
+        name: "schema-agentdoc-cloud-writeback-record-v0-json",
+        title: "AgentDoc Cloud Writeback Record JSON Schema",
+        description: "Closed schema for exact projection lineage and mandatory target revision preconditions; not dispatch authorization.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.writeback_record.v0.schema.json"
         ),
     },
     AgentResource {
