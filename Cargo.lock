@@ -14,6 +14,7 @@ version = "0.4.0"
 dependencies = [
  "adoc-core",
  "adoc-local",
+ "adoc-mcp",
  "assert_cmd",
  "chrono",
  "clap",

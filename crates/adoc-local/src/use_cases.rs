@@ -865,7 +865,10 @@ fn load_graph_session_for_query<P: PathPolicy>(
         Err(error) => return Ok((None, vec![retrieval_config_diagnostic(error)?])),
     };
     let load_result = load_graph_session(CoreGraphInput {
-        policy: config.and_then(|config| config.retrieval_policy),
+        policy: context
+            .retrieval_policy_override()
+            .cloned()
+            .or_else(|| config.and_then(|config| config.retrieval_policy)),
         graph_artifact_path: graph_artifact,
     });
     let diagnostics = load_result.diagnostics;
@@ -897,7 +900,10 @@ where
         RetrievalInput {
             artifact_path: artifact.clone(),
             search_artifact_path: None,
-            policy: config.and_then(|config| config.retrieval_policy),
+            policy: context
+                .retrieval_policy_override()
+                .cloned()
+                .or_else(|| config.and_then(|config| config.retrieval_policy)),
         },
         EmbeddingProviderSelection::Local,
     );
@@ -1133,9 +1139,11 @@ where
         RetrievalInput {
             artifact_path: artifact,
             search_artifact_path,
-            policy: config
-                .as_ref()
-                .and_then(|config| config.retrieval_policy.clone()),
+            policy: context.retrieval_policy_override().cloned().or_else(|| {
+                config
+                    .as_ref()
+                    .and_then(|config| config.retrieval_policy.clone())
+            }),
         },
         embedding_provider,
     );

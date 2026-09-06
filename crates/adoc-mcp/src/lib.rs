@@ -5,8 +5,8 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
 use adoc_core::{
-    GraphDirection, GraphRelationKind, PatchJsonInput, RetrievalEnvelope, check_patch_json,
-    mcp_patch_apply_disabled_refusal,
+    GraphDirection, GraphRelationKind, PatchJsonInput, RetrievalEnvelope, RetrievalPolicy,
+    check_patch_json, mcp_patch_apply_disabled_refusal,
 };
 use adoc_local::{
     BuildInput, CheckInput, ContradictionsInput, DiffInput, GraphInput, ImpactedChangedSet,
@@ -53,6 +53,7 @@ pub type McpAdapterResult<T> = Result<T, McpAdapterError>;
 #[derive(Debug, Clone)]
 pub struct AgentDocMcpServer {
     default_project_root: PathBuf,
+    retrieval_policy: RetrievalPolicy,
     tool_router: ToolRouter<Self>,
 }
 
@@ -60,8 +61,20 @@ impl AgentDocMcpServer {
     pub fn new(default_project_root: PathBuf) -> Self {
         Self {
             default_project_root,
+            retrieval_policy: RetrievalPolicy {
+                audience: "public".into(),
+                allowed_visibilities: ["public".into()].into(),
+                excluded_object_ids: Default::default(),
+            },
             tool_router: Self::tool_router(),
         }
+    }
+
+    /// Bind operator-selected retrieval authority for this gateway. Tool arguments
+    /// and project configuration cannot replace it; core validates it on retrieval.
+    pub fn with_retrieval_policy(mut self, policy: RetrievalPolicy) -> Self {
+        self.retrieval_policy = policy;
+        self
     }
 
     pub fn run_init(&self, params: InitParams) -> McpAdapterResult<serde_json::Value> {
@@ -185,7 +198,9 @@ impl AgentDocMcpServer {
             top,
             scope,
         })?;
-        serde_json::to_value(outcome.envelope).map_err(Into::into)
+        // Preserve the CLI's wire representation of f32 cosine scores; to_value
+        // widens them to f64 before JSON serialization and adds decimal digits.
+        serde_json::from_slice(&serde_json::to_vec(&outcome.envelope)?).map_err(Into::into)
     }
 
     pub fn run_patch_check(
@@ -315,10 +330,10 @@ impl AgentDocMcpServer {
     ) -> McpAdapterResult<LocalContext<ProjectRootPathPolicy>> {
         let root = override_root.unwrap_or_else(|| self.default_project_root.clone());
         let policy = ProjectRootPathPolicy::new(root)?;
-        Ok(LocalContext::new(
-            policy.project_root().to_path_buf(),
-            policy,
-        ))
+        Ok(
+            LocalContext::new(policy.project_root().to_path_buf(), policy)
+                .with_retrieval_policy_override(self.retrieval_policy.clone()),
+        )
     }
 }
 
