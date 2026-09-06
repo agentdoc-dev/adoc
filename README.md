@@ -177,9 +177,17 @@ cargo build -p adoc-mcp --release
 ```
 
 Configure your MCP client to launch `target/release/adoc-mcp` over stdio with
-the AgentDoc project as the process working directory. The gateway exposes
-these tools, plus versioned Agent Guidance Resources and Agent Workflow
-Prompts:
+the AgentDoc project as the process working directory.
+
+Retrieval defaults to public-only. To authorize internal/restricted retrieval or
+specific exclusions, add `--config /absolute/path/to/gateway.yaml` to the launch
+arguments. The file must contain an explicit `retrieval_policy`; tool-selected
+project configuration cannot widen the gateway audience. See
+[Bind Retrieval Authority](docs/guides/mcp-agent-gateway.md#bind-retrieval-authority)
+for the configuration and upgrade steps.
+
+The gateway exposes these tools, plus versioned Agent Guidance Resources and
+Agent Workflow Prompts:
 
 <!-- adoc:mcp-tools -->
 - `adoc_init`

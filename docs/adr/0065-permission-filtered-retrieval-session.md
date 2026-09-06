@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-09-05
-- Slices: E6.1.T1–T2
+- Slices: E6.1.T1–T4
 
 ## Context
 
@@ -19,13 +19,26 @@ the loaded Graph Artifact and explicit policy data; it performs no I/O and
 reads no clock or environment. Authored `agent_instruction` content never
 grants permission.
 
-Standalone CLI and MCP policy comes from `agentdoc.config.yaml`, including
+Standalone CLI policy comes from `agentdoc.config.yaml`, including
 when a caller supplies `--artifact`. The optional `retrieval_policy` block
 names an explicit audience, allowed visibility classes from the existing
 `public | internal | restricted` vocabulary, and excluded Object IDs. This
 local configuration is trusted operator input, not authentication for a
 multi-user service. Cloud must resolve current Workspace authorization and
 source ACL ceilings before supplying policy to the same core predicate.
+
+E6.1.T4 binds MCP authority independently of the tool-selected project. The
+gateway defaults to an explicit public-only policy. An operator can supply
+`adoc-mcp --config PATH` with a valid project configuration containing an explicit
+retrieval policy, or an embedded caller can bind the complete existing
+`RetrievalPolicy`. Startup reads only that supplied file; no working-directory
+discovery or environment variable selects authority. The binding is held for the
+process lifetime and passed through `LocalContext` to the existing core session
+loaders. Project configuration still selects artifacts and providers and retains
+its normal validation, but cannot replace gateway authority. A changed gateway
+policy requires restart. This intentionally replaces MCP's prior project-policy
+inheritance; existing non-public MCP deployments must supply explicit startup
+configuration. CLI discovery remains unchanged.
 
 Excluded objects are absent from the search/why result corpus, including an
 explicit ID lookup. No permission-denied diagnostic confirms their existence.

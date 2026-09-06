@@ -81,6 +81,48 @@ your MCP client cannot set `cwd`, pass `project_root` in tool arguments:
 All relative paths passed to MCP tools resolve inside the selected project root.
 Write-capable behavior is constrained to that root.
 
+## Bind Retrieval Authority
+
+The gateway starts with a public-only retrieval policy. To authorize another
+audience or exclude specific Object IDs, start it with an explicit operator-owned
+project configuration file:
+
+```sh
+target/release/adoc-mcp --config /absolute/path/to/gateway.yaml
+```
+
+```yaml
+version: 1
+mode: strict
+docs_path: docs
+retrieval_policy:
+  audience: internal
+  allowed_visibilities: [public, internal]
+  excluded_object_ids: [billing.internal-runbook]
+```
+
+For an MCP client, put `--config` and the absolute path in its `args` array.
+The file must contain a valid explicit `retrieval_policy`; missing or invalid
+audiences fail startup with `retrieval.audience_unresolved`, while unreadable or
+malformed configuration fails with `retrieval.policy_invalid`. Startup errors
+distinguish an unreadable file from malformed YAML with fixed remediation text.
+Invalid configuration settings, such as an unsupported version or provider, use
+`config.invalid`. Errors render as `error[code] guidance` and do not include file
+contents or paths.
+
+Authority is read once at startup. Restart the gateway to change it. Environment
+variables, the working directory, tool arguments, and `project_root` or artifact
+overrides cannot replace this binding. Selected project configuration still
+controls artifact paths and embedding providers, and invalid project configuration
+still refuses retrieval. Embedded callers can use
+`AgentDocMcpServer::with_retrieval_policy` to bind the same complete policy.
+
+This changes gateways that previously inherited an internal/restricted audience
+from a selected project's configuration: they must now explicitly pass `--config`.
+CLI commands continue to discover project policy. Both drivers pass their selected
+policy to the same core retrieval session before search, graph traversal and
+lifecycle signals; the gateway adds no result filtering of its own.
+
 ## First Agent Workflow
 
 An agent should start with the discoverable Agent Usage Contract instead of

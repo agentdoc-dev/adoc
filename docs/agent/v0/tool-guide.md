@@ -14,6 +14,12 @@ V2.2 MCP tools are the supported local agent workflow for AgentDoc projects.
 
 ## Standalone retrieval policy (E6.1.T1–T2)
 
+The configuration discovery below applies to the CLI. The MCP gateway uses a
+public-only default or an explicit startup `adoc-mcp --config PATH` binding.
+Its operator-owned file must contain a valid `retrieval_policy`; selecting another
+project or artifact cannot widen that audience. Restart the gateway after changing
+its authority configuration. See the [MCP Agent Gateway guide](../../guides/mcp-agent-gateway.md#bind-retrieval-authority).
+
 `search` and `why` discover local retrieval policy even with an explicit
 `--artifact`. For example, an operator can configure:
 
@@ -68,8 +74,8 @@ trigger this stale-index failure.
 
 The same core projection enforces this policy on `search`, `why`, `graph`,
 `stale`, `contradictions`, and `impacted-by` before indexes or response
-projections are assembled. Explicit artifact paths still discover project
-policy. Explicit MCP gateway audience configuration follows in E6.1.T4.
+projections are assembled. Explicit CLI artifact paths still discover project
+policy; MCP uses its explicit startup binding instead.
 Retrieval omits carried artifact warnings even when no records are excluded.
 Carried source errors and graph-index validation failures refuse retrieval with
 one generic `retrieval.visibility_unavailable` error and `adoc check` / `adoc build`
@@ -107,3 +113,6 @@ retrieval_policy:
   allowed_visibilities: [public, internal, restricted]
   excluded_object_ids: []
 ```
+
+For MCP, pass this file explicitly with `adoc-mcp --config PATH` and restart
+the gateway; changing a tool-selected project's file alone does not change its audience.
