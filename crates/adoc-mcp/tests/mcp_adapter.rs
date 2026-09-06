@@ -43,6 +43,56 @@ fn copy_billing_pilot_fixture(root: &Path) {
 }
 
 #[test]
+fn tool_selected_project_policy_cannot_widen_the_gateway_audience() {
+    let gateway = tempfile::tempdir().expect("gateway root");
+    let selected = tempfile::tempdir().expect("selected project");
+    write(
+        &gateway.path().join("agentdoc.config.yaml"),
+        "version: 1\nmode: strict\ndocs_path: docs\nretrieval_policy:\n  audience: public\n  allowed_visibilities: [public]\n",
+    );
+    write(
+        &selected.path().join("agentdoc.config.yaml"),
+        "version: 1\nmode: strict\ndocs_path: docs\nretrieval_policy:\n  audience: internal\n  allowed_visibilities: [public, internal]\n",
+    );
+    write(
+        &selected.path().join("docs/index.adoc"),
+        &source().replace("status: draft", "status: draft\nvisibility: internal"),
+    );
+    let server = AgentDocMcpServer::new(gateway.path().to_path_buf());
+    let built = server
+        .run_build(BuildParams {
+            project_root: Some(selected.path().to_path_buf()),
+            path: Some("docs".into()),
+            out: Some("dist".into()),
+            no_embeddings: true,
+        })
+        .expect("fixture builds");
+    assert_eq!(built["ok"], true);
+    let local = adoc_local::LocalContext::new(
+        selected.path().to_path_buf(),
+        ProjectRootPathPolicy::new(selected.path()).expect("local path policy"),
+    )
+    .why(adoc_local::WhyInput {
+        object_id: "billing.credits".into(),
+        artifact: Some("dist/docs.graph.json".into()),
+    })
+    .expect("explicit local project policy permits its internal object");
+    assert_eq!(local.records.len(), 1);
+    let response = server
+        .run_why(WhyParams {
+            project_root: Some(selected.path().to_path_buf()),
+            object_id: "billing.credits".into(),
+            artifact: Some("dist/docs.graph.json".into()),
+        })
+        .expect("gateway returns a retrieval envelope");
+    assert_eq!(response["records"], serde_json::json!([]));
+    assert_eq!(
+        response["diagnostics"][0]["code"],
+        "retrieval.object_not_found"
+    );
+}
+
+#[test]
 fn path_policy_rejects_parent_escape() {
     let workspace = tempfile::tempdir().expect("workspace");
     let root = workspace.path();

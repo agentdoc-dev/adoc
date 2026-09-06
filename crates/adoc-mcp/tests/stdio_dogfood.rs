@@ -38,8 +38,20 @@ struct StdioServer {
 
 impl StdioServer {
     fn spawn(project_root: &Path) -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_adoc-mcp"))
+        Self::spawn_with_config(project_root, None)
+    }
+
+    fn spawn_with_config(project_root: &Path, config: Option<&Path>) -> Self {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_adoc-mcp"));
+        if let Some(path) = config {
+            command.arg("--config").arg(path);
+        }
+        let mut child = command
             .current_dir(project_root)
+            // These ambient hints must never select gateway authority.
+            .env("ADOC_AUDIENCE", "restricted")
+            .env("ADOC_CONFIG", project_root.join("agentdoc.config.yaml"))
+            .env("ADOC_RETRIEVAL_POLICY", r#"{"audience":"restricted","allowed_visibilities":["public","internal","restricted"]}"#)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -593,5 +605,155 @@ fn walk(dir: &Path, out: &mut BTreeSet<PathBuf>) {
         } else {
             out.insert(path);
         }
+    }
+}
+
+#[test]
+fn explicit_gateway_configuration_fails_closed_before_stdio_starts() {
+    let workspace = tempfile::tempdir().unwrap();
+    let config = workspace.path().join("gateway.yaml");
+    let header = "version: 1\nmode: strict\ndocs_path: docs\n";
+    for (contents, code) in [
+        (format!("{header}assessment:\n  exclude_paths: [../secret-canary]\nretrieval_policy:\n  audience: public\n  allowed_visibilities: [public]\n"), "config.invalid"),
+        ("version: 2\nmode: strict\ndocs_path: docs\nretrieval_policy:\n  audience: public\n  allowed_visibilities: [public]\n".into(), "config.invalid"),
+        (header.to_string(), "retrieval.audience_unresolved"),
+        (
+            format!("{header}retrieval_policy:\n  allowed_visibilities: [public]\n"),
+            "retrieval.audience_unresolved",
+        ),
+        (
+            format!(
+                "{header}retrieval_policy:\n  audience: secret-canary\n  allowed_visibilities: [public]\n"
+            ),
+            "retrieval.audience_unresolved",
+        ),
+        (
+            format!("{header}retrieval_policy: secret-canary\n"),
+            "retrieval.policy_invalid",
+        ),
+        ("[secret-canary".into(), "retrieval.policy_invalid"),
+    ] {
+        fs::write(&config, contents).unwrap();
+        let output = Command::new(env!("CARGO_BIN_EXE_adoc-mcp"))
+            .current_dir(workspace.path())
+            .arg("--config")
+            .arg(&config)
+            .env_remove("ADOC_LOG")
+            .env_remove("RUST_LOG")
+            .output()
+            .unwrap();
+        assert!(
+            !output.status.success(),
+            "invalid gateway config must stop startup"
+        );
+        assert!(output.stdout.is_empty());
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(stderr.starts_with(&format!("error[{code}] ")), "{stderr}");
+        assert!(stderr.split_whitespace().count() > 3, "operator guidance: {stderr}");
+        assert!(!stderr.contains("secret-canary"));
+        assert!(!stderr.contains(config.to_str().unwrap()));
+    }
+    fs::remove_file(&config).unwrap();
+    for args in [
+        vec!["--config", config.to_str().unwrap()],
+        vec!["--config"],
+        vec!["--audience", "internal"],
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_adoc-mcp"))
+            .current_dir(workspace.path())
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(output.stdout.is_empty());
+    }
+}
+
+#[test]
+fn stdio_gateway_binds_explicit_policy_once_independently_of_selected_project() {
+    let workspace = tempfile::tempdir().unwrap();
+    let root = workspace.path();
+    fs::create_dir(root.join("docs")).unwrap();
+    fs::write(root.join("docs/index.adoc"), "# Billing @doc(team.billing)\n\n::claim billing.credits\nstatus: draft\nvisibility: internal\n--\nCredits apply after payment.\n::\n").unwrap();
+    fs::write(root.join("docs/restricted.adoc"), "# Private @doc(team.private)\n\n::claim billing.restricted\nstatus: draft\nvisibility: restricted\n--\nRESTRICTED_GATEWAY_CANARY remains private.\n::\n").unwrap();
+    let config = "version: 1\nmode: strict\ndocs_path: docs\nretrieval_policy:\n  audience: internal\n  allowed_visibilities: [public, internal]\n";
+    fs::write(root.join("agentdoc.config.yaml"), config).unwrap();
+    adoc_mcp::AgentDocMcpServer::new(root.into())
+        .run_build(adoc_mcp::BuildParams {
+            project_root: None,
+            path: Some("docs".into()),
+            out: Some("dist".into()),
+            no_embeddings: true,
+        })
+        .unwrap();
+    let graph: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join("dist/docs.graph.json")).unwrap()).unwrap();
+    assert!(
+        graph["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|node| node["id"] == "billing.restricted" && node["visibility"] == "restricted")
+    );
+    let gateway_config = root.join("gateway.yaml");
+    for configured in [false, true] {
+        fs::write(&gateway_config, config).unwrap();
+        let mut server =
+            StdioServer::spawn_with_config(root, configured.then_some(gateway_config.as_path()));
+        server.send(serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+            "protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"gateway-policy-test","version":"0"}
+        }}));
+        assert_eq!(server.receive()["id"], 1);
+        server.send(serde_json::json!({"jsonrpc":"2.0","method":"notifications/initialized"}));
+        // Startup authority remains bound even if the configuration changes.
+        fs::write(&gateway_config, "[invalid after startup").unwrap();
+        server.send(serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{
+            "name":"adoc_why","arguments":{"object_id":"billing.credits","artifact":"dist/docs.graph.json","project_root":root}
+        }}));
+        let response = server.receive();
+        assert_eq!(response["id"], 2);
+        assert_eq!(response["result"]["isError"], false);
+        let expected = if configured {
+            adoc_mcp::AgentDocMcpServer::new(root.into()).with_retrieval_policy(
+                adoc_core::parse_project_config(config)
+                    .unwrap()
+                    .retrieval_policy
+                    .unwrap(),
+            )
+        } else {
+            adoc_mcp::AgentDocMcpServer::new(root.into())
+        }
+        .run_why(adoc_mcp::WhyParams {
+            project_root: None,
+            object_id: "billing.credits".into(),
+            artifact: Some("dist/docs.graph.json".into()),
+        })
+        .unwrap();
+        assert_eq!(
+            serde_json::to_vec(structured_content(&response)).unwrap(),
+            serde_json::to_vec(&expected).unwrap()
+        );
+        assert_eq!(
+            expected["records"].as_array().unwrap().len(),
+            usize::from(configured)
+        );
+        let framed: serde_json::Value =
+            serde_json::from_str(response["result"]["content"][0]["text"].as_str().unwrap())
+                .unwrap();
+        assert_eq!(framed, expected);
+        server.send(serde_json::json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{
+            "name":"adoc_why","arguments":{"object_id":"billing.restricted","artifact":"dist/docs.graph.json","project_root":root}
+        }}));
+        let restricted = server.receive();
+        assert_eq!(restricted["id"], 3);
+        assert_eq!(
+            structured_content(&restricted)["records"],
+            serde_json::json!([])
+        );
+        assert_eq!(
+            structured_content(&restricted)["diagnostics"][0]["code"],
+            "retrieval.object_not_found"
+        );
+        assert!(!restricted.to_string().contains("RESTRICTED_GATEWAY_CANARY"));
     }
 }
