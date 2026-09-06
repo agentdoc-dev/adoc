@@ -538,6 +538,7 @@ fn egress_policy_codes_are_registered_cloud_codes() {
         "egress.policy_unavailable",
         "egress.payload_rejected",
         "egress.category_disabled",
+        "egress.policy_gate_conflict",
     ] {
         assert!(
             codes.contains(code),
