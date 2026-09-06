@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use std::io;
 use std::path::PathBuf;
-use std::time::Duration;
 
 use adoc_core::{Diagnostic, ProseRecord, RetrievalRecord};
 
@@ -15,7 +14,6 @@ pub(crate) struct ExpiresInfo {
 pub(crate) struct RenderMeta {
     pub(crate) artifact: PathBuf,
     pub(crate) trust: Option<String>,
-    pub(crate) duration: Duration,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -33,10 +33,10 @@ fn explicit_artifacts_ignore_broken_config_only_for_non_policy_drivers() {
     );
 
     for (args, needs_policy) in [
-        (vec!["graph", target], false),
-        (vec!["stale"], false),
-        (vec!["contradictions"], false),
-        (vec!["impacted-by", "src/billing.rs"], false),
+        (vec!["graph", target], true),
+        (vec!["stale"], true),
+        (vec!["contradictions"], true),
+        (vec!["impacted-by", "src/billing.rs"], true),
         (vec!["patch", "--check", "patch.json"], false),
         (vec!["why", target], true),
         (vec!["search", target, "--lexical"], true),

@@ -196,12 +196,6 @@ where
         }
     };
 
-    // Hash before consuming the document into GraphIndex.
-    let canonical_bytes = document
-        .to_pretty_json()
-        .expect("graph artifact serialization should not fail")
-        .into_bytes();
-
     if let Err(diagnostic) = filter_retrieval_document(&mut document, input.policy.as_ref()) {
         return RetrievalLoadResult {
             session: None,
@@ -209,22 +203,19 @@ where
         };
     }
 
-    let document_diagnostics = document.diagnostics.clone();
     let graph_session = match GraphIndex::from_document(document) {
         Ok(index) => GraphSession::new(index),
-        Err(mut graph_diagnostics) => {
-            let mut all_diagnostics = document_diagnostics;
-            all_diagnostics.append(&mut graph_diagnostics);
+        Err(_) => {
             return RetrievalLoadResult {
                 session: None,
-                diagnostics: all_diagnostics,
+                diagnostics: vec![retrieval_artifact_error()],
             };
         }
     };
     let lexical_index =
         LexicalIndex::from_corpus(graph_session.objects(), graph_session.prose_blocks());
 
-    let mut diagnostics = document_diagnostics;
+    let mut diagnostics = Vec::new();
     let mut vector_index: Option<VectorIndex> = None;
 
     if let Some(search_path) = input.search_artifact_path.as_ref() {
@@ -261,8 +252,6 @@ where
                 }
 
                 if !artifact_unloadable {
-                    let actual_hash = crate::domain::hashing::sha256_prefixed(&canonical_bytes);
-
                     let mut has_stale_vectors = false;
                     let vectors: Vec<_> = doc
                         .embeddings
@@ -301,7 +290,20 @@ where
                         })
                         .map(|e| (e.id, e.vector))
                         .collect();
-                    if actual_hash != doc.graph_artifact_hash || has_stale_vectors {
+                    let indexed_ids: BTreeSet<_> =
+                        vectors.iter().map(|(id, _)| id.as_str()).collect();
+                    let has_missing_vectors = graph_session
+                        .objects()
+                        .any(|object| !indexed_ids.contains(object.id.as_str()))
+                        || graph_session.prose_blocks().any(|block| {
+                            !indexed_ids.contains(block.id.as_str())
+                                && metadata::prose_is_embeddable(
+                                    block.kind,
+                                    &block.content_text_ref(),
+                                )
+                        });
+                    // A whole-corpus manifest mismatch can reveal hidden-only changes.
+                    if has_stale_vectors || has_missing_vectors {
                         diagnostics.push(Diagnostic::warning(
                             DiagnosticCode::SearchHashDrift,
                             format!(
@@ -332,7 +334,10 @@ where
 
 // Decoding can fail before visibility is known. Never echo payload values
 // from a deserializer; retain the stable error code and safe remediation.
-fn safe_artifact_diagnostics(path: &Path, diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
+pub(super) fn safe_artifact_diagnostics(
+    path: &Path,
+    diagnostics: Vec<Diagnostic>,
+) -> Vec<Diagnostic> {
     diagnostics
         .into_iter()
         .map(|diagnostic| match diagnostic.code {
@@ -362,7 +367,17 @@ fn safe_artifact_diagnostics(path: &Path, diagnostics: Vec<Diagnostic>) -> Vec<D
         .collect()
 }
 
-fn filter_retrieval_document(
+pub(super) fn retrieval_artifact_error() -> Diagnostic {
+    Diagnostic::error(
+        DiagnosticCode::RetrievalVisibilityUnavailable,
+        "The graph artifact contains errors; a trusted retrieval projection is unavailable.",
+    )
+    .with_help(
+        "Run `adoc check` to inspect source errors and `adoc build` to rebuild the artifact.",
+    )
+}
+
+pub(super) fn filter_retrieval_document(
     document: &mut GraphArtifactDocument,
     policy: Option<&RetrievalPolicy>,
 ) -> Result<(), Box<Diagnostic>> {
@@ -383,6 +398,17 @@ fn filter_retrieval_document(
             ),
         ));
     }
+    if document
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.severity == crate::domain::diagnostic::Severity::Error)
+    {
+        return Err(Box::new(retrieval_artifact_error()));
+    }
+    // Carried diagnostics describe the unfiltered corpus, even without an ID.
+    // Their disclosure must not depend on discovering an excluded record.
+    // Only this retrieval copy changes; build/check retain full diagnostics.
+    document.diagnostics.clear();
     let mut excluded = policy
         .map(|p| p.excluded_object_ids.clone())
         .unwrap_or_default();
@@ -400,20 +426,9 @@ fn filter_retrieval_document(
     }
     // ponytail: one extra clone/index preserves validation before redaction;
     // extract borrowed validation if the E6.1.T3 corpus benchmark requires it.
-    if document
-        .diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.severity == crate::domain::diagnostic::Severity::Error)
-        || GraphIndex::from_document(document.clone()).is_err()
-    {
-        return Err(Box::new(Diagnostic::error(
-            DiagnosticCode::RetrievalVisibilityUnavailable,
-            "The graph artifact contains errors; a trusted retrieval projection is unavailable.",
-        ).with_help("Run `adoc check` to inspect source errors and `adoc build` to rebuild the artifact.")));
+    if GraphIndex::from_document(document.clone()).is_err() {
+        return Err(Box::new(retrieval_artifact_error()));
     }
-    // Artifact diagnostics describe the unfiltered corpus and can quote content
-    // without an Object ID. They cannot safely accompany this projection.
-    document.diagnostics.clear();
     // ponytail: repeated projection scans cover citation chains; use a reverse
     // reference index if the worst-case cubic cost fails the E6.1.T3 corpus guard.
     loop {
@@ -1220,34 +1235,145 @@ mod tests {
     }
 
     #[test]
-    fn retrieval_session_load_preserves_document_diagnostics_on_success() {
-        let mut document = graph_document(vec![object("billing.reader-port", "Body.")], Vec::new());
-        document.diagnostics.push(Diagnostic {
-            code: DiagnosticCode::ParseRawHtml,
-            severity: crate::domain::diagnostic::Severity::Warning,
-            message: "artifact carries source warning".to_string(),
-            span: None,
-            object_id: None,
-            help: None,
-        });
-        let reader = StubGraphArtifactReader { document };
+    fn carried_diagnostics_are_safe_independent_of_hidden_presence() {
+        use crate::domain::diagnostic::Severity;
 
-        let result = load_retrieval_session_with_readers(
-            RetrievalInput {
-                policy: None,
-                artifact_path: PathBuf::from("ignored.graph.json"),
-                search_artifact_path: None,
-            },
-            &StubSearchArtifactReader {
-                document: search_document("sha256:unused"),
-            },
-            &reader,
-            None,
-        );
+        for severity in [Severity::Warning, Severity::Error] {
+            for explicit_policy in [false, true] {
+                let mut observed = Vec::new();
+                for hidden_present in [false, true] {
+                    let mut objects = vec![object("billing.visible", "Shared credits.")];
+                    if hidden_present {
+                        let mut hidden = object("billing.hidden", "Private credits.");
+                        hidden.visibility = Some("restricted".into());
+                        objects.push(hidden);
+                    }
+                    let mut document = graph_document(objects, vec![]);
+                    document.diagnostics = vec![
+                        Diagnostic {
+                            code: DiagnosticCode::RefBroken,
+                            severity,
+                            message: "private source payload names billing.hidden".into(),
+                            span: None,
+                            object_id: None,
+                            help: Some("private source repair".into()),
+                        };
+                        if hidden_present { 2 } else { 1 }
+                    ];
+                    let reader = StubGraphArtifactReader { document };
+                    let original = reader.document.to_pretty_json().unwrap();
+                    let loaded = load_retrieval_session_with_readers(
+                        RetrievalInput {
+                            artifact_path: "ignored.graph.json".into(),
+                            search_artifact_path: None,
+                            policy: explicit_policy.then(|| RetrievalPolicy {
+                                audience: "public".into(),
+                                allowed_visibilities: BTreeSet::from(["public".into()]),
+                                excluded_object_ids: BTreeSet::new(),
+                            }),
+                        },
+                        &StubSearchArtifactReader {
+                            document: search_document("sha256:unused"),
+                        },
+                        &reader,
+                        None,
+                    );
+                    assert_eq!(reader.document.to_pretty_json().unwrap(), original);
+                    if severity == Severity::Error {
+                        assert!(
+                            loaded.session.is_none(),
+                            "carried errors must refuse retrieval"
+                        );
+                        assert_eq!(loaded.diagnostics.len(), 1);
+                        let diagnostic = &loaded.diagnostics[0];
+                        assert_eq!(
+                            diagnostic.code,
+                            DiagnosticCode::RetrievalVisibilityUnavailable
+                        );
+                        assert_eq!(diagnostic.severity, Severity::Error);
+                        let help = diagnostic.help.as_deref().unwrap();
+                        assert!(help.contains("adoc check") && help.contains("adoc build"));
+                    } else {
+                        let session = loaded.session.unwrap();
+                        assert_eq!(why_object(&session, "billing.visible").records.len(), 1);
+                        assert!(loaded.diagnostics.is_empty());
+                    }
+                    let encoded = serde_json::to_string(&loaded.diagnostics).unwrap();
+                    assert!(!encoded.contains("private"));
+                    assert!(!encoded.contains("billing.hidden"));
+                    observed.push(encoded);
+                }
+                assert_eq!(observed[0], observed[1]);
+            }
+        }
+    }
 
-        assert!(result.session.is_some());
-        assert_eq!(result.diagnostics.len(), 1);
-        assert_eq!(result.diagnostics[0].code, DiagnosticCode::ParseRawHtml);
+    #[test]
+    fn graph_index_errors_are_safe_independent_of_hidden_presence() {
+        use crate::application::graph::{GraphInput, load_graph_session_with_readers};
+
+        for invalid_path in [false, true] {
+            let mut observed = Vec::new();
+            for hidden_present in [false, true] {
+                let mut visible = object("billing.visible", "Shared credits.");
+                let mut objects = if invalid_path {
+                    visible.source_span.path = "../private-source-payload.adoc".into();
+                    vec![visible]
+                } else {
+                    vec![visible.clone(), visible]
+                };
+                if hidden_present {
+                    let mut hidden = object("billing.hidden", "Private credits.");
+                    hidden.visibility = Some("restricted".into());
+                    objects.push(hidden);
+                }
+                let reader = StubGraphArtifactReader {
+                    document: graph_document(objects, vec![]),
+                };
+                let retrieval = load_retrieval_session_with_readers(
+                    RetrievalInput {
+                        artifact_path: "ignored.graph.json".into(),
+                        search_artifact_path: None,
+                        policy: None,
+                    },
+                    &StubSearchArtifactReader {
+                        document: search_document("sha256:unused"),
+                    },
+                    &reader,
+                    None,
+                );
+                let graph = load_graph_session_with_readers(
+                    GraphInput {
+                        graph_artifact_path: "ignored.graph.json".into(),
+                        policy: None,
+                    },
+                    &reader,
+                );
+                for (has_session, diagnostics) in [
+                    (retrieval.session.is_some(), retrieval.diagnostics),
+                    (graph.session.is_some(), graph.diagnostics),
+                ] {
+                    assert!(!has_session);
+                    assert_eq!(diagnostics.len(), 1);
+                    let diagnostic = &diagnostics[0];
+                    assert_eq!(
+                        diagnostic.code,
+                        DiagnosticCode::RetrievalVisibilityUnavailable
+                    );
+                    assert_eq!(
+                        diagnostic.severity,
+                        crate::domain::diagnostic::Severity::Error
+                    );
+                    let help = diagnostic.help.as_deref().unwrap();
+                    assert!(help.contains("adoc check") && help.contains("adoc build"));
+                    let encoded = serde_json::to_string(&diagnostics).unwrap();
+                    assert!(!encoded.contains("billing."));
+                    assert!(!encoded.contains("private-source-payload"));
+                    observed.push(encoded);
+                }
+            }
+            assert!(observed.iter().all(|item| item == &observed[0]));
+        }
     }
 
     #[test]
@@ -1289,7 +1415,9 @@ mod tests {
             }),
         );
 
-        assert!(result.diagnostics.is_empty());
+        // The matching manifest does not cover the missing root embedding.
+        assert_eq!(result.diagnostics.len(), 1);
+        assert_eq!(result.diagnostics[0].code, DiagnosticCode::SearchHashDrift);
         let session = result.session.expect("session loads");
         assert!(session.has_semantic_index());
 
@@ -1352,14 +1480,15 @@ mod tests {
                         dim: 2,
                     }),
                 );
-                assert_eq!(
-                    loaded.diagnostics[0].code,
-                    if mismatch {
+                if mismatch {
+                    assert_eq!(loaded.diagnostics.len(), 1);
+                    assert_eq!(
+                        loaded.diagnostics[0].code,
                         DiagnosticCode::SearchModelMismatch
-                    } else {
-                        DiagnosticCode::SearchHashDrift
-                    }
-                );
+                    );
+                } else {
+                    assert!(loaded.diagnostics.is_empty());
+                }
                 let encoded = serde_json::to_string(&loaded.diagnostics).unwrap();
                 assert!(!encoded.contains("billing.hidden"), "{encoded}");
                 assert!(!encoded.contains("private-provider-payload"), "{encoded}");
@@ -1504,6 +1633,155 @@ mod tests {
     }
 
     #[test]
+    fn matching_manifest_stale_hidden_vectors_match_absent_entries() {
+        for with_permitted_vector in [false, true] {
+            for wrong_kind in [false, true] {
+                let visible = object("billing.visible", "Visible credits.");
+                let mut hidden = object("billing.target", "Private credits.");
+                hidden.visibility = Some("restricted".into());
+                let present = graph_document(vec![visible.clone(), hidden.clone()], vec![]);
+                // Keep the same index: its manifest matches only the present world.
+                let mut vectors = search_document(&sha256_prefixed(
+                    present.to_pretty_json().unwrap().as_bytes(),
+                ));
+                vectors.embeddings[0].content_hash = "sha256:stale-private-input".into();
+                if wrong_kind {
+                    vectors.embeddings[0].entry_kind = SearchEntryKind::Prose;
+                }
+                if with_permitted_vector {
+                    vectors.embeddings.push(SearchEmbedding {
+                        id: visible.id.clone(),
+                        entry_kind: SearchEntryKind::KnowledgeObject,
+                        content_hash: sha256_prefixed(
+                            metadata::embedding_input(&visible).as_bytes(),
+                        ),
+                        vector: vec![1.0, 0.0],
+                    });
+                }
+                let mut observed = Vec::new();
+                for hidden_present in [false, true] {
+                    let document = if hidden_present {
+                        present.clone()
+                    } else {
+                        graph_document(vec![visible.clone()], vec![])
+                    };
+                    let loaded = load_retrieval_session_with_readers(
+                        RetrievalInput {
+                            artifact_path: "ignored.graph.json".into(),
+                            search_artifact_path: Some("ignored.search.json".into()),
+                            policy: None,
+                        },
+                        &StubSearchArtifactReader {
+                            document: vectors.clone(),
+                        },
+                        &StubGraphArtifactReader { document },
+                        None,
+                    );
+                    assert_eq!(
+                        loaded.diagnostics.len(),
+                        usize::from(!with_permitted_vector)
+                    );
+                    if !with_permitted_vector {
+                        assert_eq!(loaded.diagnostics[0].code, DiagnosticCode::SearchHashDrift);
+                    }
+                    let diagnostics = serde_json::to_string(&loaded.diagnostics).unwrap();
+                    let session = loaded.session.unwrap();
+                    assert!(session.has_semantic_index());
+                    let mut query = lexical_search_query("credits", SearchRecordScope::ObjectsOnly);
+                    query.mode = SearchMode::Semantic;
+                    query.query_vector = Some(vec![1.0, 0.0]);
+                    let result = search(&session, query);
+                    assert_eq!(result.records.len(), usize::from(with_permitted_vector));
+                    observed.push((
+                        diagnostics,
+                        serde_json::to_string(&RetrievalEnvelope::from(result)).unwrap(),
+                    ));
+                }
+                assert_eq!(observed[0], observed[1]);
+            }
+        }
+    }
+
+    #[test]
+    fn missing_permitted_embeddings_warn_without_disabling_semantic_index() {
+        for with_existing_vector in [true, false] {
+            for addition in ["absent", "public", "hidden", "paragraph", "short", "code"] {
+                let existing = object("billing.target", "Target body.");
+                let mut document = graph_document(
+                    if with_existing_vector {
+                        vec![existing]
+                    } else {
+                        vec![]
+                    },
+                    vec![],
+                );
+                let mut vectors = search_document(&sha256_prefixed(
+                    document.to_pretty_json().unwrap().as_bytes(),
+                ));
+                if !with_existing_vector {
+                    vectors.embeddings.clear();
+                }
+                match addition {
+                    "public" | "hidden" => {
+                        let mut added = object("billing.new", "New credits.");
+                        if addition == "hidden" {
+                            added.visibility = Some("restricted".into());
+                        }
+                        document.nodes.push(GraphNode::KnowledgeObject(added));
+                    }
+                    "paragraph" | "short" | "code" => {
+                        let mut node = serde_json::json!({
+                            "type": "paragraph", "id": "guides.page#block-1",
+                            "page_id": "guides.page", "order": 1,
+                            "text": "One two three four five",
+                            "source_span": {"path": "docs/public.adoc", "line": 1, "column": 1}
+                        });
+                        if addition == "short" {
+                            node["text"] = serde_json::json!("One two three four");
+                        } else if addition == "code" {
+                            node["type"] = serde_json::json!("code_block");
+                            node["code"] = node["text"].take();
+                        }
+                        document.nodes.push(serde_json::from_value(node).unwrap());
+                    }
+                    _ => {}
+                }
+                let loaded = load_retrieval_session_with_readers(
+                    RetrievalInput {
+                        artifact_path: "ignored.graph.json".into(),
+                        search_artifact_path: Some("ignored.search.json".into()),
+                        policy: None,
+                    },
+                    &StubSearchArtifactReader { document: vectors },
+                    &StubGraphArtifactReader { document },
+                    None,
+                );
+                let should_warn = matches!(addition, "public" | "paragraph");
+                assert_eq!(
+                    loaded.diagnostics.len(),
+                    usize::from(should_warn),
+                    "{addition}, existing={with_existing_vector}"
+                );
+                if should_warn {
+                    assert_eq!(loaded.diagnostics[0].code, DiagnosticCode::SearchHashDrift);
+                    assert_eq!(
+                        loaded.diagnostics[0].severity,
+                        crate::domain::diagnostic::Severity::Warning
+                    );
+                }
+                let session = loaded
+                    .session
+                    .expect("missing vectors do not refuse retrieval");
+                assert!(session.has_semantic_index());
+                assert_eq!(
+                    session.vector_index().unwrap().rank(&[1.0, 0.0], 10).len(),
+                    usize::from(with_existing_vector)
+                );
+            }
+        }
+    }
+
+    #[test]
     fn a_matching_manifest_does_not_validate_individual_vector_bindings() {
         for wrong_kind in [false, true] {
             let current = object("billing.target", "Shared current credits.");
@@ -1632,7 +1910,12 @@ mod tests {
                 },
                 None,
             );
-            assert_eq!(loaded.diagnostics[0].code, DiagnosticCode::SearchHashDrift);
+            if change == "unchanged" {
+                assert!(loaded.diagnostics.is_empty());
+            } else {
+                assert_eq!(loaded.diagnostics.len(), 1);
+                assert_eq!(loaded.diagnostics[0].code, DiagnosticCode::SearchHashDrift);
+            }
             let session = loaded.session.unwrap();
             assert_eq!(why_object(&session, "billing.target").records.len(), 1);
             assert_eq!(
@@ -1690,7 +1973,12 @@ mod tests {
                 &StubGraphArtifactReader { document },
                 None,
             );
-            assert_eq!(loaded.diagnostics[0].code, DiagnosticCode::SearchHashDrift);
+            if change == "unchanged" {
+                assert!(loaded.diagnostics.is_empty());
+            } else {
+                assert_eq!(loaded.diagnostics.len(), 1);
+                assert_eq!(loaded.diagnostics[0].code, DiagnosticCode::SearchHashDrift);
+            }
             let session = loaded.session.unwrap();
             assert_eq!(
                 session.has_semantic_index(),
@@ -1751,8 +2039,7 @@ mod tests {
             },
             None,
         );
-        assert_eq!(loaded.diagnostics[0].code, DiagnosticCode::SearchHashDrift);
-        assert!(!loaded.diagnostics[0].message.contains("sha256:"));
+        assert!(loaded.diagnostics.is_empty());
         let session = loaded.session.expect("filtered session loads");
         assert!(
             session

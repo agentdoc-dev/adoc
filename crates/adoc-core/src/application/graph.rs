@@ -7,12 +7,14 @@ use crate::domain::graph::{
 };
 use crate::domain::identity::ObjectId;
 use crate::domain::ports::artifact_reader::ArtifactReader;
+use crate::domain::retrieval::RetrievalPolicy;
 
 pub const GRAPH_TRAVERSAL_SCHEMA_VERSION: &str = "adoc.graph.traversal.v0";
 
 #[derive(Debug, Clone)]
 pub struct GraphInput {
     pub graph_artifact_path: PathBuf,
+    pub policy: Option<RetrievalPolicy>,
 }
 
 #[derive(Debug, Clone)]
@@ -113,32 +115,49 @@ pub(crate) fn load_graph_session_with_readers<G>(
 where
     G: ArtifactReader<Output = GraphArtifactDocument>,
 {
-    let graph_document = match graph_reader.read(&input.graph_artifact_path) {
+    if let Some(policy) = &input.policy
+        && let Err(diagnostic) = policy.validate()
+    {
+        return GraphLoadResult {
+            session: None,
+            diagnostics: vec![*diagnostic],
+        };
+    }
+    let mut graph_document = match graph_reader.read(&input.graph_artifact_path) {
         Ok(document) => document,
         Err(diagnostics) => {
             return GraphLoadResult {
                 session: None,
-                diagnostics,
+                diagnostics: super::retrieval::safe_artifact_diagnostics(
+                    &input.graph_artifact_path,
+                    diagnostics,
+                ),
             };
         }
     };
 
-    let mut diagnostics = graph_document.diagnostics.clone();
+    if let Err(diagnostic) =
+        super::retrieval::filter_retrieval_document(&mut graph_document, input.policy.as_ref())
+    {
+        return GraphLoadResult {
+            session: None,
+            diagnostics: vec![*diagnostic],
+        };
+    }
 
     let index = match GraphIndex::from_document(graph_document) {
         Ok(index) => index,
-        Err(mut graph_diagnostics) => {
-            diagnostics.append(&mut graph_diagnostics);
+        Err(_) => {
             return GraphLoadResult {
                 session: None,
-                diagnostics,
+                diagnostics: vec![super::retrieval::retrieval_artifact_error()],
             };
         }
     };
 
     GraphLoadResult {
         session: Some(GraphSession::new(index)),
-        diagnostics,
+        diagnostics: Vec::new(),
     }
 }
 

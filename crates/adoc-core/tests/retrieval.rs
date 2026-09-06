@@ -61,6 +61,11 @@ fn load_session_from_objects_with_vectors(
     objects: Vec<Value>,
     vectors: Vec<(&str, Vec<f32>)>,
 ) -> RetrievalSession {
+    let missing_vector = objects.iter().any(|object| {
+        !vectors
+            .iter()
+            .any(|(id, _)| object["id"].as_str() == Some(*id))
+    });
     let graph_json = graph_json_from_objects(objects, Vec::new());
     let graph: Value = serde_json::from_str(&graph_json).expect("graph fixture parses");
     let artifact = write_temp_artifact("hybrid-graph", &graph_json);
@@ -93,11 +98,11 @@ fn load_session_from_objects_with_vectors(
         search_artifact_path: Some(search_artifact.path().to_path_buf()),
     });
 
-    assert!(
-        result.diagnostics.is_empty(),
-        "expected clean hybrid fixture load, got {:?}",
-        result.diagnostics
-    );
+    assert_eq!(result.diagnostics.len(), usize::from(missing_vector));
+    if missing_vector {
+        assert_eq!(result.diagnostics[0].code, DiagnosticCode::SearchHashDrift);
+        assert_eq!(result.diagnostics[0].severity, adoc_core::Severity::Warning);
+    }
     result.session.expect("hybrid fixture session loads")
 }
 
@@ -791,7 +796,7 @@ fn retrieval_session_rejects_malformed_graph_artifacts_through_graph_index_valid
     assert!(result.session.is_none());
     assert_eq!(
         result.diagnostics[0].code,
-        DiagnosticCode::IdDuplicateInArtifact
+        DiagnosticCode::RetrievalVisibilityUnavailable
     );
 }
 
@@ -1978,8 +1983,16 @@ fn load_retrieval_session_rejects_invalid_object_ids_inside_artifact() {
 
     assert!(result.session.is_none());
     assert_eq!(result.diagnostics.len(), 1);
-    assert_eq!(result.diagnostics[0].code, DiagnosticCode::IdInvalid);
-    assert_eq!(result.diagnostics[0].object_id.as_deref(), Some("bad"));
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::RetrievalVisibilityUnavailable
+    );
+    assert!(result.diagnostics[0].object_id.is_none());
+    assert!(
+        !serde_json::to_string(&result.diagnostics)
+            .unwrap()
+            .contains("bad")
+    );
 }
 
 #[test]
@@ -2030,11 +2043,13 @@ fn load_retrieval_session_rejects_duplicate_object_ids_inside_artifact() {
     assert_eq!(result.diagnostics.len(), 1);
     assert_eq!(
         result.diagnostics[0].code,
-        DiagnosticCode::IdDuplicateInArtifact
+        DiagnosticCode::RetrievalVisibilityUnavailable
     );
-    assert_eq!(
-        result.diagnostics[0].object_id.as_deref(),
-        Some("billing.duplicate")
+    assert!(result.diagnostics[0].object_id.is_none());
+    assert!(
+        !serde_json::to_string(&result.diagnostics)
+            .unwrap()
+            .contains("billing.duplicate")
     );
 }
 
@@ -2632,11 +2647,10 @@ fn load_prose_session_with_vectors(vectors: Vec<(&str, Vec<f32>)>) -> RetrievalS
         artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: Some(search_artifact.path().to_path_buf()),
     });
-    assert!(
-        result.diagnostics.is_empty(),
-        "expected clean prose vector fixture load, got {:?}",
-        result.diagnostics
-    );
+    // These partial sidecars intentionally omit the eligible list block.
+    assert_eq!(result.diagnostics.len(), 1);
+    assert_eq!(result.diagnostics[0].code, DiagnosticCode::SearchHashDrift);
+    assert_eq!(result.diagnostics[0].severity, adoc_core::Severity::Warning);
     result.session.expect("prose vector session loads")
 }
 

@@ -66,22 +66,23 @@ fails with `search.artifact_missing` and exit 2; hybrid search uses lexical
 results. An empty corpus caused only by withheld or absent records does not
 trigger this stale-index failure.
 
-E6.1.T1 enforces this policy on `search` and `why` only. `graph`, `stale`,
-`contradictions`, and `impacted-by` still read the unfiltered artifact until
-the graph-driver tracer E6.1.T3 lands. A CLI regression explicitly pins this
-transitional unfiltered graph behavior; T3 must replace that assertion with
-policy exclusion. MCP gateway parity follows in E6.1.T4.
-T1 also withholds artifact warnings when records are excluded; diagnostic
-presence/absence parity is part of T3's whole-response closure, not a T1 guarantee.
-When visibility or explicit policy supplies excluded IDs, carried source errors
-refuse retrieval with one generic `retrieval.visibility_unavailable` error and
-`adoc check` / `adoc build` guidance. Search and why return no records and exit 2.
-With no excluded IDs, legacy carried diagnostics and CLI refusal on carried
-errors remain unchanged pending T3’s diagnostics compatibility decision.
-An all-public corpus with carried source errors also returns no records and
-exit 2; adding an internal object changes diagnostic disclosure, not availability.
-Structural corruption or a carried `schema.visibility_invalid` diagnostic still
-refuses retrieval, even without a configured policy.
+The same core projection enforces this policy on `search`, `why`, `graph`,
+`stale`, `contradictions`, and `impacted-by` before indexes or response
+projections are assembled. Explicit artifact paths still discover project
+policy. Explicit MCP gateway audience configuration follows in E6.1.T4.
+Retrieval omits carried artifact warnings even when no records are excluded.
+Carried source errors and graph-index validation failures refuse retrieval with
+one generic `retrieval.visibility_unavailable` error and `adoc check` / `adoc build`
+guidance, without original details or counts. Search and why return no records
+and exit 2. Structural corruption or a carried `schema.visibility_invalid`
+diagnostic still refuses retrieval, even without a configured policy.
+
+E6.1.T3 intentionally changes legacy retrieval diagnostics to avoid disclosing
+hidden-record presence through conditional warnings or error text. Full source
+diagnostics remain available from `adoc check` and `adoc build`. Whole-corpus
+manifest hash differences no longer produce retrieval warnings; stale permitted
+vectors still do. Successful plain/styled `why` keeps its artifact/trust footer
+and omits execution time. This does not replace the separate coarse timing check.
 
 Upgrade note: objects already authored with `visibility: internal` or
 `visibility: restricted` now require an explicit policy to appear in `search`

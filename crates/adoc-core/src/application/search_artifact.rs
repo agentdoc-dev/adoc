@@ -5,9 +5,7 @@ use crate::domain::artifact::{
     SearchArtifactDocument, SearchEmbedding, SearchEntryKind, SearchModelHeader,
 };
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
-use crate::domain::graph::{
-    GraphArtifactDocument, GraphBlockNode, GraphKnowledgeObjectNode, GraphNode, ProseBlockKind,
-};
+use crate::domain::graph::{GraphArtifactDocument, GraphKnowledgeObjectNode, GraphNode};
 use crate::domain::hashing::sha256_prefixed;
 use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider};
 use crate::domain::retrieval::metadata;
@@ -84,10 +82,14 @@ pub(crate) fn build_search_artifact(
         .filter(|cached| cached.entry_kind == SearchEntryKind::Prose)
         .map(|cached| (cached.content_hash.as_str(), cached))
         .collect();
-    for (kind, block) in embeddable_prose_blocks(graph_document) {
+    for (kind, block) in graph_document
+        .nodes
+        .iter()
+        .filter_map(GraphNode::as_prose_block)
+    {
         let content_text =
             kind.content_text_from(block.text.as_deref(), block.code.as_deref(), &block.items);
-        if content_text.split_whitespace().count() < MIN_PROSE_EMBEDDING_TOKENS {
+        if !metadata::prose_is_embeddable(kind, &content_text) {
             continue;
         }
         let input = metadata::prose_embedding_input(&content_text, &block.page_id);
@@ -289,23 +291,6 @@ fn graph_knowledge_objects(
         .nodes
         .iter()
         .filter_map(GraphNode::as_knowledge_object)
-}
-
-/// ADR-0040 cost controls: code blocks are never embedded (code stays
-/// lexical-only), and blocks under [`MIN_PROSE_EMBEDDING_TOKENS`] are
-/// skipped in the caller.
-// ponytail: whitespace-token count as the cost gate; a real tokenizer only
-// matters if the pilots show mis-skips.
-const MIN_PROSE_EMBEDDING_TOKENS: usize = 5;
-
-fn embeddable_prose_blocks(
-    graph: &GraphArtifactDocument,
-) -> impl Iterator<Item = (ProseBlockKind, &GraphBlockNode)> {
-    graph
-        .nodes
-        .iter()
-        .filter_map(GraphNode::as_prose_block)
-        .filter(|(kind, _)| *kind != ProseBlockKind::CodeBlock)
 }
 
 #[cfg(test)]

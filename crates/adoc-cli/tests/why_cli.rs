@@ -80,11 +80,7 @@ fn why_defaults_to_dist_graph_json_and_text_format() {
     );
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    insta::with_settings!({
-        filters => vec![(r"\d+\.\d{2}s", "<duration>")]
-    }, {
-        insta::assert_snapshot!("why_plain", stdout);
-    });
+    insta::assert_snapshot!("why_plain", stdout);
 }
 
 #[test]
@@ -311,7 +307,10 @@ fn why_format_json_artifact_errors_exit_2_with_envelope() {
             "unsupported_version.graph.json",
             "schema.unsupported_version",
         ),
-        ("duplicate_id.graph.json", "id.duplicate_in_artifact"),
+        (
+            "duplicate_id.graph.json",
+            "retrieval.visibility_unavailable",
+        ),
     ];
 
     for (fixture, expected_code) in cases {
@@ -540,11 +539,7 @@ fn why_styled_layout_matches_plain_after_ansi_stripping() {
     let visible = strip_ansi(&output.stdout);
 
     // Lock the stripped structure as a snapshot.
-    insta::with_settings!({
-        filters => vec![(r"\d+\.\d{2}s", "<duration>")]
-    }, {
-        insta::assert_snapshot!("why_styled", visible);
-    });
+    insta::assert_snapshot!("why_styled", visible);
 
     // The visible text must not contain any residual escape characters.
     assert!(
@@ -679,15 +674,9 @@ fn why_styled_shows_contradicted_chip_on_relation_target() {
     );
 }
 
-/// Verify that a non-fatal warning baked into the artifact's `diagnostics`
-/// array is preserved in the JSON envelope's `diagnostics` field on the
-/// success path, and that nothing is emitted to stderr.
-///
-/// This guards the fix for the reviewer concern: previously, load-phase
-/// warnings were printed to stderr and the JSON envelope's `diagnostics` was
-/// always `[]`, losing them for machine-readable consumers.
+/// Carried diagnostics cannot expose source content through retrieval output.
 #[test]
-fn why_format_json_preserves_load_warnings_in_envelope() {
+fn why_format_json_omits_carried_artifact_warnings() {
     let workspace = TestWorkspace::new("why-json-load-warning");
     workspace.write("dist/docs.graph.json", &artifact_with_diagnostic("warning"));
 
@@ -719,21 +708,12 @@ fn why_format_json_preserves_load_warnings_in_envelope() {
         value["records"][0]["id"], "billing.refunds.issue-credit",
         "primary record must be present"
     );
-    assert_eq!(
-        value["diagnostics"][0]["code"], "parse.raw_html",
-        "load warning code must round-trip into diagnostics array"
-    );
-    assert_eq!(
-        value["diagnostics"][0]["severity"], "warning",
-        "load warning severity must be 'warning'"
-    );
+    assert_eq!(value["diagnostics"], serde_json::json!([]));
 }
 
-/// Verify that a non-fatal warning in the artifact produces stderr output in
-/// plain/text mode (not JSON mode).  This is the symmetric counterpart to the
-/// JSON test above and ensures the stderr path for non-JSON callers is intact.
+/// Plain output also withholds carried source diagnostics.
 #[test]
-fn why_plain_mode_emits_load_warnings_to_stderr() {
+fn why_plain_mode_omits_carried_artifact_warnings() {
     let workspace = TestWorkspace::new("why-plain-load-warning");
     workspace.write("dist/docs.graph.json", &artifact_with_diagnostic("warning"));
 
@@ -750,9 +730,5 @@ fn why_plain_mode_emits_load_warnings_to_stderr() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("warning[parse.raw_html]"),
-        "plain mode must emit load warnings to stderr; stderr was: {stderr:?}"
-    );
+    assert!(output.stderr.is_empty());
 }
