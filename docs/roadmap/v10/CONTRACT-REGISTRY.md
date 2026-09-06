@@ -538,6 +538,7 @@ The pre-release implementation annotations mark only the ten code rows added by 
 | `egress.policy_unavailable` | planned (E6.6) | policy fetch fails or the latest stored policy is missing or invalid; disable all categories with a visible error, never reuse a cached wider policy |
 | `egress.payload_rejected` | planned (E6.6.T2) | Cloud ingestion refuses payload bytes in a category disabled by the current egress policy as defense-in-depth behind sender filtering; prohibited bytes are not stored, a content-free audit record preserves the refusal, and every production firing is triaged as a defect |
 | `egress.category_disabled` | planned (E6.6.T3) | status carried by the Cloud record in place of content the sender skips transmitting for a disabled category; local deterministic and semantic assessment still run; never render this condition as assessment failure or as coverage |
+| `egress.policy_gate_conflict` | planned (E6.6.T3) | proposed gate-mode or egress policy configuration would prevent a required gate from receiving its required inputs; reject the configuration write with remediation to change policy or gate mode explicitly, never silently downgrade the gate |
 | `api.unauthenticated` | planned (E4.4) | `/api/v1` request lacks a verifiable bearer identity |
 | `api.invalid_request` | planned (E4.4) | `/api/v1` request fails the transport generation's closed structural requirements |
 | `api.idempotency_conflict` | planned (E4.4) | an idempotency key is replayed with different request bytes |
