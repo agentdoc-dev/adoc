@@ -5111,3 +5111,224 @@ fn source_acl_snapshot_is_historical_provenance_not_current_authority() {
         );
     }
 }
+
+#[test]
+fn e6_5_writeback_contract_requires_an_exact_revision_precondition() {
+    let name = "agentdoc.cloud.writeback_record.v0.schema.json";
+    let valid = json!({
+      "schema_version": "agentdoc.cloud.writeback_record.v0",
+      "writeback_id": "60000000-0000-0000-0000-000000000001",
+      "origin": {
+        "subject": { "canonical": { "workspace_id": "10000000-0000-0000-0000-000000000001", "canonical_id": "30000000-0000-0000-0000-000000000001" }, "version_id": "40000000-0000-0000-0000-000000000001" },
+        "event_ordinal": "0",
+        "event_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "target": {
+        "connector_id": "20000000-0000-0000-0000-000000000001",
+        "source_binding_id": "binding-1",
+        "source_binding_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "revision_precondition": "native-revision-42"
+      },
+      "idempotency_key": "projection-42",
+      "payload_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    });
+    assert_valid(name, &valid);
+    let mut later = valid.clone();
+    later["origin"]["event_ordinal"] = json!("9007199254740993");
+    assert_valid(name, &later);
+    let mut global_sequence = valid.clone();
+    global_sequence["origin"]
+        .as_object_mut()
+        .unwrap()
+        .remove("event_ordinal");
+    global_sequence["origin"]["event_seq"] = json!("42");
+    assert!(
+        !schema_accepts(name, &global_sequence),
+        "store-global sequence cannot stand in for a workspace ordinal"
+    );
+
+    let mut missing = valid.clone();
+    missing["target"]
+        .as_object_mut()
+        .unwrap()
+        .remove("revision_precondition");
+    assert!(
+        !schema_accepts(name, &missing),
+        "writeback without a target revision must fail closed"
+    );
+    for precondition in [
+        json!(null),
+        json!(""),
+        json!(" "),
+        json!(" revision "),
+        json!("revision\n42"),
+        json!("revision\u{2028}42"),
+        json!("revision\u{2029}42"),
+        json!(42),
+    ] {
+        let mut invalid = valid.clone();
+        invalid["target"]["revision_precondition"] = precondition;
+        assert!(
+            !schema_accepts(name, &invalid),
+            "invalid target revision was accepted: {invalid}"
+        );
+    }
+
+    // Every lineage reference is mandatory; no malformed sibling can be ignored.
+    for pointer in [
+        "/schema_version",
+        "/writeback_id",
+        "/origin",
+        "/origin/subject",
+        "/origin/subject/canonical",
+        "/origin/subject/canonical/workspace_id",
+        "/origin/subject/canonical/canonical_id",
+        "/origin/subject/version_id",
+        "/origin/event_ordinal",
+        "/origin/event_digest",
+        "/target",
+        "/target/connector_id",
+        "/target/source_binding_id",
+        "/target/source_binding_digest",
+        "/target/revision_precondition",
+        "/idempotency_key",
+        "/payload_digest",
+    ] {
+        let (parent, field) = pointer.rsplit_once('/').unwrap();
+        let mut missing = valid.clone();
+        missing
+            .pointer_mut(parent)
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .remove(field);
+        assert!(
+            !schema_accepts(name, &missing),
+            "missing {pointer} was accepted"
+        );
+        let mut null = valid.clone();
+        *null.pointer_mut(pointer).unwrap() = json!(null);
+        assert!(!schema_accepts(name, &null), "null {pointer} was accepted");
+    }
+    for pointer in [
+        "",
+        "/origin",
+        "/origin/subject",
+        "/origin/subject/canonical",
+        "/target",
+    ] {
+        let mut extended = valid.clone();
+        extended
+            .pointer_mut(pointer)
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .insert("unexpected".into(), json!(true));
+        assert!(
+            !schema_accepts(name, &extended),
+            "unknown field in {pointer} was accepted"
+        );
+    }
+    for pointer in [
+        "/writeback_id",
+        "/origin/subject/canonical/workspace_id",
+        "/origin/subject/canonical/canonical_id",
+        "/origin/subject/version_id",
+        "/target/connector_id",
+    ] {
+        for id in [
+            "not-a-uuid",
+            "ABCDEFAB-0000-0000-0000-000000000001",
+            "10000000-0000-0000-0000-000000000001\n",
+        ] {
+            let mut invalid = valid.clone();
+            *invalid.pointer_mut(pointer).unwrap() = json!(id);
+            assert!(
+                !schema_accepts(name, &invalid),
+                "noncanonical UUID at {pointer} was accepted"
+            );
+        }
+    }
+    for pointer in [
+        "/origin/event_digest",
+        "/target/source_binding_digest",
+        "/payload_digest",
+    ] {
+        for digest in [
+            format!("sha256:{}", "a".repeat(63)),
+            format!("sha256:{}", "A".repeat(64)),
+            format!("sha256:{}\n", "a".repeat(64)),
+            format!("sha512:{}", "a".repeat(64)),
+        ] {
+            let mut invalid = valid.clone();
+            *invalid.pointer_mut(pointer).unwrap() = json!(digest);
+            assert!(
+                !schema_accepts(name, &invalid),
+                "malformed digest at {pointer} was accepted"
+            );
+        }
+    }
+    for ordinal in [
+        json!(0),
+        json!(42),
+        json!("-1"),
+        json!("01"),
+        json!("+1"),
+        json!("1\n"),
+    ] {
+        let mut invalid = valid.clone();
+        invalid["origin"]["event_ordinal"] = ordinal;
+        assert!(
+            !schema_accepts(name, &invalid),
+            "noncanonical event sequence was accepted"
+        );
+    }
+    for pointer in ["/target/source_binding_id", "/idempotency_key"] {
+        for value in [
+            "",
+            " ",
+            " padded ",
+            "line\nbreak",
+            "line\u{2028}break",
+            "line\u{2029}break",
+        ] {
+            let mut invalid = valid.clone();
+            *invalid.pointer_mut(pointer).unwrap() = json!(value);
+            assert!(
+                !schema_accepts(name, &invalid),
+                "unbound text at {pointer} was accepted"
+            );
+        }
+    }
+    for pointer in ["/target/source_binding_id", "/target/revision_precondition"] {
+        for control in [
+            '\0', '\u{b}', '\u{c}', '\u{1b}', '\u{7f}', '\u{85}', '\u{9f}',
+        ] {
+            for value in [control.to_string(), format!("before{control}after")] {
+                let mut invalid = valid.clone();
+                *invalid.pointer_mut(pointer).unwrap() = json!(value);
+                assert!(
+                    !schema_accepts(name, &invalid),
+                    "control character at {pointer} was accepted"
+                );
+            }
+        }
+    }
+    let mut longest_key = valid.clone();
+    longest_key["idempotency_key"] = json!("a".repeat(200));
+    assert_valid(name, &longest_key);
+    for key in ["a".repeat(201), "two words".into(), "clé".into()] {
+        let mut invalid = valid.clone();
+        invalid["idempotency_key"] = json!(key);
+        assert!(
+            !schema_accepts(name, &invalid),
+            "key outside the existing Cloud transport contract was accepted"
+        );
+    }
+    let mut future = valid;
+    future["schema_version"] = json!("agentdoc.cloud.writeback_record.v99");
+    assert!(
+        !schema_accepts(name, &future),
+        "unknown operation version was accepted"
+    );
+}

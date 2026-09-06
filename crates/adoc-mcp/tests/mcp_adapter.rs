@@ -276,6 +276,7 @@ fn lists_and_reads_all_stable_agent_resources() {
         "adoc://agent/v0/review-workflow",
         "adoc://agent/v0/change-assessment-workflow",
         "adoc://agent/v0/compat-guide",
+        "adoc://agent/v0/writeback-record",
         "adoc://agent/v0/schema/retrieval",
         "adoc://agent/v0/schema/graph-traversal",
         "adoc://agent/v0/schema/patch",
@@ -331,6 +332,7 @@ fn lists_and_reads_all_stable_agent_resources() {
         "adoc://agent/v0/schema/agentdoc.cloud.repository_config.v0.schema.json",
         "adoc://agent/v0/schema/agentdoc.cloud.work_request.v0.schema.json",
         "adoc://agent/v0/schema/agentdoc.cloud.work_result.v0.schema.json",
+        "adoc://agent/v0/schema/agentdoc.cloud.writeback_record.v0.schema.json",
         "adoc://agent/v0/schema/search-artifact.json",
         "adoc://agent/v0/schema/graph-artifact.v6.json",
     ];
@@ -371,7 +373,9 @@ fn lists_and_reads_all_stable_agent_resources() {
             assert_eq!(resource.mime_type.as_deref(), Some("text/markdown"));
             assert_eq!(mime_type.as_deref(), Some("text/markdown"));
             assert!(text.starts_with("# "));
-            assert!(text.contains("V2.2") || text.contains("adoc."));
+            assert!(
+                text.contains("V2.2") || text.contains("adoc.") || text.contains("agentdoc.cloud.")
+            );
         }
     }
 }
