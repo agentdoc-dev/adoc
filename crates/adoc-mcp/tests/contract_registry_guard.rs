@@ -507,22 +507,41 @@ fn e4_4_cloud_operation_contracts_are_registered_exactly() {
 }
 
 #[test]
-fn e6_5_writeback_schema_publication_keeps_cloud_contract_planned() {
+fn schema_publication_keeps_planned_contract_ownership() {
     let doc = registry();
-    let id = "agentdoc.cloud.writeback_record.v0";
-    assert!(anchored_ids(&doc, "registry:envelopes-planned").contains(id));
-    for anchor in ANCHORS.iter().copied().filter(|anchor| {
-        anchor.starts_with("registry:envelopes-") && *anchor != "registry:envelopes-planned"
-    }) {
-        assert!(!anchored_ids(&doc, anchor).contains(id));
+    for (id, owner, slice) in [
+        ("agentdoc.cloud.writeback_record.v0", "cloud", "E6.5"),
+        ("adoc.authorization_decision.v0", "adoc", "E2.2"),
+        ("agentdoc.cloud.egress_policy.v0", "cloud", "E4.4"),
+    ] {
+        assert!(anchored_ids(&doc, "registry:envelopes-planned").contains(id));
+        for anchor in ANCHORS.iter().copied().filter(|anchor| {
+            anchor.starts_with("registry:envelopes-") && *anchor != "registry:envelopes-planned"
+        }) {
+            assert!(!anchored_ids(&doc, anchor).contains(id));
+        }
+        let block = support::doc_scan::anchored_block(&doc, REGISTRY, "registry:envelopes-planned");
+        let row = block
+            .lines()
+            .find(|line| line.trim_start().starts_with(&format!("| `{id}` |")))
+            .expect("planned contract row");
+        assert_eq!(row.split('|').nth(2).map(str::trim), Some(owner), "{id}");
+        assert_eq!(row.split('|').nth(3).map(str::trim), Some(slice), "{id}");
     }
-    let block = support::doc_scan::anchored_block(&doc, REGISTRY, "registry:envelopes-planned");
-    let row = block
-        .lines()
-        .find(|line| line.trim_start().starts_with(&format!("| `{id}` |")))
-        .expect("planned writeback contract row");
-    assert_eq!(row.split('|').nth(2).map(str::trim), Some("cloud"));
-    assert_eq!(row.split('|').nth(3).map(str::trim), Some("E6.5"));
+}
+
+#[test]
+fn egress_policy_refusals_are_registered_cloud_codes() {
+    let codes = anchored_ids(&registry(), "registry:cloud-codes");
+    for code in [
+        "egress.policy_unknown_category",
+        "egress.policy_unavailable",
+    ] {
+        assert!(
+            codes.contains(code),
+            "missing Cloud egress policy refusal: {code}"
+        );
+    }
 }
 
 #[test]

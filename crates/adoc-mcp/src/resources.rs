@@ -475,6 +475,16 @@ const RESOURCES: &[AgentResource] = &[
         contents: include_str!("../../../docs/agent/v0/schema/adoc.source_binding.v0.schema.json"),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.authorization_decision.v0.schema.json",
+        name: "schema-adoc-authorization-decision-v0-json",
+        title: "Authorization Decision JSON Schema",
+        description: "JSON Schema for scoped authorization decisions and shared source-resource identities.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/adoc.authorization_decision.v0.schema.json"
+        ),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/adoc.source_record.v0.schema.json",
         name: "schema-adoc-source-record-v0-json",
         title: "Source Record JSON Schema",
