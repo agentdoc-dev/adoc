@@ -531,15 +531,17 @@ fn schema_publication_keeps_planned_contract_ownership() {
 }
 
 #[test]
-fn egress_policy_refusals_are_registered_cloud_codes() {
+fn egress_policy_codes_are_registered_cloud_codes() {
     let codes = anchored_ids(&registry(), "registry:cloud-codes");
     for code in [
         "egress.policy_unknown_category",
         "egress.policy_unavailable",
+        "egress.payload_rejected",
+        "egress.category_disabled",
     ] {
         assert!(
             codes.contains(code),
-            "missing Cloud egress policy refusal: {code}"
+            "missing Cloud egress policy code: {code}"
         );
     }
 }

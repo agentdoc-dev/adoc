@@ -536,6 +536,8 @@ The pre-release implementation annotations mark only the ten code rows added by 
 | `authority.attestation_invalid` | planned (E4.3) | external-promotion attestation digest, immutable Source Assertion, independent trusted issuer evidence, or exact candidate/policy/issuer/type binding is invalid |
 | `egress.policy_unknown_category` | planned (E6.6) | egress policy names a category outside the closed seven-category vocabulary; reject structurally, never ignore the key |
 | `egress.policy_unavailable` | planned (E6.6) | policy fetch fails or the latest stored policy is missing or invalid; disable all categories with a visible error, never reuse a cached wider policy |
+| `egress.payload_rejected` | planned (E6.6.T2) | Cloud ingestion refuses payload bytes in a category disabled by the current egress policy as defense-in-depth behind sender filtering; prohibited bytes are not stored, a content-free audit record preserves the refusal, and every production firing is triaged as a defect |
+| `egress.category_disabled` | planned (E6.6.T3) | status carried by the Cloud record in place of content the sender skips transmitting for a disabled category; local deterministic and semantic assessment still run; never render this condition as assessment failure or as coverage |
 | `api.unauthenticated` | planned (E4.4) | `/api/v1` request lacks a verifiable bearer identity |
 | `api.invalid_request` | planned (E4.4) | `/api/v1` request fails the transport generation's closed structural requirements |
 | `api.idempotency_conflict` | planned (E4.4) | an idempotency key is replayed with different request bytes |
