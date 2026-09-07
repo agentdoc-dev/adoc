@@ -40,31 +40,7 @@
         "additionalProperties": false,
         "required": ["canonical", "version_id", "object_id", "receipt_id", "content_bytes", "content_digest"],
         "properties": {
-          "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
-    "fieldProjection": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["workspace_id", "canonical_id", "version_id", "content_digest", "fields"],
-      "properties": {
-        "workspace_id": { "$ref": "#/$defs/uuid" },
-        "canonical_id": { "$ref": "#/$defs/uuid" },
-        "version_id": { "$ref": "#/$defs/uuid" },
-        "content_digest": { "$ref": "#/$defs/digest" },
-        "fields": {
-          "type": "array", "minItems": 1, "maxItems": 100, "uniqueItems": true,
-          "description": "Distinct selectors targeting existing string-valued body/generic fields; core validates selector uniqueness, exact content and coordinate joins. Absence of the extension means no attached manifest; an empty projection is invalid.",
-          "items": {
-            "type": "object", "additionalProperties": false,
-            "required": ["selector", "classification"],
-            "properties": {
-              "selector": { "type": "string", "maxLength": 256, "pattern": "^(?:/body|/fields/(?:[^~/]|~[01])+)$" },
-              "classification": { "enum": [null, "public", "internal", "restricted"] }
-            }
-          }
-        }
-      }
-    },
-    "canonical": { "$ref": "#/$defs/canonical" },
+          "canonical": { "$ref": "#/$defs/canonical" },
           "version_id": { "$ref": "#/$defs/identity" },
           "object_id": { "$ref": "#/$defs/objectId" },
           "receipt_id": { "$ref": "#/$defs/identity" },
