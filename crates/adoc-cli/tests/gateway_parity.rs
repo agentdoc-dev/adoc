@@ -1,5 +1,7 @@
 mod support;
 
+use std::{collections::BTreeSet, fs};
+
 use adoc_core::RetrievalPolicy;
 use adoc_mcp::{AgentDocMcpServer, McpAdapterError};
 use serde_json::{Value, json};
@@ -84,7 +86,8 @@ fn write_policy(workspace: &TestWorkspace, policy: &RetrievalPolicy) {
 
 fn fixture() -> TestWorkspace {
     let workspace = TestWorkspace::new("gateway-parity");
-    workspace.write("agentdoc.config.yaml", CONFIG);
+    // This read-policy fixture deliberately starts with an authorized wide index.
+    write_policy(&workspace, &embedding_policy("restricted", false));
     workspace.write("docs/billing.adoc", SOURCE);
     let output = adoc_command()
         .current_dir(&workspace.root)
@@ -93,6 +96,7 @@ fn fixture() -> TestWorkspace {
         .unwrap();
     assert!(output.status.success(), "{output:?}");
     assert!(workspace.root.join("dist/docs.search.json").is_file());
+    workspace.write("agentdoc.config.yaml", CONFIG);
     workspace
 }
 
@@ -307,4 +311,292 @@ fn ordinary_gateway_preserves_complete_cli_envelope_parity() {
         let expected = cli(&workspace, &args, 0);
         assert_bytes(&expected, &mcp(&server, &workspace, args[0], params), &args);
     }
+}
+
+const EMBEDDING_SOURCE: &str = "# Embedding boundaries @doc(embedding.page)
+
+This ordinary orientation has enough words for embedding.
+
+This protected orientation refers to [[embedding.internal]] for details.
+
+::claim embedding.internal
+status: draft
+visibility: internal
+--
+INTERNAL_PASSAGE_CANARY is private context.
+::
+
+::claim embedding.excluded
+status: draft
+visibility: public
+--
+EXCLUDED_PASSAGE_CANARY is explicitly denied.
+::
+
+::claim embedding.partial
+status: draft
+visibility: public
+owner: HIDDEN_OWNER_CANARY
+field_visibility: owner=internal, body=restricted
+--
+HIDDEN_BODY_CANARY must never become public model input.
+::
+
+::claim embedding.safe
+status: draft
+owner: public-team
+--
+PUBLIC_SIBLING_CANARY remains useful and searchable.
+::
+";
+
+fn embedding_policy(audience: &str, exclude: bool) -> RetrievalPolicy {
+    RetrievalPolicy {
+        audience: audience.into(),
+        allowed_visibilities: ["public".into(), "internal".into(), "restricted".into()].into(),
+        excluded_object_ids: if exclude {
+            ["embedding.excluded".into()].into()
+        } else {
+            Default::default()
+        },
+    }
+}
+
+fn build(workspace: &TestWorkspace, args: &[&str]) -> String {
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{args:?}: {output:?}");
+    format!(
+        "{}{}",
+        String::from_utf8(output.stdout).unwrap(),
+        String::from_utf8(output.stderr).unwrap()
+    )
+}
+
+fn artifact(workspace: &TestWorkspace, path: &str) -> Value {
+    serde_json::from_slice(&fs::read(workspace.root.join(path)).unwrap()).unwrap()
+}
+
+fn embedding<'a>(search: &'a Value, id: &str) -> &'a Value {
+    search["embeddings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["id"] == id)
+        .unwrap()
+}
+
+fn assert_embedding_ids(search: &Value, graph: &Value, internal: bool, excluded: bool) {
+    let mut expected: BTreeSet<String> =
+        ["embedding.partial".into(), "embedding.safe".into()].into();
+    if internal {
+        expected.insert("embedding.internal".into());
+    }
+    if excluded {
+        expected.insert("embedding.excluded".into());
+    }
+    for node in graph["nodes"].as_array().unwrap() {
+        let text = node["text"].as_str().unwrap_or_default();
+        if text.starts_with("This ordinary orientation")
+            || (internal && text.starts_with("This protected orientation"))
+        {
+            expected.insert(node["id"].as_str().unwrap().into());
+        }
+    }
+    assert!(
+        expected.len() >= 3,
+        "must include the real safe prose carrier"
+    );
+    let actual = search["embeddings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| entry["id"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(expected, actual);
+    assert_eq!(search["schema_version"], "adoc.search.v2");
+}
+
+#[test]
+fn trusted_public_build_excludes_protected_embeddings_despite_broad_project_policy() {
+    let workspace = TestWorkspace::new("gateway-embedding-policy");
+    workspace.write("docs/embedding.adoc", EMBEDDING_SOURCE);
+    write_policy(&workspace, &embedding_policy("restricted", false));
+    let public = embedding_policy("public", true);
+    let server =
+        AgentDocMcpServer::new(workspace.root.clone()).with_retrieval_policy(public.clone());
+    let built = server.run_build(Default::default()).unwrap();
+    assert_eq!(built["exit_code"], 0, "{built}");
+    let graph = artifact(&workspace, "dist/docs.graph.json");
+    let narrow = artifact(&workspace, "dist/docs.search.json");
+    assert_embedding_ids(&narrow, &graph, false, false);
+    assert!(graph.to_string().contains("HIDDEN_BODY_CANARY"));
+    assert!(graph.to_string().contains("HIDDEN_OWNER_CANARY"));
+
+    // Same public authority gives complete CLI/MCP parity, including vector ranks.
+    write_policy(&workspace, &public);
+    let args = [
+        "search",
+        "PUBLIC_SIBLING_CANARY",
+        "--semantic",
+        "--top",
+        "20",
+    ];
+    let expected = cli(&workspace, &args, 0);
+    assert!(!expected["records"].as_array().unwrap().is_empty());
+    assert!(
+        expected["records"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|r| r["match"]["vector_rank"].is_number())
+    );
+    assert_bytes(
+        &expected,
+        &mcp(
+            &server,
+            &workspace,
+            "search",
+            json!({"query":"PUBLIC_SIBLING_CANARY", "semantic":true, "top":20}),
+        ),
+        &args,
+    );
+
+    // Absent policy is public and still projects authored fields, but has no exclusion list.
+    workspace.write("agentdoc.config.yaml", CONFIG);
+    build(&workspace, &["build", "docs", "--out", "default"]);
+    let default = artifact(&workspace, "default/docs.search.json");
+    assert_embedding_ids(&default, &graph, false, true);
+    assert_eq!(
+        embedding(&default, "embedding.partial"),
+        embedding(&narrow, "embedding.partial")
+    );
+    assert_eq!(
+        fs::read(workspace.root.join("dist/docs.graph.json")).unwrap(),
+        fs::read(workspace.root.join("default/docs.graph.json")).unwrap()
+    );
+    assert_eq!(
+        default["graph_artifact_hash"],
+        narrow["graph_artifact_hash"]
+    );
+    build(
+        &workspace,
+        &["build", "docs", "--out", "skipped", "--no-embeddings"],
+    );
+    assert!(workspace.root.join("skipped/docs.graph.json").is_file());
+    assert!(!workspace.root.join("skipped/docs.search.json").exists());
+}
+
+#[test]
+fn cli_narrow_rebuild_rejects_wide_cached_embeddings_and_retains_authority_controls() {
+    let workspace = TestWorkspace::new("gateway-embedding-cache");
+    workspace.write("docs/embedding.adoc", EMBEDDING_SOURCE);
+    write_policy(&workspace, &embedding_policy("restricted", false));
+    build(&workspace, &["build", "docs", "--out", "dist"]);
+    let graph = artifact(&workspace, "dist/docs.graph.json");
+    let graph_bytes = fs::read(workspace.root.join("dist/docs.graph.json")).unwrap();
+    let broad = artifact(&workspace, "dist/docs.search.json");
+    assert_embedding_ids(&broad, &graph, true, true);
+    let authorized = cli(
+        &workspace,
+        &[
+            "search",
+            "INTERNAL_PASSAGE_CANARY",
+            "--semantic",
+            "--top",
+            "20",
+        ],
+        0,
+    );
+    assert!(
+        authorized["records"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["id"] == "embedding.internal" && r["match"]["vector_rank"].is_number())
+    );
+    let authorized_server = AgentDocMcpServer::new(workspace.root.clone())
+        .with_retrieval_policy(embedding_policy("restricted", false));
+    assert!(matches!(
+        mcp_result(
+            &authorized_server,
+            &workspace,
+            "search",
+            json!({"query":"INTERNAL_PASSAGE_CANARY", "semantic":true, "top":20})
+        ),
+        Err(McpAdapterError::AuditSinkUnavailable)
+    ));
+
+    write_policy(&workspace, &embedding_policy("public", true));
+    let rebuilt = build(&workspace, &["build", "docs", "--out", "dist"]);
+    let narrow = artifact(&workspace, "dist/docs.search.json");
+    assert_embedding_ids(&narrow, &graph, false, false);
+    assert!(
+        rebuilt.contains("embeddings: cached 2, computed 1"),
+        "{rebuilt}"
+    );
+    assert_eq!(
+        embedding(&narrow, "embedding.safe"),
+        embedding(&broad, "embedding.safe")
+    );
+    assert_ne!(
+        embedding(&narrow, "embedding.partial"),
+        embedding(&broad, "embedding.partial")
+    );
+    assert_eq!(
+        graph_bytes,
+        fs::read(workspace.root.join("dist/docs.graph.json")).unwrap()
+    );
+    assert_eq!(narrow["graph_artifact_hash"], broad["graph_artifact_hash"]);
+    build(&workspace, &["build", "docs", "--out", "clean"]);
+    assert_eq!(
+        fs::read(workspace.root.join("dist/docs.search.json")).unwrap(),
+        fs::read(workspace.root.join("clean/docs.search.json")).unwrap()
+    );
+
+    // CLI audience override retains the configured exclusion and allowed set.
+    build(
+        &workspace,
+        &[
+            "build",
+            "docs",
+            "--out",
+            "internal",
+            "--audience",
+            "internal",
+        ],
+    );
+    let internal = artifact(&workspace, "internal/docs.search.json");
+    assert_embedding_ids(&internal, &graph, true, false);
+    assert_ne!(
+        embedding(&internal, "embedding.partial"),
+        embedding(&narrow, "embedding.partial")
+    );
+    assert_ne!(
+        embedding(&internal, "embedding.partial"),
+        embedding(&broad, "embedding.partial")
+    );
+    let mut ceiling = embedding_policy("public", true);
+    ceiling.allowed_visibilities = ["public".into()].into();
+    write_policy(&workspace, &ceiling);
+    build(
+        &workspace,
+        &[
+            "build",
+            "docs",
+            "--out",
+            "ceiling",
+            "--audience",
+            "internal",
+        ],
+    );
+    assert_embedding_ids(
+        &artifact(&workspace, "ceiling/docs.search.json"),
+        &graph,
+        false,
+        false,
+    );
 }
