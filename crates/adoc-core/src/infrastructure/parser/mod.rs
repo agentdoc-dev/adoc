@@ -16,6 +16,7 @@ mod state;
 mod typed_block;
 
 pub(crate) use front_matter::skip_front_matter;
+pub(crate) use inline::inline_reference_prefix;
 pub(crate) use markdown::parse_markdown_page;
 
 use builders::{CodeBlockBuilder, ListBuilder, ParagraphBuilder};

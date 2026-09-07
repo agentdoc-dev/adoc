@@ -75,6 +75,13 @@ pub fn retrieval_read_access(
                     .ok_or_else(super::managed_retrieval::unavailable)?;
                 sources.insert(record.id.clone());
                 sources.extend(material_record_sources(record, own));
+                // The question's typed outgoing resolution is distinct from the
+                // reverse resolved_questions metadata. Hidden scalars are absent.
+                if own.kind == "question"
+                    && let Some(target) = record.fields.get("resolved_by")
+                {
+                    sources.insert(target.clone());
+                }
                 sources.extend(
                     record
                         .relations
@@ -135,20 +142,26 @@ pub fn contradictions_read_access(
     envelope: &ContradictionsEnvelope,
 ) -> Result<ReadAccess, Box<Diagnostic>> {
     let mut ids = BTreeSet::new();
-    let objects: BTreeSet<_> = session.objects().map(|o| o.id.as_str()).collect();
+    let objects: BTreeMap<_, _> = session.objects().map(|o| (o.id.as_str(), o)).collect();
     for record in &envelope.contradictions {
         ids.insert(record.id.clone());
         ids.extend(
             record
                 .claims
                 .iter()
-                .filter(|id| objects.contains(id.as_str()))
+                .filter(|id| objects.contains_key(id.as_str()))
                 .cloned(),
         );
+        let own = objects
+            .get(record.id.as_str())
+            .ok_or_else(super::managed_retrieval::unavailable)?;
+        let (line, exposed_bytes) = super::signals::body_summary_prefix(&own.body);
+        let exposed_references =
+            crate::infrastructure::parser::inline_reference_prefix(line, exposed_bytes);
         ids.extend(
             session
                 .reference_targets(&record.id)
-                .filter(|id| record.summary.contains(id))
+                .filter(|id| exposed_references.contains(*id))
                 .map(str::to_owned),
         );
     }

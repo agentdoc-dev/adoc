@@ -38,6 +38,53 @@ pub(super) fn parse_inlines(
     (output.segments, output.diagnostics)
 }
 
+/// Parse complete inline syntax before applying an output cutoff. Parsing the
+/// truncated text would lose a reference whose closing delimiter was withheld.
+/// Relative spans are used only for intersection, never as source locations.
+pub(crate) fn inline_reference_prefix(
+    text: &str,
+    exposed_bytes: usize,
+) -> std::collections::BTreeSet<String> {
+    use crate::domain::diagnostic::{SourcePosition, SourceSpan};
+    let position = SourcePosition {
+        line: 1,
+        column: 1,
+        offset: 0,
+    };
+    let span = SourceSpan {
+        file: Default::default(),
+        start: position,
+        end: position,
+    };
+    let (segments, _) = parse_inlines(text, InlineOrigin::from_span(&span));
+    let mut ids = std::collections::BTreeSet::new();
+    collect_prefix_references(&segments, exposed_bytes, &mut ids);
+    ids
+}
+
+fn collect_prefix_references(
+    segments: &[InlineSegment],
+    exposed_bytes: usize,
+    ids: &mut std::collections::BTreeSet<String>,
+) {
+    for segment in segments {
+        match segment {
+            InlineSegment::ObjectReferencePending { raw_id, span }
+                if (span.start.offset as usize) + 2 < exposed_bytes =>
+            {
+                ids.insert(raw_id.clone());
+            }
+            InlineSegment::Emphasis(inner)
+            | InlineSegment::Strong(inner)
+            | InlineSegment::Strikethrough(inner) => {
+                collect_prefix_references(inner, exposed_bytes, ids)
+            }
+            InlineSegment::Link { text, .. } => collect_prefix_references(text, exposed_bytes, ids),
+            _ => {}
+        }
+    }
+}
+
 #[derive(Default)]
 struct ScannerOutput {
     segments: Vec<InlineSegment>,

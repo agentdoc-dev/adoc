@@ -88,6 +88,7 @@ const ANCHORS: &[&str] = &[
     "registry:test-fixture-ids",
     "registry:envelopes-planned",
     "registry:diagnostic-codes",
+    "registry:gateway-audit-codes",
     "registry:action-codes",
     "registry:gate-codes",
     "registry:permission-primitives",
@@ -433,6 +434,20 @@ fn diagnostic_code_rows_match_the_code_table() {
     assert!(
         stale.is_empty(),
         "Diagnostic Code rows in {REGISTRY} with no declaring code table row: {stale:?}"
+    );
+}
+
+#[test]
+fn gateway_audit_refusal_is_registered() {
+    let rendered = adoc_mcp::McpAdapterError::AuditSinkUnavailable.to_string();
+    let (code, _) = rendered
+        .strip_prefix("error[")
+        .unwrap()
+        .split_once(']')
+        .unwrap();
+    assert_eq!(
+        anchored_ids(&registry(), "registry:gateway-audit-codes"),
+        BTreeSet::from([code.to_string()])
     );
 }
 
