@@ -298,3 +298,187 @@ fn local_projection_removes_hidden_witnesses_and_uses_actual_dedicated_presence(
     assert_eq!(malformed.exit_code, 2);
     assert!(malformed.records.is_empty());
 }
+
+#[test]
+fn answered_question_exposed_resolution_is_a_subject_but_hidden_resolution_is_not() {
+    let workspace = tempfile::tempdir().unwrap();
+    let root = workspace.path();
+    let artifact = fixture(root);
+    write_config(root, &policy(true));
+    let mut document: Value = serde_json::from_slice(&std::fs::read(&artifact).unwrap()).unwrap();
+    document["nodes"].as_array_mut().unwrap().truncate(2);
+    document["nodes"][0]["kind"] = json!("question");
+    document["nodes"][0]["status"] = json!("answered");
+    document["nodes"][0]["fields"]["resolved_by"] = json!("billing.hidden");
+    document["edges"] =
+        json!([{"kind":"resolved_by","source":"billing.visible","target":"billing.hidden"}]);
+    let context = LocalContext::new(root.into(), UnrestrictedPathPolicy);
+    for hidden in [false, true] {
+        if hidden {
+            document["nodes"][0]["field_visibility"] = json!({"resolved_by":"restricted"});
+        }
+        std::fs::write(&artifact, document.to_string()).unwrap();
+        let why = context
+            .why(WhyInput {
+                object_id: "billing.visible".into(),
+                artifact: Some(artifact.clone()),
+            })
+            .unwrap();
+        assert_eq!(why.exit_code, 0, "{:?}", why.diagnostics);
+        assert_eq!(
+            why.read_access
+                .sensitive_objects()
+                .iter()
+                .map(|o| o.object_id.as_str())
+                .collect::<Vec<_>>(),
+            if hidden {
+                vec![]
+            } else {
+                vec!["billing.hidden"]
+            },
+            "E63T1-03 hidden={hidden}"
+        );
+        assert_eq!(
+            why.records[0].record.fields.contains_key("resolved_by"),
+            !hidden
+        );
+        let found = context
+            .search(SearchInput {
+                query: "billing".into(),
+                artifact: Some(artifact.clone()),
+                search_artifact: None,
+                semantic: false,
+                lexical: true,
+                kind: Some("question".into()),
+                status: None,
+                owner: None,
+                source_path: None,
+                related_to: None,
+                relation: None,
+                direction: None,
+                top: NonZeroUsize::new(10).unwrap(),
+                scope: SearchRecordScope::Blended,
+            })
+            .unwrap();
+        assert_eq!(found.exit_code, 0);
+        assert_eq!(found.read_access, why.read_access);
+        if !hidden {
+            assert_eq!(
+                why.read_access.sensitive_objects()[0].content_hash,
+                document["nodes"][1]["content_hash"]
+            );
+        }
+    }
+}
+
+#[test]
+fn contradiction_summary_attributes_only_exposed_typed_reference_ranges() {
+    let workspace = tempfile::tempdir().unwrap();
+    let root = workspace.path();
+    let artifact = fixture(root);
+    write_config(root, &policy(true));
+    let original: Value = serde_json::from_slice(&std::fs::read(&artifact).unwrap()).unwrap();
+    let context = LocalContext::new(root.into(), UnrestrictedPathPolicy);
+    for (name, body, expected) in [
+        ("full", "See [[billing.hidden]].".into(), true),
+        (
+            "cut",
+            format!("{} [[billing.hidden]]", "x".repeat(110)),
+            true,
+        ),
+        (
+            "unicode-cut",
+            format!("{} [[billing.hidden]]", "é".repeat(110)),
+            true,
+        ),
+        (
+            "after-cut",
+            format!("{} [[billing.hidden]]", "x".repeat(120)),
+            false,
+        ),
+        (
+            "later-line",
+            "First line.\n[[billing.hidden]]".into(),
+            false,
+        ),
+        (
+            "code-then-real-later",
+            "`[[billing.hidden]]`\n[[billing.hidden]]".into(),
+            false,
+        ),
+        (
+            "escaped-parser-reference",
+            "\\[[billing.hidden]]".into(),
+            true,
+        ),
+        (
+            "nested",
+            format!("{} **[[billing.hidden]]**", "é".repeat(110)),
+            true,
+        ),
+        (
+            "escaped-brackets-then-real-later",
+            "\\[\\[billing.hidden]]\n[[billing.hidden]]".into(),
+            false,
+        ),
+        (
+            "delimiters-only",
+            format!("{} [[billing.hidden]]", "x".repeat(116)),
+            false,
+        ),
+        (
+            "first-id-character",
+            format!("{} [[billing.hidden]]", "x".repeat(115)),
+            true,
+        ),
+        (
+            "link-label-cut",
+            format!(
+                "{} [see [[billing.hidden]]](https://example.com)",
+                "é".repeat(105)
+            ),
+            true,
+        ),
+    ] {
+        let mut document = original.clone();
+        document["nodes"].as_array_mut().unwrap().truncate(2);
+        document["nodes"][0]["kind"] = json!("contradiction");
+        document["nodes"][0]["status"] = json!("unresolved");
+        document["nodes"][0]["severity"] = json!("high");
+        document["nodes"][0]["body"] = json!(body);
+        document["edges"] =
+            json!([{"kind":"reference","source":"billing.visible","target":"billing.hidden"}]);
+        std::fs::write(&artifact, document.to_string()).unwrap();
+        let outcome = context
+            .contradictions(ContradictionsInput {
+                artifact: Some(artifact.clone()),
+                all: true,
+            })
+            .unwrap();
+        assert_eq!(
+            outcome.exit_code, 0,
+            "{name}: {:?}",
+            outcome.envelope.diagnostics
+        );
+        assert_eq!(
+            !outcome.read_access.sensitive_objects().is_empty(),
+            expected,
+            "E63T1-04 {name}: {:?}",
+            outcome.envelope
+        );
+        let line = body
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty())
+            .unwrap();
+        let expected_summary = if line.chars().count() > 120 {
+            format!("{}…", line.chars().take(119).collect::<String>())
+        } else {
+            line.to_owned()
+        };
+        assert_eq!(
+            outcome.envelope.contradictions[0].summary, expected_summary,
+            "ordinary bytes {name}"
+        );
+    }
+}

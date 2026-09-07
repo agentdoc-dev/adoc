@@ -261,9 +261,15 @@ struct StdioGateway {
 }
 impl StdioGateway {
     fn start(root: &Path) -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_adoc-mcp"))
-            .current_dir(root)
-            .args(["--config", "gateway.yaml", "--audit-config", "audit.json"])
+        Self::start_with_audit(root, true)
+    }
+    fn start_with_audit(root: &Path, audited: bool) -> Self {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_adoc-mcp"));
+        command.current_dir(root).args(["--config", "gateway.yaml"]);
+        if audited {
+            command.args(["--audit-config", "audit.json"]);
+        }
+        let mut child = command
             .env("ADOC_LOG", "ureq=trace,ureq::run=trace,adoc_mcp=debug")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -624,4 +630,214 @@ fn prose_with_a_real_sensitive_reference_keeps_its_envelope_and_gets_an_audit_la
         sink.events()[0]["objects"][0]["object_id"],
         "billing.internal"
     );
+}
+
+const REFERENCE_TARGET: &str = "guide.internal-long-reference";
+
+fn reference_fixture(root: &Path, sink: &Sink, question_floor: &str, summary_body: &str) -> Value {
+    fixture(root, sink);
+    fs::write(root.join("gateway.yaml"), json!({"version":1,"mode":"strict","docs_path":"docs","retrieval_policy":{"audience":"internal","allowed_visibilities":["public","internal"],"excluded_object_ids":[]}}).to_string()).unwrap();
+    fs::create_dir(root.join("docs")).unwrap();
+    let source = format!(
+        "# Guide @doc(guide.page)\n\n::claim {REFERENCE_TARGET}\nstatus: plain\nvisibility: internal\n--\nINTERNAL_TARGET_BODY.\n::\n\n::question guide.question\nstatus: answered\nvisibility: public\nresolved_by: {REFERENCE_TARGET}\n{question_floor}--\nzzzxqquestiontoken ordinary question.\n::\n\n::claim guide.a\nstatus: plain\n--\nFirst public claim.\n::\n\n::claim guide.b\nstatus: plain\n--\nSecond public claim.\n::\n\n::contradiction guide.conflict\nseverity: high\nstatus: unresolved\nclaims: [guide.a, guide.b]\n--\n{summary_body}\n::\n"
+    );
+    fs::write(root.join("docs/index.adoc"), source).unwrap();
+    let build = AgentDocMcpServer::new(root.into())
+        .run_build(adoc_mcp::BuildParams {
+            project_root: None,
+            path: Some("docs".into()),
+            out: Some("dist".into()),
+            no_embeddings: true,
+        })
+        .unwrap();
+    assert_eq!(build["ok"], true, "{build}");
+    fs::copy(root.join("dist/docs.graph.json"), root.join("graph.json")).unwrap();
+    let graph: Value = serde_json::from_slice(&fs::read(root.join("graph.json")).unwrap()).unwrap();
+    let target = graph["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == REFERENCE_TARGET)
+        .unwrap();
+    json!({"object_id":REFERENCE_TARGET,"content_hash":target["content_hash"],"classification":"internal"})
+}
+
+fn assert_audit_refusal(response: &Value) {
+    assert_eq!(
+        response["error"]["data"]["code"], "retrieval.audit_sink_unavailable",
+        "{response}"
+    );
+    assert!(!response.to_string().contains(REFERENCE_TARGET));
+    assert!(!response.to_string().contains("INTERNAL_TARGET_BODY"));
+}
+
+fn answered_question_reference(command: &str) {
+    for audited in [false, true] {
+        let sink = Sink::new(Mode::Ok);
+        let root = tempfile::tempdir().unwrap();
+        let subject = reference_fixture(root.path(), &sink, "", "Ordinary contradiction.");
+        let original = fs::read(root.path().join("graph.json")).unwrap();
+        let mut gateway = StdioGateway::start_with_audit(root.path(), audited);
+        let args = if command == "why" {
+            json!({"object_id":"guide.question"})
+        } else {
+            json!({"query":"zzzxqquestiontoken","lexical":true,"objects_only":true})
+        };
+        gateway.call(2, command, args);
+        let response = gateway.receive();
+        if audited {
+            assert_eq!(
+                response["result"]["content"][1]["text"], "Sensitive (internal).",
+                "{response}"
+            );
+            let records = response["result"]["structuredContent"]["records"]
+                .as_array()
+                .unwrap();
+            assert_eq!(records.len(), 1);
+            assert_eq!(records[0]["id"], "guide.question");
+            assert_eq!(records[0]["fields"]["resolved_by"], REFERENCE_TARGET);
+            assert_eq!(sink.events().len(), 1);
+            assert_eq!(sink.events()[0]["objects"], json!([subject]));
+            assert_eq!(sink.events()[0]["command"], command);
+            assert!(!response.to_string().contains("INTERNAL_TARGET_BODY"));
+        } else {
+            assert_audit_refusal(&response);
+            assert!(sink.state.lock().unwrap().requests.is_empty());
+        }
+        assert_eq!(fs::read(root.path().join("graph.json")).unwrap(), original);
+    }
+}
+
+#[test]
+fn repair1_question_why_records_exposed_resolved_by() {
+    answered_question_reference("why");
+}
+
+#[test]
+fn repair1_question_search_records_exposed_resolved_by() {
+    answered_question_reference("search");
+}
+
+#[test]
+fn repair1_hidden_resolved_by_removes_witness_and_sensitive_scanned_nonhits_emit_none() {
+    for audited in [false, true] {
+        let sink = Sink::new(Mode::Ok);
+        let root = tempfile::tempdir().unwrap();
+        reference_fixture(
+            root.path(),
+            &sink,
+            "field_visibility: resolved_by=restricted\n",
+            "Ordinary contradiction.",
+        );
+        let mut gateway = StdioGateway::start_with_audit(root.path(), audited);
+        for (id, command, args) in [
+            (2, "why", json!({"object_id":"guide.question"})),
+            (
+                3,
+                "search",
+                json!({"query":"zzzxqquestiontoken","lexical":true,"objects_only":true}),
+            ),
+            (
+                4,
+                "search",
+                json!({"query":"NEVER_MATCHES_ANY_SUBJECT","lexical":true,"objects_only":true}),
+            ),
+        ] {
+            gateway.call(id, command, args);
+            let response = gateway.receive();
+            assert!(response.get("error").is_none(), "{response}");
+            assert_eq!(response["result"]["content"].as_array().unwrap().len(), 1);
+            let records = response["result"]["structuredContent"]["records"]
+                .as_array()
+                .unwrap();
+            assert_eq!(records.len(), usize::from(id != 4));
+            assert!(!response.to_string().contains(REFERENCE_TARGET));
+            assert!(!response.to_string().contains("INTERNAL_TARGET_BODY"));
+            if let Some(record) = records.first() {
+                assert!(record["fields"].get("resolved_by").is_none());
+            }
+        }
+        assert!(sink.events().is_empty());
+    }
+}
+
+#[test]
+fn repair1_contradiction_full_and_partial_typed_references_require_audit() {
+    // Both reviewed cut positions expose only part of the same real typed reference.
+    for prefix in [
+        String::new(),
+        "x".repeat(90),
+        "x".repeat(110),
+        "é".repeat(90),
+    ] {
+        for audited in [false, true] {
+            let sink = Sink::new(Mode::Ok);
+            let root = tempfile::tempdir().unwrap();
+            let body = format!("{prefix} [[{REFERENCE_TARGET}]]");
+            let subject = reference_fixture(root.path(), &sink, "", &body);
+            let mut gateway = StdioGateway::start_with_audit(root.path(), audited);
+            gateway.call(2, "contradictions", json!({}));
+            let response = gateway.receive();
+            if audited {
+                assert_eq!(
+                    response["result"]["content"][1]["text"], "Sensitive (internal).",
+                    "prefix={prefix}: {response}"
+                );
+                let summary =
+                    response["result"]["structuredContent"]["contradictions"][0]["summary"]
+                        .as_str()
+                        .unwrap();
+                let expected = if prefix.is_empty() {
+                    body.trim().to_string()
+                } else {
+                    format!("{}…", body.chars().take(119).collect::<String>())
+                };
+                assert_eq!(summary, expected);
+                assert_eq!(sink.events().len(), 1);
+                assert_eq!(sink.events()[0]["objects"], json!([subject]));
+                assert!(!response.to_string().contains("INTERNAL_TARGET_BODY"));
+            } else {
+                assert_audit_refusal(&response);
+                assert!(sink.state.lock().unwrap().requests.is_empty());
+            }
+        }
+    }
+}
+
+#[test]
+fn repair1_contradiction_references_beyond_summary_or_on_later_line_emit_no_event() {
+    for (body, expected) in [
+        (
+            format!("{} [[{REFERENCE_TARGET}]]", "x".repeat(130)),
+            format!("{}…", "x".repeat(119)),
+        ),
+        (
+            format!("Ordinary first line.\n[[{REFERENCE_TARGET}]]"),
+            "Ordinary first line.".into(),
+        ),
+        // The first-line spelling is code; the real typed reference is wholly unexposed.
+        (
+            format!("`[[{REFERENCE_TARGET}]]`\n[[{REFERENCE_TARGET}]]"),
+            format!("`[[{REFERENCE_TARGET}]]`"),
+        ),
+    ] {
+        for audited in [false, true] {
+            let sink = Sink::new(Mode::Ok);
+            let root = tempfile::tempdir().unwrap();
+            reference_fixture(root.path(), &sink, "", &body);
+            let mut gateway = StdioGateway::start_with_audit(root.path(), audited);
+            gateway.call(2, "contradictions", json!({}));
+            let response = gateway.receive();
+            assert!(response.get("error").is_none(), "{response}");
+            assert_eq!(response["result"]["content"].as_array().unwrap().len(), 1);
+            let summary = response["result"]["structuredContent"]["contradictions"][0]["summary"]
+                .as_str()
+                .unwrap();
+            assert_eq!(summary, expected);
+            if !expected.contains(REFERENCE_TARGET) {
+                assert!(!response.to_string().contains(REFERENCE_TARGET));
+            }
+            assert!(sink.events().is_empty());
+        }
+    }
 }
