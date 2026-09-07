@@ -709,7 +709,9 @@ fn validates_representative_serialized_agent_envelopes_against_contract_schemas(
             direction: None,
             top: Some(5),
         })
-        .expect("search succeeds");
+        .expect("search succeeds")
+        .structured_content
+        .unwrap();
     assert_valid("retrieval-envelope.json", &retrieval);
 
     let graph = server
@@ -720,7 +722,9 @@ fn validates_representative_serialized_agent_envelopes_against_contract_schemas(
             relation: None,
             direction: None,
         })
-        .expect("graph succeeds");
+        .expect("graph succeeds")
+        .structured_content
+        .unwrap();
     assert_valid("graph-traversal-envelope.json", &graph);
 
     for patch in [
@@ -808,7 +812,9 @@ fn validates_representative_serialized_agent_envelopes_against_contract_schemas(
             artifact: None,
             within_days: None,
         })
-        .expect("stale succeeds");
+        .expect("stale succeeds")
+        .structured_content
+        .unwrap();
     assert_valid("adoc.stale.v0.schema.json", &stale);
     assert_eq!(stale["records"], serde_json::json!([]));
 
@@ -820,7 +826,9 @@ fn validates_representative_serialized_agent_envelopes_against_contract_schemas(
             artifact: None,
             all: false,
         })
-        .expect("contradictions succeeds");
+        .expect("contradictions succeeds")
+        .structured_content
+        .unwrap();
     assert_valid("adoc.contradictions.v0.schema.json", &contradictions);
     assert_eq!(contradictions["contradictions"], serde_json::json!([]));
     assert_eq!(contradictions["contradicted_claims"], serde_json::json!([]));
@@ -1047,7 +1055,9 @@ fn validates_adoc_stale_v0_envelope_against_schema() {
             artifact: None,
             within_days: None,
         })
-        .expect("stale succeeds");
+        .expect("stale succeeds")
+        .structured_content
+        .unwrap();
     assert_valid("adoc.stale.v0.schema.json", &stale);
     let records = stale["records"].as_array().expect("records array");
     assert_eq!(
@@ -1062,7 +1072,9 @@ fn validates_adoc_stale_v0_envelope_against_schema() {
             artifact: None,
             within_days: Some(36500),
         })
-        .expect("stale with horizon succeeds");
+        .expect("stale with horizon succeeds")
+        .structured_content
+        .unwrap();
     assert_valid("adoc.stale.v0.schema.json", &stale_within);
     let within_records = stale_within["records"].as_array().expect("records array");
     assert_eq!(
@@ -1162,7 +1174,9 @@ fn validates_adoc_contradictions_v0_envelope_against_schema() {
             artifact: None,
             all: false,
         })
-        .expect("contradictions succeeds");
+        .expect("contradictions succeeds")
+        .structured_content
+        .unwrap();
     assert_valid("adoc.contradictions.v0.schema.json", &envelope);
     assert!(
         envelope.get("evaluated_at").is_none(),
@@ -1202,7 +1216,9 @@ fn validates_adoc_contradictions_v0_envelope_against_schema() {
             artifact: None,
             all: true,
         })
-        .expect("contradictions --all succeeds");
+        .expect("contradictions --all succeeds")
+        .structured_content
+        .unwrap();
     assert_valid("adoc.contradictions.v0.schema.json", &all_envelope);
     let all_contradictions = all_envelope["contradictions"]
         .as_array()
@@ -2257,7 +2273,9 @@ fn validates_adoc_impacted_v0_envelope_against_schema() {
             ]),
             git_ref: None,
         })
-        .expect("impacted-by succeeds");
+        .expect("impacted-by succeeds")
+        .structured_content
+        .unwrap();
     assert_valid("adoc.impacted.v0.schema.json", &impacted);
     assert_eq!(impacted["schema_version"], "adoc.impacted.v0");
     assert_eq!(
@@ -2304,7 +2322,9 @@ fn validates_adoc_impacted_v0_envelope_against_schema() {
             paths: Some(vec!["unrelated/path.rs".to_string()]),
             git_ref: None,
         })
-        .expect("impacted-by succeeds with no matches");
+        .expect("impacted-by succeeds with no matches")
+        .structured_content
+        .unwrap();
     assert_valid("adoc.impacted.v0.schema.json", &empty);
     assert_eq!(empty["impacted"], json!([]));
     assert_eq!(empty["proof_obligations"], json!([]));
@@ -2463,7 +2483,9 @@ fn validates_retrieval_v1_envelopes_against_discriminated_schema() {
 
     let blended = server
         .run_search(search_params(false, false))
-        .expect("blended search succeeds");
+        .expect("blended search succeeds")
+        .structured_content
+        .unwrap();
     assert_valid("retrieval-envelope.json", &blended);
     let record_types: Vec<&str> = blended["records"]
         .as_array()
@@ -2478,12 +2500,16 @@ fn validates_retrieval_v1_envelopes_against_discriminated_schema() {
 
     let objects_only = server
         .run_search(search_params(true, false))
-        .expect("objects-only search succeeds");
+        .expect("objects-only search succeeds")
+        .structured_content
+        .unwrap();
     assert_valid("retrieval-envelope.json", &objects_only);
 
     let prose_only = server
         .run_search(search_params(false, true))
-        .expect("prose-only search succeeds");
+        .expect("prose-only search succeeds")
+        .structured_content
+        .unwrap();
     assert_valid("retrieval-envelope.json", &prose_only);
 
     let why = server
@@ -2492,7 +2518,9 @@ fn validates_retrieval_v1_envelopes_against_discriminated_schema() {
             object_id: "billing.ready".to_string(),
             artifact: None,
         })
-        .expect("why succeeds");
+        .expect("why succeeds")
+        .structured_content
+        .unwrap();
     assert_valid("retrieval-envelope.json", &why);
     assert_eq!(why["records"][0]["record_type"], "knowledge_object");
 

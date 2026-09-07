@@ -99,6 +99,38 @@ pub enum GatewaySensitiveAccessError {
 }
 
 impl GatewaySensitiveAccessEvent {
+    /// Immutable audit binding used to validate durable journal replay.
+    pub fn event_id(&self) -> &str {
+        &self.0.event_id
+    }
+    /// Immutable audit binding used to validate durable journal replay.
+    pub fn workspace_id(&self) -> &str {
+        &self.0.context.workspace_id
+    }
+    /// Immutable audit binding used to validate durable journal replay.
+    pub fn repository_id(&self) -> &str {
+        &self.0.context.repository_id
+    }
+    /// Immutable audit binding used to validate durable journal replay.
+    pub fn principal_id(&self) -> &str {
+        &self.0.caller.principal_id
+    }
+    /// Immutable audit binding used to validate durable journal replay.
+    pub fn auth_session_id(&self) -> &str {
+        &self.0.caller.auth_session_id
+    }
+    /// Immutable audit binding used to validate durable journal replay.
+    pub fn gateway_session_id(&self) -> &str {
+        &self.0.caller.gateway_session_id
+    }
+    /// Immutable audit binding used to validate durable journal replay.
+    pub fn local_policy_digest(&self) -> &str {
+        &self.0.local_policy_digest
+    }
+    /// Original per-gateway sequence; replay never allocates a replacement.
+    pub fn sequence(&self) -> u64 {
+        self.0.sequence
+    }
     pub fn to_canonical_json(&self) -> Result<String, GatewaySensitiveAccessError> {
         let bytes =
             serde_json::to_string(self).map_err(|_| GatewaySensitiveAccessError::Serialization)?;

@@ -22,6 +22,9 @@ const SESSION: &str = "10000000-0000-4000-8000-000000000003";
 const PRINCIPAL: &str = "10000000-0000-4000-8000-000000000004";
 const AUTH: &str = "10000000-0000-4000-8000-000000000005";
 const TOKEN: &str = "OPERATOR_TOKEN_MUST_NEVER_ESCAPE";
+const FRESH_TOKEN: &str = "FRESH_OPERATOR_CREDENTIAL";
+const FRESH_AUTH: &str = "10000000-0000-4000-8000-000000000006";
+const FRESH_SESSION: &str = "10000000-0000-4000-8000-000000000007";
 
 #[derive(Clone, Copy, PartialEq)]
 enum Mode {
@@ -32,6 +35,11 @@ enum Mode {
     Redirect,
     Chunked,
     Timeout,
+    Outage,
+    PostOutageDeny,
+    RecordConflict,
+    PostOutageSessionChange,
+    SessionChanged,
 }
 struct Request {
     path: String,
@@ -76,10 +84,10 @@ impl Sink {
                 let request = read_request(&mut stream);
                 let is_event = request.path.ends_with("/events");
                 let body: Value = serde_json::from_slice(&request.bytes).unwrap();
-                assert!(request.headers.to_ascii_lowercase().contains(&format!(
-                    "authorization: bearer {}",
-                    TOKEN.to_ascii_lowercase()
-                )));
+                let fresh_login = request.headers.contains(FRESH_TOKEN);
+                assert!(fresh_login || request.headers.contains(TOKEN));
+                let historical_fresh = request.path.contains(FRESH_SESSION);
+                let transmission = request.path.ends_with("/transmission");
                 let mut state = s.lock().unwrap();
                 let mode = state.mode;
                 let egress = state.egress;
@@ -116,6 +124,32 @@ impl Sink {
                     reply(&mut stream, 403, &json!({"secret":"UPSTREAM_DETAILS"}));
                     continue;
                 }
+                if is_event && mode == Mode::RecordConflict {
+                    reply(
+                        &mut stream,
+                        409,
+                        &json!({"code":"retrieval.audit_sink_unavailable"}),
+                    );
+                    continue;
+                }
+                if is_event
+                    && matches!(
+                        mode,
+                        Mode::Outage | Mode::PostOutageDeny | Mode::PostOutageSessionChange
+                    )
+                {
+                    if mode == Mode::PostOutageDeny {
+                        s.lock().unwrap().mode = Mode::Deny;
+                    } else if mode == Mode::PostOutageSessionChange {
+                        s.lock().unwrap().mode = Mode::SessionChanged;
+                    }
+                    reply(
+                        &mut stream,
+                        503,
+                        &json!({"code":"retrieval.audit_sink_unavailable"}),
+                    );
+                    continue;
+                }
                 if is_event {
                     let event = adoc_core::validate_gateway_sensitive_access(
                         &s.lock().unwrap().requests.last().unwrap().bytes,
@@ -124,16 +158,21 @@ impl Sink {
                     while !go.load(Ordering::SeqCst) && !done.load(Ordering::SeqCst) {
                         thread::sleep(Duration::from_millis(5));
                     }
-                    let mut receipt = json!({"event_id":body["event_id"], "event_digest":event.content_digest().unwrap(), "gateway_session_id":SESSION, "sequence":body["sequence"], "recorded":true, "replayed":false});
+                    let mut receipt = json!({"event_id":body["event_id"], "event_digest":event.content_digest().unwrap(), "gateway_session_id":body["caller"]["gateway_session_id"], "sequence":body["sequence"], "recorded":true, "replayed":false});
                     if mode == Mode::BadReceipt {
                         receipt["unexpected"] = json!("UPSTREAM_DETAILS");
                     }
                     reply(&mut stream, 200, &receipt);
                 } else {
+                    let fresh = if transmission {
+                        historical_fresh
+                    } else {
+                        fresh_login || mode == Mode::SessionChanged
+                    };
                     reply(
                         &mut stream,
                         200,
-                        &json!({"gateway_session_id": SESSION, "workspace_id":WORKSPACE, "repository_id":body["repository_id"], "principal_id":PRINCIPAL, "auth_session_id":AUTH, "local_policy_digest":body["local_policy_digest"], "transmission":{"audit_metadata":true,"egress_policy_digest":format!("sha256:{}", egress.to_string().repeat(64))}}),
+                        &json!({"gateway_session_id": if fresh {FRESH_SESSION} else {SESSION}, "workspace_id":WORKSPACE, "repository_id":body["repository_id"], "principal_id":PRINCIPAL, "auth_session_id":if fresh {FRESH_AUTH} else {AUTH}, "local_policy_digest":body["local_policy_digest"], "transmission":{"audit_metadata":true,"egress_policy_digest":format!("sha256:{}", egress.to_string().repeat(64))}}),
                     );
                 }
             }
@@ -217,7 +256,7 @@ fn policy() -> adoc_core::RetrievalPolicy {
 }
 fn fixture(root: &Path, sink: &Sink) {
     fs::write(root.join("token"), TOKEN).unwrap();
-    fs::write(root.join("audit.json"), json!({"cloud_url":sink.url,"workspace_id":WORKSPACE,"repository_id":REPOSITORY,"bearer_token_file":"token"}).to_string()).unwrap();
+    fs::write(root.join("audit.json"), json!({"cloud_url":sink.url,"workspace_id":WORKSPACE,"repository_id":REPOSITORY,"bearer_token_file":"token","delivery_policy":"synchronous"}).to_string()).unwrap();
     fs::write(
         root.join("gateway.yaml"),
         json!({"version":1,"mode":"strict","docs_path":"docs","retrieval_policy":policy()})
@@ -324,7 +363,10 @@ impl Drop for StdioGateway {
             .unwrap()
             .read_to_string(&mut stderr)
             .unwrap();
-        assert!(!stderr.contains(TOKEN), "credential leaked in logs");
+        assert!(
+            !stderr.contains(TOKEN) && !stderr.contains(FRESH_TOKEN),
+            "credential leaked in logs"
+        );
     }
 }
 
@@ -395,6 +437,10 @@ fn stdio_six_tools_record_exact_subjects_before_output_and_label_both_classes() 
         );
         let events = sink.events();
         let event = &events[i];
+        assert_eq!(
+            response["result"]["_meta"],
+            json!({"adoc.sensitive_access":{"state":"recorded","event_id":event["event_id"]}})
+        );
         assert_eq!(event["command"], command);
         assert_eq!(event["sequence"], i + 1);
         assert_eq!(
@@ -414,11 +460,11 @@ fn stdio_six_tools_record_exact_subjects_before_output_and_label_both_classes() 
         assert!(!event.to_string().contains("SPOOFED_IDENTITY"));
     }
     let state = sink.state.lock().unwrap();
-    assert_eq!(state.requests.len(), 13);
+    assert_eq!(sink_event_count(&state), 6);
     let setups: Vec<_> = state
         .requests
         .iter()
-        .filter(|r| !r.path.ends_with("/events"))
+        .filter(|r| !r.path.ends_with("/events") && !r.path.ends_with("/transmission"))
         .map(|r| &r.bytes)
         .collect();
     assert!(
@@ -491,9 +537,10 @@ fn ambiguous_ack_retries_identical_bytes_then_records_new_response_with_shared_s
         [1, 1, 2, 3]
     );
     assert_ne!(parsed[1]["event_id"], parsed[2]["event_id"]);
-    for pair in state.requests[1..].chunks_exact(2) {
-        assert!(!pair[0].path.ends_with("/events"));
-        assert!(pair[1].path.ends_with("/events"));
+    for (i, request) in state.requests.iter().enumerate() {
+        if request.path.ends_with("/events") {
+            assert!(state.requests[i - 1].path.ends_with("/transmission"));
+        }
     }
 }
 
@@ -549,10 +596,16 @@ fn public_no_hit_and_denied_queries_do_not_emit() {
     assert_eq!(absent["result"]["structuredContent"]["records"], json!([]));
     assert_eq!(absent["result"]["content"].as_array().unwrap().len(), 1);
     assert!(sink.events().is_empty());
-    let public = AgentDocMcpServer::new(root.path().into())
-        .with_audit_config(&root.path().join("audit.json"))
+    drop(server);
+    let denied_root = tempfile::tempdir().unwrap();
+    fixture(denied_root.path(), &sink);
+    let public = AgentDocMcpServer::new(denied_root.path().into())
+        .with_audit_config(&denied_root.path().join("audit.json"))
         .unwrap();
-    assert_eq!(public.run_why(why()).unwrap()["records"], json!([]));
+    assert_eq!(
+        public.run_why(why()).unwrap().structured_content.unwrap()["records"],
+        json!([])
+    );
     assert!(sink.events().is_empty());
 }
 
@@ -583,6 +636,8 @@ fn setup_redirect_chunked_overflow_and_timeout_refuse_without_credential_error_d
         let error = AgentDocMcpServer::new(root.path().into())
             .with_retrieval_policy(policy())
             .with_audit_config(&root.path().join("audit.json"))
+            .unwrap()
+            .run_why(why())
             .unwrap_err();
         assert!(start.elapsed() < Duration::from_secs(12));
         assert_eq!(
@@ -840,4 +895,346 @@ fn repair1_contradiction_references_beyond_summary_or_on_later_line_emit_no_even
             assert!(sink.events().is_empty());
         }
     }
+}
+
+#[test]
+fn t2_default_spool_preserves_pending_status_in_sync_and_stdio_results() {
+    for stdio in [false, true] {
+        let sink = Sink::new(Mode::Ok);
+        let root = tempfile::tempdir().unwrap();
+        fixture(root.path(), &sink);
+        set_delivery(root.path(), None);
+        let result = if stdio {
+            let mut server = StdioGateway::start(root.path());
+            sink.state.lock().unwrap().mode = Mode::Outage;
+            server.call(2, "why", json!({"object_id":"billing.internal"}));
+            server.receive()["result"].clone()
+        } else {
+            let server = bound(root.path());
+            sink.state.lock().unwrap().mode = Mode::Outage;
+            serde_json::to_value(
+                server
+                    .run_why(why())
+                    .expect("durable pending permits output with current authority"),
+            )
+            .unwrap()
+        };
+        assert_eq!(
+            result["_meta"]["adoc.sensitive_access"]["state"], "spooled_pending",
+            "{result}"
+        );
+        assert_eq!(
+            result["_meta"]["adoc.sensitive_access"]["code"],
+            "retrieval.sensitive_access_unrecorded"
+        );
+        assert_eq!(result["content"][1]["text"], "Sensitive (internal).");
+        assert_eq!(
+            result["content"][2]["text"],
+            "Sensitive access audit is pending recording (retrieval.sensitive_access_unrecorded)."
+        );
+        let journal = fs::read_to_string(root.path().join(".adoc-audit/spool.log")).unwrap();
+        assert!(
+            journal.contains(
+                result["_meta"]["adoc.sensitive_access"]["event_id"]
+                    .as_str()
+                    .unwrap()
+            )
+        );
+        assert!(!journal.contains(TOKEN));
+        assert!(!journal.contains("LOCAL_SENSITIVE_BODY"));
+    }
+}
+
+fn sink_event_count(state: &FixtureState) -> usize {
+    state
+        .requests
+        .iter()
+        .filter(|request| request.path.ends_with("/events"))
+        .count()
+}
+
+fn set_delivery(root: &Path, delivery: Option<&str>) {
+    let path = root.join("audit.json");
+    let mut config: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    if let Some(delivery) = delivery {
+        config["delivery_policy"] = json!(delivery);
+    } else {
+        config.as_object_mut().unwrap().remove("delivery_policy");
+    }
+    fs::write(path, config.to_string()).unwrap();
+}
+
+#[test]
+fn t2_restart_reloads_fresh_login_and_fivefold_replay_keeps_original_event() {
+    let sink = Sink::new(Mode::Outage);
+    let root = tempfile::tempdir().unwrap();
+    fixture(root.path(), &sink);
+    set_delivery(root.path(), None);
+    {
+        let mut server = StdioGateway::start(root.path());
+        server.call(2, "why", json!({"object_id":"billing.internal"}));
+        assert_eq!(
+            server.receive()["result"]["_meta"]["adoc.sensitive_access"]["state"],
+            "spooled_pending"
+        );
+    }
+    let original = sink.events()[0].clone();
+    fs::write(root.path().join("token"), FRESH_TOKEN).unwrap();
+    for _ in 0..4 {
+        let mut server = StdioGateway::start(root.path());
+        server.call(2, "why", json!({"object_id":"billing.public"}));
+        let response = server.receive();
+        assert!(response.get("error").is_none(), "{response}");
+        assert!(response["result"].get("_meta").is_none());
+    }
+    let events = sink.events();
+    assert_eq!(events.len(), 5);
+    assert!(events.iter().all(|event| event == &original));
+    sink.state.lock().unwrap().mode = Mode::Ok;
+    let mut server = StdioGateway::start(root.path());
+    server.call(2, "why", json!({"object_id":"billing.internal"}));
+    let response = server.receive();
+    assert_eq!(
+        response["result"]["_meta"]["adoc.sensitive_access"]["state"], "recorded",
+        "{response}"
+    );
+    let events = sink.events();
+    assert_eq!(events[5], original);
+    assert_eq!(events[6]["caller"]["auth_session_id"], FRESH_AUTH);
+    assert_eq!(events[6]["caller"]["gateway_session_id"], FRESH_SESSION);
+    assert_eq!(events[6]["sequence"], 1);
+    assert_eq!(original["caller"]["auth_session_id"], AUTH);
+    assert!(
+        !fs::read_to_string(root.path().join(".adoc-audit/spool.log"))
+            .unwrap()
+            .contains(FRESH_TOKEN)
+    );
+}
+
+#[test]
+fn t2_unknown_authority_and_post_outage_denial_never_become_pending() {
+    for (mode, delivery) in [
+        (Mode::Deny, None),
+        (Mode::PostOutageDeny, None),
+        (Mode::Outage, Some("synchronous")),
+    ] {
+        let sink = Sink::new(mode);
+        let root = tempfile::tempdir().unwrap();
+        fixture(root.path(), &sink);
+        set_delivery(root.path(), delivery);
+        let mut server = StdioGateway::start(root.path());
+        server.call(2, "why", json!({"object_id":"billing.internal"}));
+        let response = server.receive();
+        assert_eq!(
+            response["error"]["data"],
+            json!({"code":"retrieval.audit_sink_unavailable","sensitive_access":{"state":"refused"}})
+        );
+        assert!(!response.to_string().contains("LOCAL_SENSITIVE_BODY"));
+        if mode == Mode::Deny {
+            assert!(sink.events().is_empty());
+        }
+    }
+}
+
+#[test]
+fn t2_corruption_is_sticky_for_next_public_resource_and_prompt_calls() {
+    let sink = Sink::new(Mode::Ok);
+    let root = tempfile::tempdir().unwrap();
+    fixture(root.path(), &sink);
+    let mut server = StdioGateway::start(root.path());
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(root.path().join(".adoc-audit/spool.log"))
+        .unwrap()
+        .write_all(b"broken-tail")
+        .unwrap();
+    for (id, method, params) in [
+        (
+            2,
+            "tools/call",
+            json!({"name":"adoc_why","arguments":{"object_id":"billing.public","artifact":"graph.json"}}),
+        ),
+        (3, "resources/list", json!({})),
+        (
+            4,
+            "resources/read",
+            json!({"uri":"adoc://agent/v0/tool-guide"}),
+        ),
+        (5, "prompts/list", json!({})),
+        (
+            6,
+            "prompts/get",
+            json!({"name":"adoc_answer_with_citations"}),
+        ),
+        (
+            7,
+            "tools/call",
+            json!({"name":"adoc_search","arguments":{"query":"billing","objects_only":true,"prose_only":true}}),
+        ),
+        (
+            8,
+            "tools/call",
+            json!({"name":"adoc_impacted_by","arguments":{}}),
+        ),
+    ] {
+        server.send(json!({"jsonrpc":"2.0","id":id,"method":method,"params":params}));
+        let response = server.receive();
+        assert_eq!(
+            response["error"]["data"],
+            json!({"code":"retrieval.audit_spool_corrupt","sensitive_access":{"state":"refused"}}),
+            "{response}"
+        );
+        assert!(!response.to_string().contains("spool.log"));
+    }
+    assert!(sink.state.lock().unwrap().requests.is_empty());
+}
+
+#[test]
+fn t2_second_process_cannot_acquire_live_spool_but_restart_after_kill_can() {
+    let sink = Sink::new(Mode::Ok);
+    let root = tempfile::tempdir().unwrap();
+    fixture(root.path(), &sink);
+    let first = StdioGateway::start(root.path());
+    let refused = Command::new(env!("CARGO_BIN_EXE_adoc-mcp"))
+        .current_dir(root.path())
+        .args(["--config", "gateway.yaml", "--audit-config", "audit.json"])
+        .output()
+        .unwrap();
+    assert!(!refused.status.success());
+    assert!(
+        String::from_utf8(refused.stderr)
+            .unwrap()
+            .contains("retrieval.audit_sink_unavailable")
+    );
+    drop(first);
+    let mut restarted = StdioGateway::start(root.path());
+    restarted.call(2, "why", json!({"object_id":"billing.public"}));
+    assert!(restarted.receive().get("error").is_none());
+}
+
+#[test]
+fn t2_all_six_public_sync_methods_keep_pending_delivery_and_visible_warning() {
+    let sink = Sink::new(Mode::Outage);
+    let root = tempfile::tempdir().unwrap();
+    fixture(root.path(), &sink);
+    set_delivery(root.path(), None);
+    let server = bound(root.path());
+    let requests = [
+        ("why", json!({"object_id":"billing.internal"})),
+        (
+            "search",
+            json!({"query":"INTERNAL_ONLY_QUERY","objects_only":true,"lexical":true}),
+        ),
+        ("graph", json!({"object_id":"billing.internal"})),
+        ("stale", json!({})),
+        ("contradictions", json!({})),
+        ("impacted_by", json!({"paths":["src/billing.rs"]})),
+    ];
+    for (command, mut arguments) in requests {
+        arguments["artifact"] = json!("graph.json");
+        let result = match command {
+            "why" => server.run_why(serde_json::from_value(arguments).unwrap()),
+            "search" => server.run_search(serde_json::from_value(arguments).unwrap()),
+            "graph" => server.run_graph(serde_json::from_value(arguments).unwrap()),
+            "stale" => server.run_stale(serde_json::from_value(arguments).unwrap()),
+            "contradictions" => {
+                server.run_contradictions(serde_json::from_value(arguments).unwrap())
+            }
+            "impacted_by" => server.run_impacted_by(serde_json::from_value(arguments).unwrap()),
+            _ => unreachable!(),
+        }
+        .unwrap();
+        let result = serde_json::to_value(result).unwrap();
+        assert_eq!(
+            result["_meta"]["adoc.sensitive_access"]["state"], "spooled_pending",
+            "{command}: {result}"
+        );
+        assert_eq!(
+            result["content"][2]["text"],
+            "Sensitive access audit is pending recording (retrieval.sensitive_access_unrecorded)."
+        );
+        assert!(result["structuredContent"].is_object());
+    }
+    let log = fs::read_to_string(root.path().join(".adoc-audit/spool.log")).unwrap();
+    let entries: Vec<Value> = log
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(
+        entries
+            .iter()
+            .filter(|entry| entry["kind"] == "event")
+            .count(),
+        6
+    );
+    assert!(
+        sink.events().iter().all(|event| event["sequence"] == 1),
+        "no later event may bypass pending sequence1"
+    );
+}
+
+fn assert_refused_with_original_event_retained(root: &Path, sink: &Sink, response: &Value) {
+    assert_eq!(
+        response["error"]["data"],
+        json!({"code":"retrieval.audit_sink_unavailable","sensitive_access":{"state":"refused"}})
+    );
+    assert!(response.get("result").is_none());
+    assert!(!response.to_string().contains("LOCAL_SENSITIVE_BODY"));
+    assert!(!response.to_string().contains("spooled_pending"));
+    let journal = fs::read_to_string(root.join(".adoc-audit/spool.log")).unwrap();
+    let records: Vec<Value> = journal
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let queued: Vec<_> = records
+        .iter()
+        .filter(|record| record["kind"] == "event")
+        .collect();
+    assert_eq!(queued.len(), 1);
+    assert!(!records.iter().any(|record| record["kind"] == "ack"));
+    let state = sink.state.lock().unwrap();
+    let sent: Vec<_> = state
+        .requests
+        .iter()
+        .filter(|request| request.path.ends_with("/events"))
+        .collect();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(
+        queued[0]["event_bytes"].as_str().unwrap().as_bytes(),
+        sent[0].bytes
+    );
+    let event: Value = serde_json::from_slice(&sent[0].bytes).unwrap();
+    assert_eq!(event["caller"]["auth_session_id"], AUTH);
+    assert_eq!(event["caller"]["gateway_session_id"], SESSION);
+}
+
+#[test]
+fn t2_final_control_recording_409_drift_refuses_instead_of_pending() {
+    let sink = Sink::new(Mode::RecordConflict);
+    let root = tempfile::tempdir().unwrap();
+    fixture(root.path(), &sink);
+    set_delivery(root.path(), None);
+    let mut server = StdioGateway::start(root.path());
+    server.call(2, "why", json!({"object_id":"billing.internal"}));
+    assert_refused_with_original_event_retained(root.path(), &sink, &server.receive());
+    let state = sink.state.lock().unwrap();
+    assert_eq!(state.requests.len(), 3);
+    assert!(state.requests[1].path.ends_with("/transmission"));
+    assert!(state.requests[2].path.ends_with("/events"));
+}
+
+#[test]
+fn t2_final_control_post_outage_current_session_change_refuses_pending() {
+    let sink = Sink::new(Mode::PostOutageSessionChange);
+    let root = tempfile::tempdir().unwrap();
+    fixture(root.path(), &sink);
+    set_delivery(root.path(), None);
+    let mut server = StdioGateway::start(root.path());
+    server.call(2, "why", json!({"object_id":"billing.internal"}));
+    assert_refused_with_original_event_retained(root.path(), &sink, &server.receive());
+    let state = sink.state.lock().unwrap();
+    assert_eq!(state.requests.len(), 4);
+    assert!(state.requests[2].path.ends_with("/events"));
+    assert!(state.requests[3].path.ends_with("/gateway-audit-sessions"));
+    assert_eq!(state.requests[0].bytes, state.requests[3].bytes);
 }

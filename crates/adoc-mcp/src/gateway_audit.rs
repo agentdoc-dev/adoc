@@ -1,4 +1,4 @@
-//! Connected gateway admission. Never release sensitive bytes without a matching receipt.
+//! Durable gateway admission with explicit recorded, pending and refused outcomes.
 use std::{
     fmt,
     fs::File,
@@ -15,7 +15,10 @@ use adoc_core::{
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use uuid::Uuid;
 
-use crate::{McpAdapterError, McpAdapterResult};
+use crate::{
+    McpAdapterError, McpAdapterResult,
+    gateway_spool::{Binding, Header, Pending, Spool},
+};
 
 const RESPONSE_LIMIT: u64 = 64 * 1024;
 const MAX_SEQUENCE: u64 = 9_007_199_254_740_991;
@@ -27,6 +30,8 @@ struct AuditConfig {
     workspace_id: String,
     repository_id: String,
     bearer_token_file: PathBuf,
+    #[serde(default)]
+    delivery_policy: DeliveryPolicy,
 }
 
 #[derive(Serialize)]
@@ -77,25 +82,26 @@ struct Receipt {
     replayed: bool,
 }
 
-struct PendingEvent {
-    event_id: String,
-    digest: String,
-    bytes: String,
+pub(crate) enum Delivery {
+    Recorded { event_id: String },
+    SpooledPending { event_id: String },
 }
 
-struct RecordingState {
-    sequence: u64,
-    pending: Option<PendingEvent>,
+#[derive(Default, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+enum DeliveryPolicy {
+    #[default]
+    Spool,
+    Synchronous,
 }
 
 pub(crate) struct GatewayAuditor {
     pub(crate) root: PathBuf,
     agent: ureq::Agent,
     endpoint: String,
-    authorization: ureq::http::HeaderValue,
-    setup: SetupRequest,
-    binding: SetupResponse,
-    state: Mutex<RecordingState>,
+    token_path: PathBuf,
+    policy: DeliveryPolicy,
+    state: Mutex<Spool>,
 }
 
 // Credentials and upstream responses deliberately have no Debug representation.
@@ -163,11 +169,23 @@ impl GatewayAuditor {
         if !canonical_uuid(&config.workspace_id) || !canonical_uuid(&config.repository_id) {
             return unavailable();
         }
-        let endpoint = format!(
-            "{}/api/v1/workspaces/{}/gateway-audit-sessions",
-            origin(&config.cloud_url)?,
-            config.workspace_id
-        );
+        let cloud_origin = origin(&config.cloud_url)?;
+        let root = root
+            .canonicalize()
+            .map_err(|_| McpAdapterError::AuditSinkUnavailable)?;
+        let header = Header {
+            format_version: 1,
+            root: root
+                .to_str()
+                .ok_or(McpAdapterError::AuditSinkUnavailable)?
+                .to_string(),
+            cloud_origin: cloud_origin.clone(),
+            workspace_id: config.workspace_id.clone(),
+            repository_id: config.repository_id,
+            local_policy_digest: gateway_policy_digest(policy)
+                .map_err(|_| McpAdapterError::AuditSinkUnavailable)?,
+            setup_request_id: Uuid::new_v4().to_string(),
+        };
         let token_path = if config.bearer_token_file.is_absolute() {
             config.bearer_token_file
         } else {
@@ -175,15 +193,6 @@ impl GatewayAuditor {
                 .unwrap_or(Path::new("."))
                 .join(config.bearer_token_file)
         };
-        let token = String::from_utf8(read_bounded(&token_path, 16 * 1024)?)
-            .map_err(|_| McpAdapterError::AuditSinkUnavailable)?;
-        let token = token.trim_end_matches(['\r', '\n']);
-        if token.is_empty() || !token.bytes().all(|b| b.is_ascii_graphic()) {
-            return unavailable();
-        }
-        let mut authorization = ureq::http::HeaderValue::from_str(&format!("Bearer {token}"))
-            .map_err(|_| McpAdapterError::AuditSinkUnavailable)?;
-        authorization.set_sensitive(true);
         let agent: ureq::Agent = ureq::Agent::config_builder()
             .max_redirects(0)
             .proxy(None)
@@ -191,134 +200,220 @@ impl GatewayAuditor {
             .max_response_header_size(RESPONSE_LIMIT as usize)
             .build()
             .into();
-        let setup = SetupRequest {
-            repository_id: config.repository_id,
-            setup_request_id: Uuid::new_v4().to_string(),
-            local_policy_digest: gateway_policy_digest(policy)
-                .map_err(|_| McpAdapterError::AuditSinkUnavailable)?,
-        };
-        let binding: SetupResponse = post(
-            &agent,
-            &authorization,
-            &endpoint,
-            &serde_json::to_vec(&setup)?,
-            None,
-        )?;
-        if binding.workspace_id != config.workspace_id
-            || binding.repository_id != setup.repository_id
-            || binding.local_policy_digest != setup.local_policy_digest
-            || ![
-                &binding.gateway_session_id,
-                &binding.principal_id,
-                &binding.auth_session_id,
-            ]
-            .into_iter()
-            .all(|s| canonical_uuid(s))
-            || !binding.transmission.audit_metadata
-            || !digest(&binding.transmission.egress_policy_digest)
-        {
+        let spool = Spool::open(header)?;
+        Ok(Self {
+            root,
+            agent,
+            endpoint: format!(
+                "{cloud_origin}/api/v1/workspaces/{}/gateway-audit-sessions",
+                config.workspace_id
+            ),
+            token_path,
+            policy: config.delivery_policy,
+            state: Mutex::new(spool),
+        })
+    }
+
+    fn authorization(&self) -> McpAdapterResult<ureq::http::HeaderValue> {
+        let token = String::from_utf8(read_bounded(&self.token_path, 16 * 1024)?)
+            .map_err(|_| McpAdapterError::AuditSinkUnavailable)?;
+        let token = token.trim_end_matches(['\r', '\n']);
+        if token.is_empty() || !token.bytes().all(|b| b.is_ascii_graphic()) {
             return unavailable();
         }
-        Ok(Self {
-            root: root
-                .canonicalize()
-                .map_err(|_| McpAdapterError::AuditSinkUnavailable)?,
-            agent,
-            endpoint,
-            authorization,
-            setup,
-            binding,
-            state: Mutex::new(RecordingState {
-                sequence: 1,
-                pending: None,
-            }),
-        })
+        let mut value = ureq::http::HeaderValue::from_str(&format!("Bearer {token}"))
+            .map_err(|_| McpAdapterError::AuditSinkUnavailable)?;
+        value.set_sensitive(true);
+        Ok(value)
+    }
+
+    pub(crate) fn check_integrity(&self) -> McpAdapterResult<()> {
+        self.state
+            .lock()
+            .map_err(|_| McpAdapterError::AuditSinkUnavailable)?
+            .read()
+            .map(|_| ())
+    }
+
+    pub(crate) fn drain_pending(&self) -> McpAdapterResult<()> {
+        let mut spool = self
+            .state
+            .lock()
+            .map_err(|_| McpAdapterError::AuditSinkUnavailable)?;
+        self.drain(&mut spool).map(|_| ())
+    }
+
+    fn current(&self, spool: &mut Spool) -> McpAdapterResult<SetupResponse> {
+        let header = spool.read()?.header;
+        let setup = SetupRequest {
+            repository_id: header.repository_id.clone(),
+            setup_request_id: header.setup_request_id.clone(),
+            local_policy_digest: header.local_policy_digest.clone(),
+        };
+        let fresh: SetupResponse = post(
+            &self.agent,
+            &self.authorization()?,
+            &self.endpoint,
+            &serde_json::to_vec(&setup)?,
+            None,
+        )
+        .map_err(|_| McpAdapterError::AuditSinkUnavailable)?;
+        if !valid_binding(&fresh, &header) {
+            return unavailable();
+        }
+        spool.bind(Binding {
+            gateway_session_id: fresh.gateway_session_id.clone(),
+            principal_id: fresh.principal_id.clone(),
+            auth_session_id: fresh.auth_session_id.clone(),
+        })?;
+        Ok(fresh)
     }
 
     pub(crate) fn record(
         &self,
         command: GatewaySensitiveAccessCommand,
         access: &ReadAccess,
-    ) -> McpAdapterResult<()> {
-        // ponytail: serialize connected admission; per-session queues only if measured throughput requires them.
-        let mut state = self
+    ) -> McpAdapterResult<Delivery> {
+        // ponytail: one serialized journal; partition only if measured throughput requires it.
+        let mut spool = self
             .state
             .lock()
             .map_err(|_| McpAdapterError::AuditSinkUnavailable)?;
-        if state.pending.is_some() {
-            self.transmit(&mut state)?;
-        }
-        if state.sequence > MAX_SEQUENCE {
+        let current = self.current(&mut spool)?;
+        // An outage may leave older entries queued. A denial is never pending.
+        let drained = self.drain(&mut spool)?;
+        let state = spool.read()?;
+        let sequence = state
+            .sequences
+            .get(&current.gateway_session_id)
+            .copied()
+            .unwrap_or(0)
+            + 1;
+        if sequence > MAX_SEQUENCE {
             return unavailable();
         }
         let event_id = Uuid::new_v4().to_string();
         let event = build_gateway_sensitive_access(GatewaySensitiveAccessInput {
             event_id: event_id.clone(),
-            workspace_id: self.binding.workspace_id.clone(),
-            repository_id: self.binding.repository_id.clone(),
-            principal_id: self.binding.principal_id.clone(),
-            auth_session_id: self.binding.auth_session_id.clone(),
-            gateway_session_id: self.binding.gateway_session_id.clone(),
-            local_policy_digest: self.setup.local_policy_digest.clone(),
+            workspace_id: current.workspace_id.clone(),
+            repository_id: current.repository_id.clone(),
+            principal_id: current.principal_id.clone(),
+            auth_session_id: current.auth_session_id.clone(),
+            gateway_session_id: current.gateway_session_id.clone(),
+            local_policy_digest: current.local_policy_digest.clone(),
             command,
-            sequence: state.sequence,
+            sequence,
             objects: access.sensitive_objects(),
         })
         .map_err(|_| McpAdapterError::AuditSinkUnavailable)?;
-        state.pending = Some(PendingEvent {
-            event_id,
-            digest: event
-                .content_digest()
-                .map_err(|_| McpAdapterError::AuditSinkUnavailable)?,
-            bytes: event
-                .to_canonical_json()
-                .map_err(|_| McpAdapterError::AuditSinkUnavailable)?,
-        });
-        self.transmit(&mut state)
-    }
-
-    fn transmit(&self, state: &mut RecordingState) -> McpAdapterResult<()> {
-        // Setup replay is a fresh preflight, never a cached transmission permit.
-        let fresh: SetupResponse = post(
-            &self.agent,
-            &self.authorization,
-            &self.endpoint,
-            &serde_json::to_vec(&self.setup)?,
-            None,
-        )?;
-        if !self.binding.same_binding(&fresh)
-            || !fresh.transmission.audit_metadata
-            || !digest(&fresh.transmission.egress_policy_digest)
-        {
+        spool.enqueue(&event)?;
+        if drained && self.drain(&mut spool)? {
+            return Ok(Delivery::Recorded { event_id });
+        }
+        if self.policy == DeliveryPolicy::Synchronous {
             return unavailable();
         }
-        let pending = state
-            .pending
-            .as_ref()
-            .ok_or(McpAdapterError::AuditSinkUnavailable)?;
+        // A recording outage never promotes the earlier preflight into a cached grant.
+        let final_binding = self.current(&mut spool)?;
+        if !current.same_binding(&final_binding) {
+            return unavailable();
+        }
+        Ok(Delivery::SpooledPending { event_id })
+    }
+
+    /// False means only recording/ack transport is unavailable; every other failure refuses.
+    fn drain(&self, spool: &mut Spool) -> McpAdapterResult<bool> {
+        loop {
+            let state = spool.read()?;
+            let Some(pending) = state.pending.first() else {
+                return Ok(true);
+            };
+            let binding = state
+                .bindings
+                .get(pending.event.gateway_session_id())
+                .ok_or(McpAdapterError::AuditSpoolCorrupt)?;
+            match self.transmit(&state.header, binding, pending) {
+                Ok(()) => spool.acknowledge(pending)?,
+                Err(PostFailure::Outage) => return Ok(false),
+                Err(PostFailure::Refused) => return unavailable(),
+            }
+        }
+    }
+
+    fn transmit(
+        &self,
+        header: &Header,
+        binding: &Binding,
+        pending: &Pending,
+    ) -> Result<(), PostFailure> {
+        let authorization = self.authorization().map_err(|_| PostFailure::Refused)?;
+        let request = serde_json::json!({"repository_id": header.repository_id, "local_policy_digest": header.local_policy_digest});
+        let fresh: SetupResponse = post(
+            &self.agent,
+            &authorization,
+            &format!(
+                "{}/{}/transmission",
+                self.endpoint, binding.gateway_session_id
+            ),
+            &serde_json::to_vec(&request).map_err(|_| PostFailure::Refused)?,
+            None,
+        )
+        .map_err(|_| PostFailure::Refused)?;
+        if !valid_binding(&fresh, header)
+            || fresh.gateway_session_id != binding.gateway_session_id
+            || fresh.principal_id != binding.principal_id
+            || fresh.auth_session_id != binding.auth_session_id
+        {
+            return Err(PostFailure::Refused);
+        }
         let receipt: Receipt = post(
             &self.agent,
-            &self.authorization,
-            &format!(
-                "{}/{}/events",
-                self.endpoint, self.binding.gateway_session_id
-            ),
+            &authorization,
+            &format!("{}/{}/events", self.endpoint, binding.gateway_session_id),
             pending.bytes.as_bytes(),
             Some(&fresh.transmission.egress_policy_digest),
         )?;
         if !receipt.recorded
-            || receipt.event_id != pending.event_id
+            || receipt.event_id != pending.event.event_id()
             || receipt.event_digest != pending.digest
-            || receipt.gateway_session_id != self.binding.gateway_session_id
-            || receipt.sequence != state.sequence
+            || receipt.gateway_session_id != binding.gateway_session_id
+            || receipt.sequence != pending.event.sequence()
         {
-            return unavailable();
+            return Err(PostFailure::Refused);
         }
-        // Both fresh recording and exact replay acknowledge this same event.
         let _ = receipt.replayed;
-        state.pending = None;
-        state.sequence += 1;
         Ok(())
+    }
+}
+
+fn valid_binding(binding: &SetupResponse, header: &Header) -> bool {
+    binding.workspace_id == header.workspace_id
+        && binding.repository_id == header.repository_id
+        && binding.local_policy_digest == header.local_policy_digest
+        && [
+            &binding.gateway_session_id,
+            &binding.principal_id,
+            &binding.auth_session_id,
+        ]
+        .into_iter()
+        .all(|s| canonical_uuid(s))
+        && binding.transmission.audit_metadata
+        && digest(&binding.transmission.egress_policy_digest)
+}
+
+#[derive(Debug)]
+enum PostFailure {
+    Outage,
+    Refused,
+}
+fn post_failure(error: ureq::Error) -> PostFailure {
+    match error {
+        ureq::Error::StatusCode(500..=599)
+        | ureq::Error::Io(_)
+        | ureq::Error::Timeout(_)
+        | ureq::Error::HostNotFound
+        | ureq::Error::ConnectionFailed => PostFailure::Outage,
+        _ => PostFailure::Refused,
     }
 }
 
@@ -328,7 +423,7 @@ fn post<T: DeserializeOwned>(
     url: &str,
     bytes: &[u8],
     egress: Option<&str>,
-) -> McpAdapterResult<T> {
+) -> Result<T, PostFailure> {
     let mut request = agent
         .post(url)
         .header("authorization", authorization.clone())
@@ -336,19 +431,17 @@ fn post<T: DeserializeOwned>(
     if let Some(digest) = egress {
         request = request.header("x-agentdoc-egress-policy-digest", digest);
     }
-    let mut response = request
-        .send(bytes)
-        .map_err(|_| McpAdapterError::AuditSinkUnavailable)?;
+    let mut response = request.send(bytes).map_err(post_failure)?;
     if !response.status().is_success() {
-        return unavailable();
+        return Err(PostFailure::Refused);
     }
     let bytes = response
         .body_mut()
         .with_config()
         .limit(RESPONSE_LIMIT)
         .read_to_vec()
-        .map_err(|_| McpAdapterError::AuditSinkUnavailable)?;
-    decode_object(&bytes)
+        .map_err(post_failure)?;
+    decode_object(&bytes).map_err(|_| PostFailure::Refused)
 }
 
 fn decode_object<T: DeserializeOwned>(bytes: &[u8]) -> McpAdapterResult<T> {
@@ -368,6 +461,40 @@ fn decode_object<T: DeserializeOwned>(bytes: &[u8]) -> McpAdapterResult<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn startup_prepares_durable_spool_without_network_authority() {
+        let root = tempfile::tempdir().unwrap();
+        let config = root.path().join("audit.json");
+        std::fs::write(root.path().join("token"), "valid-token").unwrap();
+        std::fs::write(
+            &config,
+            serde_json::json!({
+                "cloud_url":"http://127.0.0.1:9",
+                "workspace_id":"00000000-0000-4000-8000-000000000001",
+                "repository_id":"00000000-0000-4000-8000-000000000002",
+                "bearer_token_file":"token"
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let auditor = GatewayAuditor::open(
+            root.path(),
+            &RetrievalPolicy {
+                audience: "public".into(),
+                allowed_visibilities: ["public".into()].into(),
+                excluded_object_ids: Default::default(),
+            },
+            &config,
+        );
+        assert!(
+            auditor.is_ok(),
+            "local startup must persist setup without granting authority"
+        );
+        let bytes = std::fs::read(root.path().join(".adoc-audit/spool.log")).unwrap();
+        assert!(bytes.ends_with(b"\n"));
+        assert!(!String::from_utf8(bytes).unwrap().contains("valid-token"));
+    }
 
     #[test]
     fn startup_and_receipts_reject_arrays_unknown_keys_and_duplicate_fields() {
