@@ -71,6 +71,7 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                 Commands::ManagedRetrieve {
                     require_sensitive_classification: _,
                     require_field_projection: _,
+                    require_field_declassification: _,
                     input,
                     manifest_out,
                     operation,

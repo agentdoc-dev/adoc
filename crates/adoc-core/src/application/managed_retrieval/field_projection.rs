@@ -31,6 +31,19 @@ struct ProjectedField {
     selector: String,
     #[serde(deserialize_with = "required_classification")]
     classification: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    declassification: Option<ApprovedFieldDeclassificationReference>,
+}
+
+/// Native admission and exact finalization establish authority; this reference
+/// only carries that binding through the pure runtime.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ApprovedFieldDeclassificationReference {
+    state_event_ordinal: u64,
+    state_event_digest: String,
+    detail_digest: String,
+    prior_classification: String,
 }
 
 fn required_classification<'de, D: Deserializer<'de>>(
@@ -48,9 +61,11 @@ pub struct ManagedAccessedObject {
 
 pub(super) fn validate_shape(value: &Value) -> Result<(), Box<Diagnostic>> {
     if !value.is_object()
-        || !value["fields"]
-            .as_array()
-            .is_some_and(|fields| fields.iter().all(Value::is_object))
+        || !value["fields"].as_array().is_some_and(|fields| {
+            fields.iter().all(|field| {
+                field.is_object() && field.get("declassification").is_none_or(Value::is_object)
+            })
+        })
     {
         return Err(unavailable());
     }
@@ -86,8 +101,25 @@ impl ManagedFieldProjection {
             {
                 return Err(unavailable());
             }
+            if let Some(reference) = &field.declassification {
+                use crate::domain::semantic_context::is_sha256_digest;
+                let current = field.classification.as_deref().ok_or_else(unavailable)?;
+                if reference.state_event_ordinal > 9_007_199_254_740_991
+                    || !is_sha256_digest(&reference.state_event_digest)
+                    || !is_sha256_digest(&reference.detail_digest)
+                    || class(current)? >= class(&reference.prior_classification)?
+                {
+                    return Err(unavailable());
+                }
+            }
         }
         Ok(())
+    }
+
+    pub(super) fn has_declassification(&self) -> bool {
+        self.fields
+            .iter()
+            .any(|field| field.declassification.is_some())
     }
 }
 
@@ -121,8 +153,11 @@ fn project_object(
     for floor in authored.values() {
         class(floor)?;
     }
-    if !RetrievalPolicy::permits(Some(policy), node)? {
+    if policy.excluded_object_ids.contains(&node.id) {
         return Ok(None);
+    }
+    if !policy.permits_visibility(object_floor) {
+        return project_declassified_scalars(node, projection, policy);
     }
     let mut retained_class = object_floor;
     for (key, floor) in &authored {
@@ -138,7 +173,7 @@ fn project_object(
     let native: BTreeMap<_, _> = projection
         .into_iter()
         .flat_map(|p| &p.fields)
-        .map(|field| (field.selector.as_str(), field.classification.as_deref()))
+        .map(|field| (field.selector.as_str(), field))
         .collect();
     let mut removed = BTreeSet::new();
     for (key, body) in std::iter::once(("body".to_string(), true))
@@ -157,8 +192,18 @@ fn project_object(
             .unwrap_or(Visibility::Public)
             .max(object_floor);
         let effective = match native.get(selector.as_str()) {
-            Some(Some(value)) => Some(class(value)?.max(floor)),
-            Some(None) => None,
+            Some(field) => field
+                .classification
+                .as_deref()
+                .map(|value| {
+                    let effective = class(value)?;
+                    Ok::<Visibility, Box<Diagnostic>>(if field.declassification.is_some() {
+                        effective
+                    } else {
+                        effective.max(floor)
+                    })
+                })
+                .transpose()?,
             None => Some(floor),
         };
         if let Some(effective) = effective.filter(|value| policy.permits_visibility(*value)) {
@@ -187,6 +232,86 @@ fn project_object(
     if retained_class != object_floor || node.visibility.is_some() {
         node.visibility = Some(retained_class.as_str().to_string());
     }
+    Ok(Some(removed))
+}
+
+/// An unreadable original object can contribute only explicitly approved
+/// scalars. Construct the envelope from an allowlist so dedicated carriers do
+/// not inherit a selected field's lowering.
+fn project_declassified_scalars(
+    node: &mut GraphKnowledgeObjectNode,
+    projection: Option<&ManagedFieldProjection>,
+    policy: &RetrievalPolicy,
+) -> Result<Option<BTreeSet<String>>, Box<Diagnostic>> {
+    let mut body = String::new();
+    let mut fields = BTreeMap::new();
+    let mut retained_class = Visibility::Public;
+    let mut any = false;
+    let mut removed: BTreeSet<_> = node
+        .fields
+        .keys()
+        .map(|key| format!("/fields/{}", key.replace('~', "~0").replace('/', "~1")))
+        .chain(std::iter::once("/body".to_string()))
+        .collect();
+    for field in projection
+        .into_iter()
+        .flat_map(|projection| &projection.fields)
+    {
+        if field.declassification.is_none() {
+            continue;
+        }
+        let Some(effective) = field.classification.as_deref().map(class).transpose()? else {
+            continue;
+        };
+        if !policy.permits_visibility(effective) {
+            continue;
+        }
+        if field.selector == "/body" {
+            body = node.body.clone();
+        } else {
+            let key = field
+                .selector
+                .strip_prefix("/fields/")
+                .ok_or_else(unavailable)?
+                .replace("~1", "/")
+                .replace("~0", "~");
+            fields.insert(
+                key.clone(),
+                node.fields.get(&key).ok_or_else(unavailable)?.clone(),
+            );
+        }
+        removed.remove(&field.selector);
+        retained_class = retained_class.max(effective);
+        any = true;
+    }
+    if !any {
+        return Ok(None);
+    }
+    *node = GraphKnowledgeObjectNode {
+        id: node.id.clone(),
+        kind: node.kind.clone(),
+        content_hash: node.content_hash.clone(),
+        body,
+        fields,
+        visibility: Some(retained_class.as_str().to_string()),
+        page_id: String::new(),
+        source_span: crate::domain::graph::GraphSourceSpan::withheld(),
+        source_binding: None,
+        status: None,
+        severity: None,
+        trust: None,
+        field_visibility: None,
+        relations: Default::default(),
+        impacts: Vec::new(),
+        approved_by: Vec::new(),
+        allowed_actions: Vec::new(),
+        forbidden_actions: Vec::new(),
+        contradiction_claims: Vec::new(),
+        evidence: Vec::new(),
+        effective_status: None,
+        effective_reason: None,
+        evidence_quality: None,
+    };
     Ok(Some(removed))
 }
 
@@ -232,8 +357,17 @@ pub(super) fn project_receipts(
                 }
             }
         }
+        let scalar_only: BTreeSet<_> = receipt
+            .graph
+            .nodes
+            .iter()
+            .filter_map(|node| node.as_knowledge_object())
+            .filter(|node| node.source_span.is_withheld())
+            .map(|node| node.id.clone())
+            .collect();
         receipt.graph.edges.retain(|edge| {
-            !(edge.kind == GraphEdgeKind::Reference && hidden_bodies.contains(&edge.source)
+            !(scalar_only.contains(&edge.source)
+                || edge.kind == GraphEdgeKind::Reference && hidden_bodies.contains(&edge.source)
                 || edge.kind == GraphEdgeKind::ResolvedBy
                     && hidden_resolutions.contains(&edge.source))
         });

@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.managed_field_declassification.v0.schema.json",
+  "title": "Managed Field Declassification",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "workspace_id",
+    "canonical_id",
+    "version_id",
+    "content_digest",
+    "fields",
+    "request_id",
+    "principal_id",
+    "auth_session_id",
+    "authorization_decision_id",
+    "provenance_record_digest",
+    "state_event_digest",
+    "state_event_ordinal",
+    "policy_version",
+    "rationale",
+    "effective_date",
+    "restricted_evidence_remains_hidden"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "adoc.managed_field_declassification.v0"
+    },
+    "workspace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "canonical_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "version_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "content_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "fields": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "uniqueItems": true,
+      "description": "Selectors must be distinct even when their assertion lists differ; the AgentDoc domain validator enforces this cross-item constraint. Native storage validates selector existence, exact content binding and contributor authority.",
+      "items": {
+        "type": "object",
+        "required": [
+          "selector",
+          "prior_classification",
+          "new_classification",
+          "assertion_ids"
+        ],
+        "properties": {
+          "selector": {
+            "type": "string",
+            "maxLength": 256,
+            "pattern": "^(?:/body|/fields/(?:[^~/]|~[01])+)$"
+          },
+          "assertion_ids": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "description": "Native assertion row UUIDs scoped to this workspace, never external assertion-envelope IDs."
+          },
+          "prior_classification": {
+            "enum": [
+              "internal",
+              "restricted"
+            ]
+          },
+          "new_classification": {
+            "enum": [
+              "public",
+              "internal"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "prior_classification": {
+                  "const": "internal"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "new_classification": {
+                  "const": "public"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "request_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "principal_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "auth_session_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "authorization_decision_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "provenance_record_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "state_event_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "state_event_ordinal": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "policy_version": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+    },
+    "rationale": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "\\S"
+    },
+    "effective_date": {
+      "type": "string",
+      "pattern": "^(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-(?:0[1-9]|[12][0-9]|3[01])|(?:04|06|09|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8]))|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:0[48]|[2468][048]|[13579][26])00)-02-29)$",
+      "not": {
+        "pattern": "^0000"
+      }
+    },
+    "restricted_evidence_remains_hidden": {
+      "const": true
+    }
+  },
+  "additionalProperties": false,
+  "description": "Immutable detail linked to one native bare state event. Shape validity does not establish authority, current source access, or approval applicability."
+}

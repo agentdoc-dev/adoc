@@ -9,8 +9,7 @@ use serde_json::Value;
 
 use super::retrieval::{
     RetrievalEnvelope, RetrievalSession, SearchFilters, SearchQuery, SearchRecordScope,
-    project_retrieval_document, refresh_retrieval_contradictions, retrieval_session_from_document,
-    search, why_object,
+    project_retrieval_document, refresh_retrieval_contradictions, search, why_object,
 };
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::graph::{
@@ -234,6 +233,17 @@ fn assemble(
         return Err(unavailable());
     }
 
+    if selected.values().any(|object| {
+        object
+            .field_projection
+            .as_ref()
+            .is_some_and(ManagedFieldProjection::has_declassification)
+    }) {
+        for receipt in receipts.values() {
+            crate::domain::graph::GraphIndex::from_document(receipt.graph.clone())
+                .map_err(|_| unavailable())?;
+        }
+    }
     let denied = field_projection::project_receipts(&mut receipts, &selected, &policy)?;
     let mut surviving: BTreeSet<String> = selected
         .keys()
@@ -374,8 +384,19 @@ fn assemble(
     graph.edges.sort();
     graph.edges.dedup();
     refresh_retrieval_contradictions(&mut graph.nodes);
-    let session =
-        retrieval_session_from_document(graph, Some(&policy)).map_err(|_| unavailable())?;
+    let withheld_sources = graph
+        .nodes
+        .iter()
+        .filter_map(GraphNode::as_knowledge_object)
+        .filter(|node| node.source_span.is_withheld())
+        .map(|node| node.id.clone())
+        .collect();
+    let session = crate::application::retrieval::retrieval_session_from_managed_projection(
+        graph,
+        Some(&policy),
+        &withheld_sources,
+    )
+    .map_err(|_| unavailable())?;
     let bindings = session
         .graph_session()
         .objects()
@@ -1354,6 +1375,275 @@ Retained TARGET_CANARY old knowledge.
 
     fn restricted_policy(input: &mut Value) {
         input["policy"] = json!({"audience":"restricted","allowed_visibilities":["public","internal","restricted"],"excluded_object_ids":[]});
+    }
+
+    fn declassification_reference() -> Value {
+        json!({"state_event_ordinal":1,"state_event_digest":format!("sha256:{}", "a".repeat(64)),
+            "detail_digest":format!("sha256:{}", "b".repeat(64)),"prior_classification":"internal"})
+    }
+
+    #[test]
+    fn declassification_reference_shape_and_null_fail_closed() {
+        let root = tempfile::tempdir().unwrap();
+        let retained = receipt(root.path(), SOURCE);
+        let mut input = projected_input(&retained, &["billing.selected"]);
+        add_projection(&mut input, "billing.selected", "/body", json!("public"));
+        input["objects"][0]["field_projection"]["fields"][0]["declassification"] =
+            declassification_reference();
+        for bad in [
+            Value::Null,
+            json!([]),
+            json!([
+                1,
+                format!("sha256:{}", "a".repeat(64)),
+                format!("sha256:{}", "b".repeat(64)),
+                "internal"
+            ]),
+            json!({"state_event_ordinal":1}),
+            {
+                let mut value = declassification_reference();
+                value["state_event_ordinal"] = json!(9007199254740992u64);
+                value
+            },
+            {
+                let mut value = declassification_reference();
+                value["detail_digest"] = json!("sha256:bad");
+                value
+            },
+            {
+                let mut value = declassification_reference();
+                value["prior_classification"] = json!("public");
+                value
+            },
+            {
+                let mut value = declassification_reference();
+                value["extra"] = json!(true);
+                value
+            },
+        ] {
+            let mut invalid = input.clone();
+            invalid["objects"][0]["field_projection"]["fields"][0]["declassification"] = bad;
+            let outcome = why(&invalid, "billing.selected");
+            assert_ne!(outcome.exit_code, 0);
+            assert!(outcome.envelope.records.is_empty());
+            assert!(outcome.contributing_bindings.is_empty());
+        }
+        let mut invalid = input.clone();
+        invalid["objects"][0]["field_projection"]["fields"][0]["classification"] = Value::Null;
+        assert_ne!(why(&invalid, "billing.selected").exit_code, 0);
+        let duplicate = input.to_string().replace(
+            "\"detail_digest\":",
+            "\"detail_digest\":\"duplicate\",\"detail_digest\":",
+        );
+        assert_ne!(
+            run_managed_retrieval(
+                duplicate.as_bytes(),
+                ManagedRetrievalQuery::Why {
+                    object_id: "billing.selected".into()
+                }
+            )
+            .exit_code,
+            0
+        );
+    }
+
+    #[test]
+    fn declassification_never_sanitizes_malformed_original_sources_or_overrides_exclusion() {
+        let root = tempfile::tempdir().unwrap();
+        let compiled = receipt(root.path(), SOURCE);
+        for path in ["", "../secret.adoc", "/secret.adoc"] {
+            let mut selected = node(&compiled, "billing.target");
+            selected["source_span"] = json!({"path":path,"line":0,"column":0});
+            let selected = seal_node(selected);
+            let retained = graph(vec![selected]);
+            let mut input = projected_input(&retained, &["billing.target"]);
+            add_projection(&mut input, "billing.target", "/body", json!("public"));
+            input["objects"][0]["field_projection"]["fields"][0]["declassification"] =
+                declassification_reference();
+            let outcome = why(&input, "billing.target");
+            assert_ne!(outcome.exit_code, 0, "{path}");
+            assert!(outcome.envelope.records.is_empty());
+        }
+        let retained = graph(vec![node(&compiled, "billing.target")]);
+        let mut input = projected_input(&retained, &["billing.target"]);
+        add_projection(&mut input, "billing.target", "/body", json!("public"));
+        input["objects"][0]["field_projection"]["fields"][0]["declassification"] =
+            declassification_reference();
+        input["policy"]["excluded_object_ids"] = json!(["billing.target"]);
+        assert!(why(&input, "billing.target").envelope.records.is_empty());
+    }
+
+    #[test]
+    fn declassification_withholds_all_dedicated_carriers_and_retains_authorized_siblings() {
+        let root = tempfile::tempdir().unwrap();
+        let compiled = receipt(root.path(), SOURCE);
+        let mut selected = node(&compiled, "billing.selected");
+        selected["visibility"] = json!("restricted");
+        selected["body"] = json!("VISIBLE_APPROVED_BODY");
+        selected["status"] = json!("verified");
+        selected["severity"] = json!("HIDDEN_SEVERITY");
+        selected["trust"] = json!("HIDDEN_TRUST");
+        selected["fields"]["owner"] = json!("HIDDEN_OWNER");
+        selected["fields"]["resolved_by"] = json!("billing.target");
+        selected["page_id"] = json!("hidden.page");
+        for carrier in [
+            "impacts",
+            "approved_by",
+            "allowed_actions",
+            "forbidden_actions",
+        ] {
+            selected[carrier] = json!(["HIDDEN_CARRIER"]);
+        }
+        selected["contradiction_claims"] = json!(["billing.target"]);
+        selected["relations"]["related_to"] = json!(["billing.target"]);
+        selected["evidence"] =
+            json!([{"kind":"source_code","reference":"billing.target","value":"HIDDEN_EVIDENCE"}]);
+        let selected = seal_node(selected);
+        let mut retained = graph(vec![selected.clone(), node(&compiled, "billing.target")]);
+        retained["edges"] = json!([{"kind":"relation","source":"billing.selected","target":"billing.target","relation":"related_to"}]);
+        let mut input = projected_input(&retained, &["billing.selected"]);
+        add_projection(&mut input, "billing.selected", "/body", json!("public"));
+        input["objects"][0]["field_projection"]["fields"][0]["declassification"] =
+            declassification_reference();
+        let public = why(&input, "billing.selected");
+        assert_eq!(public.exit_code, 0, "{:?}", public.envelope.diagnostics);
+        let serialized = serde_json::to_string(&public.envelope).unwrap();
+        assert!(!serialized.contains("HIDDEN"));
+        assert!(!serialized.contains("billing.target"));
+        assert!(
+            query(&input, "HIDDEN_OWNER", SearchMode::Lexical)
+                .envelope
+                .records
+                .is_empty()
+        );
+        let no_hit = query(&input, "unmatched432", SearchMode::Lexical);
+        assert_eq!(no_hit.contributing_bindings.len(), 1);
+        assert!(
+            serde_json::to_value(&no_hit.contributing_bindings).unwrap()[0]
+                .get("accessed_object")
+                .is_none()
+        );
+        // Ordinarily authorized siblings retain their original class; approval
+        // does not relabel the whole source or lower dedicated metadata.
+        restricted_policy(&mut input);
+        input["objects"]
+            .as_array_mut()
+            .unwrap()
+            .push(projected_input(&retained, &["billing.target"])["objects"][0].clone());
+        // Avoid duplicate canonical/version identity in this synthetic helper.
+        input["objects"][1]["canonical"]["canonical_id"] =
+            json!("00000000-0000-4000-8000-000000000007");
+        input["objects"][1]["version_id"] = json!("00000000-0000-4000-8000-000000000008");
+        let result = why(&input, "billing.selected");
+        assert_eq!(result.exit_code, 0, "{:?}", result.envelope.diagnostics);
+        let record = serde_json::to_value(&result.envelope.records[0]).unwrap();
+        assert_eq!(record["owner"], "HIDDEN_OWNER");
+        assert_eq!(record["classification"], "restricted");
+    }
+
+    #[test]
+    fn declassification_cannot_regenerate_lifecycle_or_reverse_resolution_metadata() {
+        let root = tempfile::tempdir().unwrap();
+        let compiled = receipt(root.path(), SOURCE);
+        let mut selected = node(&compiled, "billing.selected");
+        selected["visibility"] = json!("restricted");
+        let mut conflict = node(&compiled, "billing.referrer");
+        conflict["kind"] = json!("contradiction");
+        conflict["status"] = json!("unresolved");
+        conflict["body"] = json!("Public contradiction.");
+        conflict["contradiction_claims"] = json!(["billing.selected"]);
+        let mut question = node(&compiled, "billing.target");
+        question["visibility"] = json!("public");
+        question["kind"] = json!("question");
+        question["status"] = json!("answered");
+        question["fields"] = json!({"resolved_by":"billing.selected"});
+        question["body"] = json!("Public answered question.");
+        let retained = graph(vec![
+            seal_node(selected),
+            seal_node(conflict),
+            seal_node(question),
+        ]);
+        let mut input = projected_input(
+            &retained,
+            &["billing.selected", "billing.referrer", "billing.target"],
+        );
+        add_projection(&mut input, "billing.selected", "/body", json!("public"));
+        input["objects"][0]["field_projection"]["fields"][0]["declassification"] =
+            declassification_reference();
+        let result = why(&input, "billing.selected");
+        assert_eq!(result.exit_code, 0, "{:?}", result.envelope.diagnostics);
+        let record = serde_json::to_value(&result.envelope.records[0]).unwrap();
+        for key in [
+            "status",
+            "effective_status",
+            "effective_reason",
+            "resolved_questions",
+            "evidence_quality",
+        ] {
+            assert!(record.get(key).is_none(), "{key}: {record}");
+        }
+        assert_eq!(result.contributing_bindings.len(), 3);
+        assert_eq!(
+            serde_json::to_value(&result.contributing_bindings)
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|binding| binding.get("accessed_object").is_some())
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn declassification_releases_only_selected_scalar_with_withheld_source() {
+        let root = tempfile::tempdir().unwrap();
+        let compiled = receipt(root.path(), SOURCE);
+        let mut selected = node(&compiled, "billing.selected");
+        selected["visibility"] = json!("restricted");
+        selected["body"] = json!("DECLASSIFIED_BODY_184");
+        selected["fields"]["owner"] = json!("HIDDEN_OWNER_184");
+        selected["effective_status"] = json!("stale");
+        selected["effective_reason"] = json!("HIDDEN_LIFECYCLE_184");
+        selected["evidence"] = json!([{"kind":"source_code","value":"HIDDEN_EVIDENCE_184"}]);
+        let selected = seal_node(selected);
+        let retained = graph(vec![selected.clone()]);
+        let mut input = projected_input(&retained, &["billing.selected"]);
+        add_projection(&mut input, "billing.selected", "/body", json!("public"));
+        assert!(
+            query(&input, "DECLASSIFIED_BODY_184", SearchMode::Lexical)
+                .envelope
+                .records
+                .is_empty()
+        );
+        input["objects"][0]["field_projection"]["fields"][0]["declassification"] = json!({
+            "state_event_ordinal":1,"state_event_digest":format!("sha256:{}", "a".repeat(64)),
+            "detail_digest":format!("sha256:{}", "b".repeat(64)),"prior_classification":"internal"
+        });
+        for outcome in [
+            query(&input, "DECLASSIFIED_BODY_184", SearchMode::Lexical),
+            why(&input, "billing.selected"),
+        ] {
+            assert_eq!(outcome.exit_code, 0, "{:?}", outcome.envelope.diagnostics);
+            let envelope = serde_json::to_value(&outcome.envelope).unwrap();
+            let record = &envelope["records"][0];
+            assert_eq!(record["body"], "DECLASSIFIED_BODY_184");
+            assert_eq!(record["source"], json!({}));
+            assert_eq!(record["content_hash"], selected["content_hash"]);
+            for key in [
+                "owner",
+                "status",
+                "effective_status",
+                "effective_reason",
+                "evidence",
+                "classification",
+                "resolved_questions",
+            ] {
+                assert!(record.get(key).is_none(), "{key}: {record}");
+            }
+            assert!(!envelope.to_string().contains("HIDDEN_"));
+            assert_eq!(outcome.contributing_bindings.len(), 1);
+        }
     }
 
     #[test]

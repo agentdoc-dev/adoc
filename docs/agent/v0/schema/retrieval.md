@@ -25,3 +25,8 @@ Fields skipped by serde when absent or empty are optional in the schema.
 Agents should cite Knowledge Object retrieval records instead of private
 graph/search DTOs. Prose records are orientation context, never citable
 verified knowledge — see `adoc://agent/v0/answer-contract`.
+
+A governed managed selected-scalar projection can withhold its source location:
+`source: {}` is valid. No path or zero-coordinate placeholder is claimed. Plain
+and styled output omit the Source line in this case. Ordinary located-source
+records retain their existing `path`, `line`, and `column` members.

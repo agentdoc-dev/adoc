@@ -237,11 +237,39 @@ pub enum SearchMode {
     Semantic,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RetrievalSource {
     pub path: String,
     pub line: u32,
     pub column: u32,
+}
+
+impl RetrievalSource {
+    /// No source location is released by a managed selected-scalar projection.
+    pub fn withheld() -> Self {
+        Self {
+            path: String::new(),
+            line: 0,
+            column: 0,
+        }
+    }
+    pub fn is_withheld(&self) -> bool {
+        self.path.is_empty() && self.line == 0 && self.column == 0
+    }
+}
+
+impl Serialize for RetrievalSource {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let mut source = serializer
+            .serialize_struct("RetrievalSource", if self.is_withheld() { 0 } else { 3 })?;
+        if !self.is_withheld() {
+            source.serialize_field("path", &self.path)?;
+            source.serialize_field("line", &self.line)?;
+            source.serialize_field("column", &self.column)?;
+        }
+        source.end()
+    }
 }
 
 impl From<&GraphKnowledgeObjectNode> for RetrievalRecord {

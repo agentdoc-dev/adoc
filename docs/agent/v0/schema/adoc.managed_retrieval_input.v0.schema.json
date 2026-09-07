@@ -5,18 +5,45 @@
   "description": "Private trusted-runtime input, never an end-user authorization request. Cloud supplies current authorized bindings; core verifies exact bytes and receipt-local projection. Schema validity does not grant access or establish current authority.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "workspace_id", "policy", "receipts", "objects"],
+  "required": [
+    "schema_version",
+    "workspace_id",
+    "policy",
+    "receipts",
+    "objects"
+  ],
   "properties": {
-    "schema_version": { "const": "adoc.managed_retrieval_input.v0" },
-    "workspace_id": { "$ref": "#/$defs/identity" },
+    "schema_version": {
+      "const": "adoc.managed_retrieval_input.v0"
+    },
+    "workspace_id": {
+      "$ref": "#/$defs/identity"
+    },
     "policy": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["audience", "allowed_visibilities"],
+      "required": [
+        "audience",
+        "allowed_visibilities"
+      ],
       "properties": {
-        "audience": { "$ref": "#/$defs/visibility" },
-        "allowed_visibilities": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/visibility" } },
-        "excluded_object_ids": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/objectId" } }
+        "audience": {
+          "$ref": "#/$defs/visibility"
+        },
+        "allowed_visibilities": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/visibility"
+          }
+        },
+        "excluded_object_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/objectId"
+          }
+        }
       }
     },
     "receipts": {
@@ -24,12 +51,26 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "workspace_id", "graph_bytes", "graph_digest"],
+        "required": [
+          "id",
+          "workspace_id",
+          "graph_bytes",
+          "graph_digest"
+        ],
         "properties": {
-          "id": { "$ref": "#/$defs/identity" },
-          "workspace_id": { "$ref": "#/$defs/identity" },
-          "graph_bytes": { "type": "string", "minLength": 1 },
-          "graph_digest": { "$ref": "#/$defs/digest" }
+          "id": {
+            "$ref": "#/$defs/identity"
+          },
+          "workspace_id": {
+            "$ref": "#/$defs/identity"
+          },
+          "graph_bytes": {
+            "type": "string",
+            "minLength": 1
+          },
+          "graph_digest": {
+            "$ref": "#/$defs/digest"
+          }
         }
       }
     },
@@ -38,44 +79,161 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["canonical", "version_id", "object_id", "receipt_id", "content_bytes", "content_digest"],
+        "required": [
+          "canonical",
+          "version_id",
+          "object_id",
+          "receipt_id",
+          "content_bytes",
+          "content_digest"
+        ],
         "properties": {
-          "canonical": { "$ref": "#/$defs/canonical" },
-          "version_id": { "$ref": "#/$defs/identity" },
-          "object_id": { "$ref": "#/$defs/objectId" },
-          "receipt_id": { "$ref": "#/$defs/identity" },
-          "content_bytes": { "type": "string", "minLength": 1 },
-          "content_digest": { "$ref": "#/$defs/digest" },
-          "field_projection": { "$ref": "#/$defs/fieldProjection" }
+          "canonical": {
+            "$ref": "#/$defs/canonical"
+          },
+          "version_id": {
+            "$ref": "#/$defs/identity"
+          },
+          "object_id": {
+            "$ref": "#/$defs/objectId"
+          },
+          "receipt_id": {
+            "$ref": "#/$defs/identity"
+          },
+          "content_bytes": {
+            "type": "string",
+            "minLength": 1
+          },
+          "content_digest": {
+            "$ref": "#/$defs/digest"
+          },
+          "field_projection": {
+            "$ref": "#/$defs/fieldProjection"
+          }
         }
       }
     }
   },
   "$defs": {
-    "identity": { "type": "string", "minLength": 1, "pattern": "^\\S(?:[\\s\\S]*\\S)?$" },
-    "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
-    "objectId": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?:\\.[a-z0-9]+(?:-[a-z0-9]+)*)+$" },
-    "visibility": { "enum": ["public", "internal", "restricted"] },
-    "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "identity": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "objectId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?:\\.[a-z0-9]+(?:-[a-z0-9]+)*)+$"
+    },
+    "visibility": {
+      "enum": [
+        "public",
+        "internal",
+        "restricted"
+      ]
+    },
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
     "fieldProjection": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["workspace_id", "canonical_id", "version_id", "content_digest", "fields"],
+      "required": [
+        "workspace_id",
+        "canonical_id",
+        "version_id",
+        "content_digest",
+        "fields"
+      ],
       "properties": {
-        "workspace_id": { "$ref": "#/$defs/uuid" },
-        "canonical_id": { "$ref": "#/$defs/uuid" },
-        "version_id": { "$ref": "#/$defs/uuid" },
-        "content_digest": { "$ref": "#/$defs/digest" },
+        "workspace_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "canonical_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "version_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "content_digest": {
+          "$ref": "#/$defs/digest"
+        },
         "fields": {
-          "type": "array", "minItems": 1, "maxItems": 100, "uniqueItems": true,
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true,
           "description": "Distinct selectors targeting existing string-valued body/generic fields; core validates selector uniqueness, exact content and coordinate joins. Absence of the extension means no attached manifest; an empty projection is invalid.",
           "items": {
-            "type": "object", "additionalProperties": false,
-            "required": ["selector", "classification"],
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "selector",
+              "classification"
+            ],
             "properties": {
-              "selector": { "type": "string", "maxLength": 256, "pattern": "^(?:/body|/fields/(?:[^~/]|~[01])+)$" },
-              "classification": { "enum": [null, "public", "internal", "restricted"] }
-            }
+              "selector": {
+                "type": "string",
+                "maxLength": 256,
+                "pattern": "^(?:/body|/fields/(?:[^~/]|~[01])+)$"
+              },
+              "classification": {
+                "enum": [
+                  null,
+                  "public",
+                  "internal",
+                  "restricted"
+                ]
+              },
+              "declassification": {
+                "$ref": "#/$defs/declassification"
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "required": [
+                    "declassification"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "classification": {
+                      "enum": [
+                        "public",
+                        "internal"
+                      ]
+                    }
+                  },
+                  "allOf": [
+                    {
+                      "if": {
+                        "properties": {
+                          "declassification": {
+                            "properties": {
+                              "prior_classification": {
+                                "const": "internal"
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "then": {
+                        "properties": {
+                          "classification": {
+                            "const": "public"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
           }
         }
       }
@@ -83,10 +241,46 @@
     "canonical": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["workspace_id", "canonical_id"],
+      "required": [
+        "workspace_id",
+        "canonical_id"
+      ],
       "properties": {
-        "workspace_id": { "$ref": "#/$defs/identity" },
-        "canonical_id": { "$ref": "#/$defs/identity" }
+        "workspace_id": {
+          "$ref": "#/$defs/identity"
+        },
+        "canonical_id": {
+          "$ref": "#/$defs/identity"
+        }
+      }
+    },
+    "declassification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state_event_ordinal",
+        "state_event_digest",
+        "detail_digest",
+        "prior_classification"
+      ],
+      "properties": {
+        "state_event_ordinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "state_event_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "detail_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "prior_classification": {
+          "enum": [
+            "internal",
+            "restricted"
+          ]
+        }
       }
     }
   }
