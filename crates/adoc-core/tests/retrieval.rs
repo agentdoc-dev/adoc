@@ -499,6 +499,7 @@ fn hybrid_match_serializes_rrf_score_and_omits_missing_rank_fields() {
         effective_reason: None,
         evidence_quality: None,
         resolved_questions: Vec::new(),
+        classification: None,
     };
 
     let value = serde_json::to_value(RetrievalEnvelope::new(
@@ -1853,6 +1854,7 @@ fn retrieval_record_serializes_lexical_search_match_contract() {
         effective_reason: None,
         evidence_quality: None,
         resolved_questions: Vec::new(),
+        classification: None,
     };
     let value = serde_json::to_value(&record).expect("record serializes");
 
@@ -1892,6 +1894,7 @@ fn retrieval_envelope_can_be_created_from_search_result() {
         effective_reason: None,
         evidence_quality: None,
         resolved_questions: Vec::new(),
+        classification: None,
     };
     let result = SearchResult {
         records: vec![RetrievalEntry::KnowledgeObject(record)],

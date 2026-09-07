@@ -367,8 +367,12 @@ Read-only traversal over `docs.graph.json`, exposed by `adoc graph`. The default
 _Avoid_: infinite path enumeration, graph mutation, graph visualization as the current contract
 
 **Retrieval Record**:
-The stable JSON shape returned by `adoc why --format json` and `adoc search --format json`. Contained inside an `adoc.retrieval.v0` envelope. A projection of a graph Knowledge Object node, including its `content_hash`, plus a small `match` block carrying `mode`, ranks, and (when relevant) `cosine_score`.
+The stable JSON shape returned by `adoc why --format json` and `adoc search --format json`. Contained inside an `adoc.retrieval.v0` envelope. A projection of a graph Knowledge Object node, including its `content_hash`, plus a small `match` block carrying `mode`, ranks, and (when relevant) `cosine_score`. Current `adoc.retrieval.v1` records include `classification: internal|restricted` for sensitive content; public/absent visibility omits this field. Both non-public visibility classes are sensitive (accepted E6.1.T6 decision).
 _Avoid_: vectors in the retrieval envelope, adapter-local permission filters
+
+**Sensitive Access Event**:
+The clock-free `adoc.sensitive_access.v0` contract binds a managed workspace, authenticated human principal/session, search or why command, exact policy revision, scoped sequence and ordered distinct returned sensitive KO identities, versions, hashes and classification. Cloud atomically records managed access before releasing sensitive output. The domain validator grants no access and performs no I/O; E6.3 owns MCP authenticated emission and delivery posture.
+_Avoid_: query text, bodies, synthetic repository identity, local CLI audit
 
 **Retrieval Session**:
 The immutable value the application layer assembles from a loaded graph artifact, explicit retrieval policy, an optional loaded search artifact, and built indexes. Permission filtering precedes index construction (ADR-0065). CLI commands construct one session per invocation; there is no global retrieval state.

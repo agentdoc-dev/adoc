@@ -1035,6 +1035,12 @@ fn local_search_model_header() -> Option<domain::artifact::SearchModelHeader> {
     }
 }
 
+pub use domain::sensitive_access::{
+    SENSITIVE_ACCESS_SCHEMA_VERSION, SensitiveAccessCaller, SensitiveAccessCommand,
+    SensitiveAccessContext, SensitiveAccessError, SensitiveAccessEvent, SensitiveAccessObject,
+    SensitiveClassification, validate_sensitive_access,
+};
+
 #[cfg(test)]
 mod tests {
     use std::cell::Cell;

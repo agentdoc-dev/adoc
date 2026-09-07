@@ -584,6 +584,46 @@ Retained TARGET_CANARY old knowledge.
     }
 
     #[test]
+    fn managed_sensitive_records_preserve_fields_and_classification_in_search_and_why() {
+        for class in ["internal", "restricted"] {
+            let root = tempfile::tempdir().unwrap();
+            let retained = receipt(
+                root.path(),
+                &SOURCE.replace("visibility: restricted", &format!("visibility: {class}")),
+            );
+            let target = node(&retained, "billing.target");
+            let mut input = managed_input(
+                &[("receipt", &retained)],
+                &[("target", "receipt", target.clone())],
+            );
+            assert_eq!(
+                serde_json::from_slice::<Value>(&managed_search_bytes(&input)).unwrap()["records"],
+                json!([])
+            );
+            input["policy"] = json!({"audience":"restricted", "allowed_visibilities":["public", "internal", "restricted"], "excluded_object_ids":[]});
+            for query in [
+                ManagedRetrievalQuery::Search {
+                    text: "retained".into(),
+                    mode: SearchMode::Lexical,
+                    top: NonZeroUsize::new(20).unwrap(),
+                },
+                ManagedRetrievalQuery::Why {
+                    object_id: "billing.target".into(),
+                },
+            ] {
+                let output = run_managed_retrieval(&serde_json::to_vec(&input).unwrap(), query);
+                assert_eq!(output.exit_code, 0);
+                let value = serde_json::to_value(&output.envelope).unwrap();
+                assert_eq!(value["records"].as_array().unwrap().len(), 1);
+                assert_eq!(value["records"][0]["classification"], class);
+                assert_eq!(value["records"][0]["body"], target["body"]);
+                assert_eq!(value["records"][0]["content_hash"], target["content_hash"]);
+                assert_eq!(output.contributing_bindings.len(), 1);
+            }
+        }
+    }
+
+    #[test]
     fn t3_receipt_projection_preserves_selected_bytes_with_target_present_or_absent() {
         let root = tempfile::tempdir().unwrap();
         let retained = receipt(root.path(), SOURCE);

@@ -18,6 +18,7 @@
               "record_type": { "const": "knowledge_object" },
               "id": { "type": "string" },
               "kind": { "type": "string" },
+              "classification": { "enum": ["internal", "restricted"] },
               "content_hash": { "type": "string", "pattern": "^sha256:" },
               "status": { "type": ["string", "null"] },
               "severity": { "type": "string" },

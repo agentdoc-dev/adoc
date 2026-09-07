@@ -60,3 +60,23 @@ Cloud's first managed route binds a public-only policy plus current native
 authorization and source access. Wider audiences, sensitive classification and
 auditing belong to E6.1.T6/E6.3. This runtime prerequisite alone does not claim
 that the Cloud route is deployed or that sensitive-access delivery is complete.
+
+## Sensitive classification capability (E6.1.T6)
+
+Trusted callers requiring sensitive auditing pass `--require-sensitive-classification`
+before the `search` or `why` subcommand. Older runtimes reject the unknown flag.
+Every returned KO with `internal` or `restricted` visibility carries that exact
+`classification`; absent/public visibility omits it, preserving public bytes.
+Plain and styled local retrieval show `Sensitive: internal|restricted`. The one
+shared projection supplies CLI and MCP classification; this adds no permission.
+
+The unreleased [`adoc.sensitive_access.v0`](schema/adoc.sensitive_access.v0.schema.json)
+event carries real managed workspace and authenticated caller/session UUIDs,
+command (`search` or `why`), policy revision UUID, a positive safe-integer scoped
+sequence, and nonempty returned-sensitive subjects ordered by Object ID. Object,
+canonical and version identities are distinct. The domain validator enforces
+these cross-item constraints in addition to the closed schema. Hashes are lowercase
+SHA256; bodies, paths, query text, vectors and timestamps are forbidden. Cloud
+owns emission/persistence; validation alone does not establish authorization.
+MCP authenticated delivery and local CLI exemption are E6.3 work; no local audit
+or spool is introduced here.

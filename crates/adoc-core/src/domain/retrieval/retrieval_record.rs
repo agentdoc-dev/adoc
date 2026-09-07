@@ -136,6 +136,9 @@ pub struct RetrievalRecord {
     /// `adoc.retrieval.v0`, byte-stable when empty.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub resolved_questions: Vec<String>,
+    /// Sensitive classification, absent for public content. Permission is checked before projection.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub classification: Option<crate::domain::sensitive_access::SensitiveClassification>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -282,6 +285,10 @@ impl RetrievalRecord {
             effective_reason: object.effective_reason.clone(),
             evidence_quality: object.evidence_quality.clone(),
             resolved_questions: Vec::new(),
+            classification:
+                crate::domain::sensitive_access::SensitiveClassification::from_visibility(
+                    object.visibility.as_deref(),
+                ),
         }
     }
 }
@@ -353,5 +360,22 @@ mod tests {
             Some("domain-extra")
         );
         assert_eq!(record.relations.depends_on, ["billing.ledger"]);
+
+        let public_bytes = serde_json::to_vec(&record).unwrap();
+        for visibility in [None, Some("public"), Some("internal"), Some("restricted")] {
+            let mut classified = object.clone();
+            classified.visibility = visibility.map(str::to_string);
+            let projected = serde_json::to_value(RetrievalRecord::from(&classified)).unwrap();
+            match visibility {
+                Some("internal" | "restricted") => {
+                    assert_eq!(projected["classification"], visibility.unwrap());
+                    assert_eq!(projected["body"], record.body);
+                }
+                _ => assert_eq!(
+                    serde_json::to_vec(&RetrievalRecord::from(&classified)).unwrap(),
+                    public_bytes
+                ),
+            }
+        }
     }
 }
