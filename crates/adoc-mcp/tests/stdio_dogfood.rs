@@ -729,6 +729,8 @@ fn stdio_gateway_binds_explicit_policy_once_independently_of_selected_project() 
                     object_id: "billing.credits".into(),
                     artifact: Some("dist/docs.graph.json".into()),
                 })
+                .unwrap()
+                .structured_content
                 .unwrap();
             assert_eq!(structured_content(&response), &expected);
             assert_eq!(expected["records"], serde_json::json!([]));

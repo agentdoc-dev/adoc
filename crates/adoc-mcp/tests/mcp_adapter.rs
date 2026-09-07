@@ -93,7 +93,9 @@ fn tool_selected_project_policy_cannot_widen_the_gateway_audience() {
             object_id: "billing.credits".into(),
             artifact: Some("dist/docs.graph.json".into()),
         })
-        .expect("gateway returns a retrieval envelope");
+        .expect("gateway returns a retrieval envelope")
+        .structured_content
+        .unwrap();
     assert_eq!(response["records"], serde_json::json!([]));
     assert_eq!(
         response["diagnostics"][0]["code"],
@@ -554,7 +556,9 @@ fn dogfood_billing_pilot_flow_uses_status_search_why_and_patch_check() {
             direction: None,
             top: Some(5),
         })
-        .expect("lexical search succeeds");
+        .expect("lexical search succeeds")
+        .structured_content
+        .unwrap();
     assert_eq!(search["schema_version"], "adoc.retrieval.v1");
     assert!(
         search["records"]
@@ -570,7 +574,9 @@ fn dogfood_billing_pilot_flow_uses_status_search_why_and_patch_check() {
             object_id: "billing.credits".to_string(),
             artifact: None,
         })
-        .expect("why succeeds");
+        .expect("why succeeds")
+        .structured_content
+        .unwrap();
     let record = &why["records"][0];
     assert_eq!(record["id"], "billing.credits");
     assert_eq!(record["kind"], "glossary");
@@ -1080,7 +1086,9 @@ fn adoc_search_blends_prose_records_into_v1_envelope() {
 
     let envelope = server
         .run_search(mixed_mode_search_params("credits"))
-        .expect("blended search succeeds");
+        .expect("blended search succeeds")
+        .structured_content
+        .unwrap();
 
     assert_eq!(envelope["schema_version"], "adoc.retrieval.v1");
     let records = envelope["records"].as_array().expect("records array");
@@ -1101,7 +1109,9 @@ fn adoc_search_blends_prose_records_into_v1_envelope() {
     objects_only.objects_only = true;
     let envelope = server
         .run_search(objects_only)
-        .expect("objects-only search succeeds");
+        .expect("objects-only search succeeds")
+        .structured_content
+        .unwrap();
     assert!(
         envelope["records"]
             .as_array()
@@ -1115,7 +1125,9 @@ fn adoc_search_blends_prose_records_into_v1_envelope() {
     prose_only.prose_only = true;
     let envelope = server
         .run_search(prose_only)
-        .expect("prose-only search succeeds");
+        .expect("prose-only search succeeds")
+        .structured_content
+        .unwrap();
     assert!(
         envelope["records"]
             .as_array()
@@ -1145,7 +1157,9 @@ fn adoc_search_rejects_conflicting_scope_arguments() {
     prose_semantic.lexical = false;
     let envelope = server
         .run_search(prose_semantic)
-        .expect("prose_only + semantic passes argument validation");
+        .expect("prose_only + semantic passes argument validation")
+        .structured_content
+        .unwrap();
     assert!(
         envelope["diagnostics"]
             .as_array()

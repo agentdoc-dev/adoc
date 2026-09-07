@@ -165,6 +165,7 @@ fn mcp_result(
         "impacted-by" => server.run_impacted_by(serde_json::from_value(params).unwrap()),
         _ => unreachable!(),
     }
+    .map(|result| result.structured_content.unwrap())
 }
 
 fn mcp(
