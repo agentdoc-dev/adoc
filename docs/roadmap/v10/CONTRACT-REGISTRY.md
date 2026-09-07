@@ -465,6 +465,20 @@ The immutable version-1 permission vocabulary implemented by E2.2. Policy evalua
 | `workspace.read` | 1 | planned | E2.2 |
 <!-- /registry:permission-primitives -->
 
+## Native permission additions - vocabulary version 2, owner `cloud`
+
+Version 2 is the immutable version-1 set plus this addition. Introduction version
+never changes an existing primitive. The addition is evaluated by current native
+scoped grants and retained in private dispatch facts; it is not a member of frozen
+`adoc.authorization_decision.v0`. No built-in role receives it. A public shared
+decision for this permission requires a registered successor before emission.
+
+<!-- registry:permission-primitives-v2-additions -->
+| permission | registry version | status | introduced by |
+| --- | --- | --- | --- |
+| `source.writeback` | 2 | planned | E6.5.T2: outbound write to an explicitly enrolled source target; current identity/delegation, scoped grant, provider write ceiling and exact qualified adapter required; source.sync/manage confer no implicit writeback grant |
+<!-- /registry:permission-primitives-v2-additions -->
+
 ## External group binding modes — planned, owner `cloud`
 
 The complete E2.4 external-binding state vocabulary from `AUTHORIZATION.md` §A7. Only rows marked `yes` can confer a grant and therefore appear in authorization-decision provenance.
@@ -576,6 +590,11 @@ The pre-release implementation annotations mark only the ten code rows added by 
 | `connector.exception_invalid` | planned (E4.5) | a maturity exception is missing immutable scope, expiry, current permission approval, or receipt binding, or attempts to authorize after expiry |
 | `delivery.reference_missing` | planned (E8.2) | Cloud rejects a proposal record whose Action-owned knowledge-PR reference block is absent or incomplete |
 | `delivery.reference_stale` | planned (E8.2) | Cloud rejects a proposal record whose reference block is bound to a superseded assessment head |
+| `writeback.not_authorized` | planned (E6.5.T2) | current authenticated scoped writeback, target enrollment, provider ceiling or workload authority is unavailable; no send permit |
+| `writeback.precondition_failed` | planned (E6.5.T2) | exact retained target revision cannot be applied; never overwrite or rebase onto the current revision |
+| `writeback.outcome_unknown` | planned (E6.5.T2) | a claimed attempt has no confirmed outcome; read-only recovery only, never automatic resend |
+| `writeback.provider_unavailable` | planned (E6.5.T2) | current target-scoped provider credential or observation is unavailable; sanitized refusal without fallback |
+| `writeback.applied` | planned (E6.5.T2) | exact prepared target commit and payload observed; no approval, verification or effectivity claim |
 <!-- /registry:cloud-codes -->
 
 ## Attestation codes — planned, owner `cloud`
