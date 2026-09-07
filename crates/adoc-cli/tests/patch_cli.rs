@@ -901,3 +901,54 @@ fn patch_apply_unparseable_patch_is_a_refusal_envelope_not_a_process_error() {
     assert_eq!(envelope["schema_version"], "adoc.patch.apply.v0");
     assert_eq!(envelope["applied"], false);
 }
+
+#[test]
+fn governed_lowering_is_refused_by_real_check_and_apply_while_escalation_is_advisory() {
+    let workspace = build_apply_workspace("governed-lowering");
+    let source_path = workspace.root.join("docs/billing.adoc");
+    let source = std::fs::read_to_string(&source_path).unwrap().replacen(
+        "status: draft",
+        "status: draft\nvisibility: restricted\nfield_visibility: owner=restricted",
+        1,
+    );
+    std::fs::write(&source_path, &source).unwrap();
+    let build = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["build", "--no-embeddings"])
+        .output()
+        .unwrap();
+    assert!(build.status.success(), "{}", stdout(&build));
+    let hash = content_hash(&workspace, "billing.credits");
+    for fields in [
+        serde_json::json!({"visibility":"public"}),
+        serde_json::json!({"field_visibility":"body=internal"}),
+    ] {
+        let patch = serde_json::json!({"schema_version":"adoc.patch.v0","op":"update_fields","target":"billing.credits",
+            "base_hash":hash,"changes":{"fields":fields},"reason":"Model requests public visibility.","proposer":{"type":"agent","id":"model"}});
+        workspace.write("patch.json", &patch.to_string());
+        for operation in ["--check", "--apply"] {
+            let result = adoc_command()
+                .current_dir(&workspace.root)
+                .args(["patch", operation, "patch.json", "--format", "json"])
+                .output()
+                .unwrap();
+            assert!(!result.status.success(), "{}", stdout(&result));
+            assert!(
+                stdout(&result).contains("declassification"),
+                "{}",
+                stdout(&result)
+            );
+            assert_eq!(std::fs::read_to_string(&source_path).unwrap(), source);
+        }
+    }
+    let suggestion = serde_json::json!({"schema_version":"adoc.patch.v0","op":"update_fields","target":"billing.credits",
+        "base_hash":hash,"changes":{"fields":{"owner":"billing-team"}},"reason":"Escalate /body declassification to a permitted human; no lowering in this proposal.","proposer":{"type":"agent","id":"model"}});
+    workspace.write("patch.json", &suggestion.to_string());
+    let result = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["patch", "--check", "patch.json", "--format", "json"])
+        .output()
+        .unwrap();
+    assert!(result.status.success(), "{}", stdout(&result));
+    assert_eq!(std::fs::read_to_string(&source_path).unwrap(), source);
+}

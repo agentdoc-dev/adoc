@@ -113,3 +113,9 @@ source objects, independently verifies direct classes and current authority,
 and releases no bytes until the audit commits. It must not substitute a derived
 record label for an audited source class. Corpora with neither visibility metadata
 nor field provenance preserve their prior envelope and binding bytes.
+
+## Governed selected-field lowering
+
+A trusted native producer may attach the optional per-field `declassification` reference described in [governed field declassification](managed-field-declassification.md). Require `--require-field-declassification` before sending it. Core shape checks do not authenticate the producer; native finalization must compare every binding's complete current projection, including non-hits and approval references, and recheck source ACLs after audit persistence.
+
+An approved readable scalar from an otherwise unreadable object has a deliberately minimal envelope: identity/hash, approved scalar values, empty required body when unselected, empty relations, and `source: {}`. It has no hidden status/lifecycle/evidence/source metadata. Plain/styled presentations omit the source line. Existing ordinary located sources and no-visibility outputs remain byte-compatible.

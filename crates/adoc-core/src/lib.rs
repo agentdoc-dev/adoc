@@ -1044,6 +1044,13 @@ pub use domain::sensitive_access::{
     SensitiveClassification, validate_sensitive_access,
 };
 
+pub use domain::managed_field_declassification::{
+    MANAGED_FIELD_DECLASSIFICATION_SCHEMA_VERSION, ManagedFieldDeclassification,
+    ManagedFieldDeclassificationError, ManagedFieldDeclassificationFieldInput,
+    ManagedFieldDeclassificationInput, build_managed_field_declassification,
+    validate_managed_field_declassification,
+};
+
 pub use domain::managed_field_provenance::{
     MANAGED_FIELD_PROVENANCE_SCHEMA_VERSION, ManagedFieldContribution,
     ManagedFieldContributionInput, ManagedFieldProvenance, ManagedFieldProvenanceError,
