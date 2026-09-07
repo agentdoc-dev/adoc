@@ -600,3 +600,93 @@ fn cli_narrow_rebuild_rejects_wide_cached_embeddings_and_retains_authority_contr
         false,
     );
 }
+
+#[test]
+fn cli_permission_revocation_rejects_retained_vectors_without_rebuilding() {
+    let workspace = TestWorkspace::new("permission-revocation-lifecycle");
+    workspace.write("docs/lifecycle.adoc", "# Lifecycle @doc(lifecycle.page)\n\n::claim lifecycle.target\nstatus: draft\nowner: TARGET_OWNER_CANARY\n--\nTARGET_BODY_CANARY remains readable before revocation.\n::\n\n::claim lifecycle.safe\nstatus: draft\nowner: public-team\n--\nSAFE_BODY_CANARY remains readable across the lifecycle.\n::\n");
+    let initial_policy = embedding_policy("public", false);
+    write_policy(&workspace, &initial_policy);
+    build(&workspace, &["build", "docs", "--out", "dist"]);
+    let paths = [
+        "docs/lifecycle.adoc",
+        "dist/docs.graph.json",
+        "dist/docs.search.json",
+    ];
+    let original = paths.map(|path| fs::read(workspace.root.join(path)).unwrap());
+    let search = artifact(&workspace, paths[2]);
+    for id in ["lifecycle.target", "lifecycle.safe"] {
+        assert!(
+            !embedding(&search, id)["vector"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+    }
+    let target_why = ["why", "lifecycle.target", "--artifact", paths[1]];
+    let safe_why = ["why", "lifecycle.safe", "--artifact", paths[1]];
+    let target = cli(&workspace, &target_why, 0);
+    assert_eq!(
+        target["records"][0]["body"],
+        "TARGET_BODY_CANARY remains readable before revocation."
+    );
+    let safe = cli(&workspace, &safe_why, 0);
+    let mut revoked = initial_policy.clone();
+    revoked
+        .excluded_object_ids
+        .insert("lifecycle.target".into());
+    for semantic in [true, false] {
+        write_policy(&workspace, &initial_policy);
+        let mut args = vec![
+            "search",
+            "lifecycle",
+            "--objects-only",
+            "--top",
+            "20",
+            "--artifact",
+            paths[1],
+            "--search-artifact",
+            paths[2],
+        ];
+        if semantic {
+            args.push("--semantic");
+        }
+        let allowed = cli(&workspace, &args, 0);
+        for id in ["lifecycle.target", "lifecycle.safe"] {
+            assert!(
+                allowed["records"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|r| r["id"] == id && r["match"]["vector_rank"].is_number()),
+                "{allowed}"
+            );
+        }
+        write_policy(&workspace, &revoked);
+        let denied = cli(&workspace, &args, 0);
+        assert_eq!(denied["records"].as_array().unwrap().len(), 1);
+        assert_eq!(denied["records"][0]["id"], "lifecycle.safe");
+        assert!(denied["records"][0]["match"]["vector_rank"].is_number());
+        assert_eq!(denied["diagnostics"], json!([]));
+        assert!(!denied.to_string().contains("TARGET_"));
+        let missing = cli(&workspace, &target_why, 3);
+        assert_eq!(missing["records"], json!([]));
+        assert_eq!(
+            missing["diagnostics"][0]["code"],
+            "retrieval.object_not_found"
+        );
+        assert!(!missing.to_string().contains("TARGET_"));
+        assert_bytes(&safe, &cli(&workspace, &safe_why, 0), &safe_why);
+        assert_eq!(
+            paths.map(|path| fs::read(workspace.root.join(path)).unwrap()),
+            original
+        );
+        write_policy(&workspace, &initial_policy);
+        assert_bytes(&allowed, &cli(&workspace, &args, 0), &args);
+    }
+    assert_eq!(
+        paths.map(|path| fs::read(workspace.root.join(path)).unwrap()),
+        original
+    );
+    assert_bytes(&target, &cli(&workspace, &target_why, 0), &target_why);
+}

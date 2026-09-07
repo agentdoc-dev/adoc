@@ -48,6 +48,7 @@ impl StdioServer {
         }
         let mut child = command
             .current_dir(project_root)
+            .env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic")
             // These ambient hints must never select gateway authority.
             .env("ADOC_AUDIENCE", "restricted")
             .env("ADOC_CONFIG", project_root.join("agentdoc.config.yaml"))
@@ -857,4 +858,258 @@ fn unclassified_stdio_search_and_why_preserve_complete_local_payloads() {
             expected.to_string().as_bytes()
         );
     }
+}
+
+const LIFECYCLE_SOURCE: &str = "# Lifecycle @doc(lifecycle.page)\n\n::claim lifecycle.target\nstatus: draft\nowner: TARGET_OWNER_CANARY\nfield_visibility: owner=public, body=public\n--\nTARGET_BODY_CANARY remains readable before revocation.\n::\n\n::claim lifecycle.safe\nstatus: draft\nowner: public-team\n--\nSAFE_BODY_CANARY remains readable across the lifecycle.\n::\n";
+const LIFECYCLE_POLICY: &str = "version: 1\nmode: strict\ndocs_path: docs\nretrieval_policy:\n  audience: public\n  allowed_visibilities: [public]\n";
+
+fn lifecycle_fixture() -> tempfile::TempDir {
+    let workspace = tempfile::tempdir().unwrap();
+    let root = workspace.path();
+    fs::create_dir(root.join("docs")).unwrap();
+    fs::write(root.join("docs/lifecycle.adoc"), LIFECYCLE_SOURCE).unwrap();
+    fs::write(root.join("agentdoc.config.yaml"), support::CONFIG_YAML).unwrap();
+    fs::write(root.join("gateway.yaml"), LIFECYCLE_POLICY).unwrap();
+    let built = adoc_mcp::AgentDocMcpServer::new(root.into())
+        .run_build(Default::default())
+        .unwrap();
+    assert_eq!(built["exit_code"], 0, "{built}");
+    let search: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join("dist/docs.search.json")).unwrap()).unwrap();
+    for id in ["lifecycle.target", "lifecycle.safe"] {
+        assert!(
+            search["embeddings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| entry["id"] == id && !entry["vector"].as_array().unwrap().is_empty())
+        );
+    }
+    workspace
+}
+
+fn lifecycle_start(root: &Path) -> StdioServer {
+    let mut server = StdioServer::spawn_with_config(root, Some(&root.join("gateway.yaml")));
+    server.send(serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"revocation-lifecycle","version":"0"}}}));
+    assert_eq!(server.receive()["id"], 1);
+    server.send(serde_json::json!({"jsonrpc":"2.0","method":"notifications/initialized"}));
+    server
+}
+
+fn lifecycle_call(
+    server: &mut StdioServer,
+    id: u64,
+    tool: &str,
+    arguments: serde_json::Value,
+) -> serde_json::Value {
+    server.send(serde_json::json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":tool,"arguments":arguments}}));
+    let response = server.receive();
+    assert_eq!(response["id"], id);
+    assert!(response.get("error").is_none(), "{response}");
+    response["result"].clone()
+}
+
+fn lifecycle_search(server: &mut StdioServer, id: u64, semantic: bool) -> serde_json::Value {
+    lifecycle_call(
+        server,
+        id,
+        "adoc_search",
+        serde_json::json!({"query":"lifecycle.target lifecycle.safe","semantic":semantic,"objects_only":true,"top":20,"artifact":"dist/docs.graph.json","search_artifact":"dist/docs.search.json"}),
+    )
+}
+
+fn assert_lifecycle_vectors(result: &serde_json::Value, ids: &[&str]) {
+    assert_eq!(result["isError"], false, "{result}");
+    let records = result["structuredContent"]["records"].as_array().unwrap();
+    assert_eq!(records.len(), ids.len(), "{result}");
+    for id in ids {
+        assert!(
+            records
+                .iter()
+                .any(|r| r["id"] == *id && r["match"]["vector_rank"].is_number()),
+            "{result}"
+        );
+    }
+}
+
+#[test]
+fn stdio_reloads_field_revocation_without_reusing_old_composition_vectors() {
+    let workspace = lifecycle_fixture();
+    let root = workspace.path();
+    let old_search = fs::read(root.join("dist/docs.search.json")).unwrap();
+    let old_graph = fs::read(root.join("dist/docs.graph.json")).unwrap();
+    let mut server = lifecycle_start(root);
+    let pid = server.child.id();
+    let target_args =
+        serde_json::json!({"object_id":"lifecycle.target","artifact":"dist/docs.graph.json"});
+    let safe_args =
+        serde_json::json!({"object_id":"lifecycle.safe","artifact":"dist/docs.graph.json"});
+    assert_lifecycle_vectors(
+        &lifecycle_search(&mut server, 2, true),
+        &["lifecycle.target", "lifecycle.safe"],
+    );
+    let before = lifecycle_call(&mut server, 3, "adoc_why", target_args.clone());
+    assert_eq!(before["isError"], false);
+    assert_eq!(
+        before["structuredContent"]["records"][0]["owner"],
+        "TARGET_OWNER_CANARY"
+    );
+    assert!(
+        before["structuredContent"]["records"][0]["body"]
+            .as_str()
+            .unwrap()
+            .contains("TARGET_BODY_CANARY")
+    );
+    let safe_before = lifecycle_call(&mut server, 4, "adoc_why", safe_args.clone());
+    fs::write(
+        root.join("docs/lifecycle.adoc"),
+        LIFECYCLE_SOURCE.replace(
+            "owner=public, body=public",
+            "owner=restricted, body=restricted",
+        ),
+    )
+    .unwrap();
+    let rebuilt = lifecycle_call(
+        &mut server,
+        5,
+        "adoc_build",
+        serde_json::json!({"no_embeddings":true}),
+    );
+    assert_eq!(rebuilt["structuredContent"]["exit_code"], 0, "{rebuilt}");
+    let new_graph = fs::read(root.join("dist/docs.graph.json")).unwrap();
+    assert_ne!(new_graph, old_graph);
+    assert_eq!(
+        fs::read(root.join("dist/docs.search.json")).unwrap(),
+        old_search
+    );
+    let semantic = lifecycle_search(&mut server, 6, true);
+    assert_lifecycle_vectors(&semantic, &["lifecycle.safe"]);
+    assert!(
+        semantic["structuredContent"]["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|d| d["code"] == "search.hash_drift")
+    );
+    let hybrid = lifecycle_call(
+        &mut server,
+        7,
+        "adoc_search",
+        serde_json::json!({"query":"lifecycle.target","objects_only":true,"top":20,"artifact":"dist/docs.graph.json","search_artifact":"dist/docs.search.json"}),
+    );
+    assert_eq!(hybrid["isError"], false);
+    assert!(
+        hybrid["structuredContent"]["records"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["id"] == "lifecycle.target"
+                && r["match"]["lexical_rank"].is_number()
+                && r["match"]["vector_rank"].is_null()),
+        "{hybrid}"
+    );
+    let after = lifecycle_call(&mut server, 8, "adoc_why", target_args);
+    assert_eq!(after["isError"], false);
+    let record = &after["structuredContent"]["records"][0];
+    assert_eq!(record["id"], "lifecycle.target");
+    assert_eq!(record["body"], "");
+    assert!(record.get("owner").is_none());
+    assert_ne!(
+        record["content_hash"],
+        before["structuredContent"]["records"][0]["content_hash"]
+    );
+    let graph: serde_json::Value = serde_json::from_slice(&new_graph).unwrap();
+    let target = graph["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == "lifecycle.target")
+        .unwrap();
+    assert_eq!(record["content_hash"], target["content_hash"]);
+    for result in [&semantic, &hybrid, &after] {
+        assert!(!result.to_string().contains("TARGET_"), "{result}");
+    }
+    assert_eq!(
+        lifecycle_call(&mut server, 9, "adoc_why", safe_args),
+        safe_before
+    );
+    assert_eq!(server.child.id(), pid);
+    assert_eq!(
+        fs::read(root.join("dist/docs.search.json")).unwrap(),
+        old_search
+    );
+}
+
+#[test]
+fn stdio_restart_applies_operator_revocation_to_retained_search_artifact() {
+    let workspace = lifecycle_fixture();
+    let root = workspace.path();
+    let paths = [
+        "docs/lifecycle.adoc",
+        "dist/docs.graph.json",
+        "dist/docs.search.json",
+        "agentdoc.config.yaml",
+    ];
+    let original = paths.map(|path| fs::read(root.join(path)).unwrap());
+    let mut server = lifecycle_start(root);
+    let target_args =
+        serde_json::json!({"object_id":"lifecycle.target","artifact":"dist/docs.graph.json"});
+    let safe_args =
+        serde_json::json!({"object_id":"lifecycle.safe","artifact":"dist/docs.graph.json"});
+    assert_lifecycle_vectors(
+        &lifecycle_search(&mut server, 2, true),
+        &["lifecycle.target", "lifecycle.safe"],
+    );
+    let before = lifecycle_call(&mut server, 3, "adoc_why", target_args.clone());
+    assert_eq!(before["isError"], false);
+    assert!(
+        before["structuredContent"]["records"][0]["body"]
+            .as_str()
+            .unwrap()
+            .contains("TARGET_BODY_CANARY")
+    );
+    let safe_before = lifecycle_call(&mut server, 4, "adoc_why", safe_args.clone());
+    fs::write(
+        root.join("gateway.yaml"),
+        format!("{LIFECYCLE_POLICY}  excluded_object_ids: [lifecycle.target]\n"),
+    )
+    .unwrap();
+    // ADR0065: operator authority changes become effective through restart.
+    assert_eq!(
+        lifecycle_call(&mut server, 5, "adoc_why", target_args.clone()),
+        before
+    );
+    assert_eq!(
+        paths.map(|path| fs::read(root.join(path)).unwrap()),
+        original
+    );
+    drop(server);
+    let mut server = lifecycle_start(root);
+    for (id, semantic) in [(2, true), (3, false)] {
+        let result = lifecycle_search(&mut server, id, semantic);
+        assert_lifecycle_vectors(&result, &["lifecycle.safe"]);
+        assert_eq!(
+            result["structuredContent"]["diagnostics"],
+            serde_json::json!([])
+        );
+        assert!(!result.to_string().contains("TARGET_"));
+    }
+    let missing = lifecycle_call(&mut server, 4, "adoc_why", target_args);
+    assert_eq!(
+        missing["structuredContent"]["records"],
+        serde_json::json!([])
+    );
+    assert_eq!(
+        missing["structuredContent"]["diagnostics"][0]["code"],
+        "retrieval.object_not_found"
+    );
+    assert!(!missing.to_string().contains("TARGET_"));
+    assert_eq!(
+        lifecycle_call(&mut server, 5, "adoc_why", safe_args),
+        safe_before
+    );
+    assert_eq!(
+        paths.map(|path| fs::read(root.join(path)).unwrap()),
+        original
+    );
 }
