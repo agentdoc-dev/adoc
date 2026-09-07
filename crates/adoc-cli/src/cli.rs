@@ -467,6 +467,9 @@ pub(crate) enum Commands {
         /// Require this runtime to label every returned internal/restricted Knowledge Object.
         #[arg(long)]
         require_sensitive_classification: bool,
+        /// Require partial field projection and source access attribution.
+        #[arg(long)]
+        require_field_projection: bool,
         #[arg(long, value_name = "PATH")]
         input: PathBuf,
         /// Create a private contributor manifest for the trusted caller's final authorization check.
