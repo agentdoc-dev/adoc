@@ -92,6 +92,7 @@ const ANCHORS: &[&str] = &[
     "registry:action-codes",
     "registry:gate-codes",
     "registry:permission-primitives",
+    "registry:permission-primitives-v2-additions",
     "registry:group-binding-modes",
     "registry:group-source-kinds",
     "registry:group-membership-unavailability-states",
@@ -1165,6 +1166,31 @@ fn connector_authority_policy_receipt_orders_effect_and_exact_matches_authorizat
     assert!(row.contains("`connector.configure` permission"));
     assert!(row.contains("exact-match the change"));
     assert!(row.contains("authorization state effective for the policy-change transaction"));
+}
+
+#[test]
+fn native_permission_additions_preserve_frozen_v0() {
+    let doc = registry();
+    let original = anchored_ids(&doc, "registry:permission-primitives");
+    let added = anchored_ids(&doc, "registry:permission-primitives-v2-additions");
+    assert_eq!(added, BTreeSet::from(["source.writeback".to_owned()]));
+    assert!(original.is_disjoint(&added));
+    assert_eq!(original.union(&added).count(), 31);
+    let row = doc
+        .lines()
+        .find(|line| line.starts_with("| `source.writeback` |"))
+        .unwrap();
+    assert!(row.contains("| 2 |"));
+    let schema: serde_json::Value = serde_json::from_str(&read_repo_doc(
+        "docs/agent/v0/schema/adoc.authorization_decision.v0.schema.json",
+    ))
+    .unwrap();
+    assert!(
+        !schema["$defs"]["permission"]["enum"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!("source.writeback"))
+    );
 }
 
 #[test]
