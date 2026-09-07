@@ -152,6 +152,8 @@ pub struct ResolvedRetrievalRecord {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct WhyOutcome {
+    #[serde(skip)]
+    pub read_access: adoc_core::ReadAccess,
     pub artifact: PathBuf,
     pub records: Vec<ResolvedRetrievalRecord>,
     pub diagnostics: Vec<Diagnostic>,
@@ -170,6 +172,8 @@ pub struct GraphInput {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct GraphOutcome {
+    #[serde(skip)]
+    pub read_access: adoc_core::ReadAccess,
     pub envelope: GraphTraversalEnvelope,
     pub exit_code: i32,
 }
@@ -183,6 +187,8 @@ pub struct StaleInput {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct StaleOutcome {
+    #[serde(skip)]
+    pub read_access: adoc_core::ReadAccess,
     pub envelope: StaleEnvelope,
     pub exit_code: i32,
 }
@@ -197,6 +203,8 @@ pub struct ContradictionsInput {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ContradictionsOutcome {
+    #[serde(skip)]
+    pub read_access: adoc_core::ReadAccess,
     pub envelope: ContradictionsEnvelope,
     pub exit_code: i32,
 }
@@ -221,6 +229,8 @@ pub struct ImpactedInput {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ImpactedOutcome {
+    #[serde(skip)]
+    pub read_access: adoc_core::ReadAccess,
     pub envelope: ImpactedEnvelope,
     pub exit_code: i32,
 }
@@ -262,6 +272,8 @@ pub enum ResolvedSearchEntry {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SearchOutcome {
+    #[serde(skip)]
+    pub read_access: adoc_core::ReadAccess,
     pub envelope: RetrievalEnvelope,
     pub records: Vec<ResolvedSearchEntry>,
     pub diagnostics: Vec<Diagnostic>,
@@ -912,6 +924,7 @@ where
             Err(error) => {
                 let diagnostic = retrieval_config_diagnostic(error)?;
                 return Ok(WhyOutcome {
+                    read_access: Default::default(),
                     artifact: resolve_graph_artifact_path_with_config(input.artifact, None),
                     records: Vec::new(),
                     diagnostics: vec![diagnostic],
@@ -938,6 +951,7 @@ where
     let load_exit_code = why_exit_code_for_diagnostics(&load_diagnostics);
     let Some(session) = session.filter(|_| !diagnostics_have_errors(&load_diagnostics)) else {
         return Ok(WhyOutcome {
+            read_access: Default::default(),
             artifact,
             records: Vec::new(),
             diagnostics: load_diagnostics,
@@ -947,7 +961,27 @@ where
     };
 
     let started = Instant::now();
-    let why_result = why_object(&session, &input.object_id);
+    let mut why_result = why_object(&session, &input.object_id);
+    let mut entries: Vec<_> = why_result
+        .records
+        .into_iter()
+        .map(RetrievalEntry::KnowledgeObject)
+        .collect();
+    let read_access = match adoc_core::retrieval_read_access(&session, &mut entries) {
+        Ok(access) => access,
+        Err(diagnostic) => {
+            entries.clear();
+            why_result.diagnostics.push(*diagnostic);
+            Default::default()
+        }
+    };
+    why_result.records = entries
+        .into_iter()
+        .filter_map(|entry| match entry {
+            RetrievalEntry::KnowledgeObject(record) => Some(record),
+            _ => None,
+        })
+        .collect();
     let duration = started.elapsed();
     let diagnostics = merge_diagnostics(load_diagnostics, why_result.diagnostics);
     let exit_code = why_exit_code_for_diagnostics(&diagnostics);
@@ -958,6 +992,7 @@ where
         .collect();
 
     Ok(WhyOutcome {
+        read_access,
         artifact,
         records,
         diagnostics,
@@ -978,6 +1013,7 @@ where
     let Some(session) = session else {
         let exit_code = graph_exit_code_for_diagnostics(&diagnostics);
         return Ok(GraphOutcome {
+            read_access: Default::default(),
             envelope: GraphTraversalEnvelope::new(
                 input.object_id,
                 Vec::new(),
@@ -1005,8 +1041,20 @@ where
         diagnostics,
     };
 
+    let mut envelope = GraphTraversalEnvelope::from(result);
+    let read_access = match adoc_core::graph_read_access(&session, &envelope) {
+        Ok(access) => access,
+        Err(diagnostic) => {
+            envelope.nodes.clear();
+            envelope.edges.clear();
+            envelope.diagnostics.push(*diagnostic);
+            Default::default()
+        }
+    };
+    let exit_code = exit_code.max(graph_exit_code_for_diagnostics(&envelope.diagnostics));
     Ok(GraphOutcome {
-        envelope: GraphTraversalEnvelope::from(result),
+        read_access,
+        envelope,
         exit_code,
     })
 }
@@ -1022,14 +1070,24 @@ where
     let Some(session) = session else {
         let exit_code = signal_query_exit_code(&diagnostics);
         return Ok(StaleOutcome {
+            read_access: Default::default(),
             envelope: empty_stale_envelope(diagnostics),
             exit_code,
         });
     };
 
-    let envelope = evaluate_stale(&session, input.within_days, diagnostics);
+    let mut envelope = evaluate_stale(&session, input.within_days, diagnostics);
+    let read_access = match adoc_core::stale_read_access(&session, &envelope) {
+        Ok(access) => access,
+        Err(diagnostic) => {
+            envelope.records.clear();
+            envelope.diagnostics.push(*diagnostic);
+            Default::default()
+        }
+    };
     let exit_code = signal_query_exit_code(&envelope.diagnostics);
     Ok(StaleOutcome {
+        read_access,
         envelope,
         exit_code,
     })
@@ -1046,14 +1104,25 @@ where
     let Some(session) = session else {
         let exit_code = signal_query_exit_code(&diagnostics);
         return Ok(ContradictionsOutcome {
+            read_access: Default::default(),
             envelope: empty_contradictions_envelope(diagnostics),
             exit_code,
         });
     };
 
-    let envelope = evaluate_contradictions(&session, input.all, diagnostics);
+    let mut envelope = evaluate_contradictions(&session, input.all, diagnostics);
+    let read_access = match adoc_core::contradictions_read_access(&session, &envelope) {
+        Ok(access) => access,
+        Err(diagnostic) => {
+            envelope.contradictions.clear();
+            envelope.contradicted_claims.clear();
+            envelope.diagnostics.push(*diagnostic);
+            Default::default()
+        }
+    };
     let exit_code = signal_query_exit_code(&envelope.diagnostics);
     Ok(ContradictionsOutcome {
+        read_access,
         envelope,
         exit_code,
     })
@@ -1085,6 +1154,7 @@ where
         Err(diagnostics) => {
             let exit_code = impacted_exit_code(&diagnostics);
             return Ok(ImpactedOutcome {
+                read_access: Default::default(),
                 envelope: empty_impacted_envelope(Vec::new(), diagnostics),
                 exit_code,
             });
@@ -1095,14 +1165,25 @@ where
     let Some(session) = session else {
         let exit_code = impacted_exit_code(&diagnostics);
         return Ok(ImpactedOutcome {
+            read_access: Default::default(),
             envelope: empty_impacted_envelope(changed_paths_strings(&changed), diagnostics),
             exit_code,
         });
     };
 
-    let envelope = evaluate_impacted(&session, &changed, diagnostics);
+    let mut envelope = evaluate_impacted(&session, &changed, diagnostics);
+    let read_access = match adoc_core::impacted_read_access(&session, &envelope) {
+        Ok(access) => access,
+        Err(diagnostic) => {
+            envelope.impacted.clear();
+            envelope.proof_obligations.clear();
+            envelope.diagnostics.push(*diagnostic);
+            Default::default()
+        }
+    };
     let exit_code = impacted_exit_code(&envelope.diagnostics);
     Ok(ImpactedOutcome {
+        read_access,
         envelope,
         exit_code,
     })
@@ -1236,7 +1317,7 @@ where
         None
     };
 
-    let search_result = core_search(
+    let mut search_result = core_search(
         &session,
         SearchQuery {
             text: input.query,
@@ -1255,6 +1336,14 @@ where
             scope: input.scope,
         },
     );
+    let read_access = match adoc_core::retrieval_read_access(&session, &mut search_result.records) {
+        Ok(access) => access,
+        Err(diagnostic) => {
+            search_result.records.clear();
+            search_result.diagnostics.push(*diagnostic);
+            Default::default()
+        }
+    };
     let diagnostics = merge_diagnostics(load_diagnostics, search_result.diagnostics);
     let exit_code = search_exit_code(&diagnostics);
     let records = search_result
@@ -1268,7 +1357,9 @@ where
         })
         .collect::<Vec<_>>();
 
-    Ok(search_outcome(records, diagnostics, exit_code))
+    let mut outcome = search_outcome(records, diagnostics, exit_code);
+    outcome.read_access = read_access;
+    Ok(outcome)
 }
 
 fn diff_with_context<P>(
@@ -2127,6 +2218,7 @@ fn search_outcome(
         diagnostics.clone(),
     );
     SearchOutcome {
+        read_access: Default::default(),
         envelope,
         records,
         diagnostics,

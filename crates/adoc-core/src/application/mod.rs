@@ -4,6 +4,7 @@ pub(crate) mod artifact_inspection;
 pub(crate) mod change_assessment;
 pub(crate) mod compile;
 pub(crate) mod evidence_anchor;
+pub(crate) mod field_projection;
 pub(crate) mod graph;
 pub(crate) mod managed_retrieval;
 pub(crate) mod migrate;
@@ -23,3 +24,5 @@ pub(crate) mod validation_runtime;
 pub(crate) fn local_today() -> chrono::NaiveDate {
     chrono::Utc::now().date_naive()
 }
+
+pub mod read_access;

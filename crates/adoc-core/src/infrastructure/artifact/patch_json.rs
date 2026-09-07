@@ -637,6 +637,7 @@ mod tests {
         };
 
         GraphIndex::from_document(GraphArtifactDocument {
+            raw_nonnull_members: Default::default(),
             schema_version: "adoc.graph.v6".to_string(),
             repository_identity: Default::default(),
             nodes: vec![GraphNode::Page(GraphPageNode {

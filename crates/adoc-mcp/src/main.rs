@@ -1,10 +1,12 @@
 use adoc_mcp::AgentDocMcpServer;
 use rmcp::ServiceExt;
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{EnvFilter, prelude::*};
 
 #[derive(Debug, thiserror::Error)]
 enum GatewayConfigError {
-    #[error("error[mcp.invalid_arguments] Expected --config PATH or no arguments.")]
+    #[error(
+        "error[mcp.invalid_arguments] Expected optional --config PATH and --audit-config PATH."
+    )]
     Arguments,
     #[error(
         "error[retrieval.policy_invalid] Could not read gateway configuration; check the --config file's accessibility."
@@ -28,12 +30,11 @@ enum GatewayConfigError {
     Audience,
 }
 
-fn gateway_policy() -> Result<Option<adoc_core::RetrievalPolicy>, GatewayConfigError> {
-    let args: Vec<_> = std::env::args_os().skip(1).collect();
-    let path = match args.as_slice() {
-        [] => return Ok(None),
-        [flag, path] if flag == "--config" => path,
-        _ => return Err(GatewayConfigError::Arguments),
+fn gateway_policy(
+    path: Option<&std::path::Path>,
+) -> Result<Option<adoc_core::RetrievalPolicy>, GatewayConfigError> {
+    let Some(path) = path else {
+        return Ok(None);
     };
     let text = std::fs::read_to_string(path).map_err(|_| GatewayConfigError::Read)?;
     let config = adoc_core::parse_project_config(&text).map_err(|error| match error {
@@ -66,6 +67,10 @@ fn init_tracing() {
         .with_env_filter(filter)
         .with_span_events(tracing_subscriber::fmt::format::FmtSpan::CLOSE)
         .with_writer(std::io::stderr)
+        .finish()
+        .with(tracing_subscriber::filter::filter_fn(|metadata| {
+            !metadata.target().starts_with("ureq")
+        }))
         .try_init();
 }
 
@@ -81,13 +86,32 @@ async fn main() -> std::process::ExitCode {
 }
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let retrieval_policy = gateway_policy()?;
+    let mut config = None;
+    let mut audit_config = None;
+    let mut args = std::env::args_os().skip(1);
+    while let Some(flag) = args.next() {
+        let path = args.next().ok_or(GatewayConfigError::Arguments)?;
+        let target = if flag == "--config" {
+            &mut config
+        } else if flag == "--audit-config" {
+            &mut audit_config
+        } else {
+            return Err(GatewayConfigError::Arguments.into());
+        };
+        if target.replace(std::path::PathBuf::from(path)).is_some() {
+            return Err(GatewayConfigError::Arguments.into());
+        }
+    }
+    let retrieval_policy = gateway_policy(config.as_deref())?;
     init_tracing();
     let project_root = std::env::current_dir()?;
     tracing::info!(target: "adoc_mcp", root = %project_root.display(), "MCP Agent Gateway starting on stdio");
     let mut server = AgentDocMcpServer::new(project_root);
     if let Some(policy) = retrieval_policy {
         server = server.with_retrieval_policy(policy);
+    }
+    if let Some(path) = audit_config {
+        server = server.with_audit_config(&path)?;
     }
     server
         .serve(rmcp::transport::io::stdio())

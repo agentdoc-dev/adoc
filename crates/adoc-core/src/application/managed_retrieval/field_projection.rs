@@ -8,11 +8,11 @@ use super::{DecodedReceipt, ManagedRetrievalBinding, SelectedObject, unavailable
 use crate::application::retrieval::{RetrievalEnvelope, RetrievalSession};
 use crate::domain::{
     diagnostic::Diagnostic,
-    graph::{GraphEdgeKind, GraphKnowledgeObjectNode},
+    graph::GraphKnowledgeObjectNode,
     managed_field_provenance::{is_canonical_uuid, is_selector},
     retrieval::{RetrievalPolicy, canonical_visibility},
     sensitive_access::SensitiveClassification,
-    value_objects::{evidence_kind::EvidenceKind, visibility::Visibility},
+    value_objects::visibility::Visibility,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -149,8 +149,11 @@ fn project_object(
     policy: &RetrievalPolicy,
 ) -> Result<Option<BTreeSet<String>>, Box<Diagnostic>> {
     let object_floor = class(node.visibility.as_deref().unwrap_or("public"))?;
-    let authored = node.field_visibility.clone().unwrap_or_default();
-    for floor in authored.values() {
+    for floor in node
+        .field_visibility
+        .iter()
+        .flat_map(|fields| fields.values())
+    {
         class(floor)?;
     }
     if policy.excluded_object_ids.contains(&node.id) {
@@ -159,80 +162,38 @@ fn project_object(
     if !policy.permits_visibility(object_floor) {
         return project_declassified_scalars(node, projection, policy);
     }
-    let mut retained_class = object_floor;
-    for (key, floor) in &authored {
-        let floor = class(floor)?.max(object_floor);
-        // Protect collisions in both the generic map and actual dedicated member.
-        if key != "body" && raw.get(key).is_some_and(|value| !value.is_null()) {
-            if !policy.permits_visibility(floor) {
-                return Ok(None);
-            }
-            retained_class = retained_class.max(floor);
-        }
-    }
     let native: BTreeMap<_, _> = projection
         .into_iter()
         .flat_map(|p| &p.fields)
         .map(|field| (field.selector.as_str(), field))
         .collect();
-    let mut removed = BTreeSet::new();
-    for (key, body) in std::iter::once(("body".to_string(), true))
-        .chain(node.fields.keys().cloned().map(|key| (key, false)))
-        .collect::<Vec<_>>()
-    {
-        let selector = if body {
-            "/body".to_string()
-        } else {
-            format!("/fields/{}", key.replace('~', "~0").replace('/', "~1"))
-        };
-        let floor = authored
-            .get(&key)
-            .map(|floor| class(floor))
-            .transpose()?
-            .unwrap_or(Visibility::Public)
-            .max(object_floor);
-        let effective = match native.get(selector.as_str()) {
+    let present = raw
+        .as_object()
+        .ok_or_else(unavailable)?
+        .iter()
+        .filter(|(_, value)| !value.is_null())
+        .map(|(key, _)| key.clone())
+        .collect();
+    super::super::field_projection::project_readable_object(
+        node,
+        &present,
+        policy,
+        |selector, floor| match native.get(selector) {
             Some(field) => field
                 .classification
                 .as_deref()
                 .map(|value| {
                     let effective = class(value)?;
-                    Ok::<Visibility, Box<Diagnostic>>(if field.declassification.is_some() {
+                    Ok(if field.declassification.is_some() {
                         effective
                     } else {
                         effective.max(floor)
                     })
                 })
-                .transpose()?,
-            None => Some(floor),
-        };
-        if let Some(effective) = effective.filter(|value| policy.permits_visibility(*value)) {
-            retained_class = retained_class.max(effective);
-        } else {
-            removed.insert(selector);
-            if body {
-                node.body.clear();
-            } else {
-                node.fields.remove(&key);
-            }
-            if let Some(fields) = &mut node.field_visibility {
-                fields.remove(&key);
-            }
-        }
-    }
-    if removed.contains("/fields/expires_at")
-        && node
-            .effective_reason
-            .as_deref()
-            .is_some_and(|reason| reason.starts_with("expired:"))
-    {
-        node.effective_status = None;
-        node.effective_reason = None;
-    }
-    if retained_class != object_floor || node.visibility.is_some() {
-        node.visibility = Some(retained_class.as_str().to_string());
-    }
-    Ok(Some(removed))
+                .transpose(),
+            None => Ok(Some(floor)),
+        },
+    )
 }
 
 /// An unreadable original object can contribute only explicitly approved
@@ -357,54 +318,11 @@ pub(super) fn project_receipts(
                 }
             }
         }
-        let scalar_only: BTreeSet<_> = receipt
-            .graph
-            .nodes
-            .iter()
-            .filter_map(|node| node.as_knowledge_object())
-            .filter(|node| node.source_span.is_withheld())
-            .map(|node| node.id.clone())
-            .collect();
-        receipt.graph.edges.retain(|edge| {
-            !(scalar_only.contains(&edge.source)
-                || edge.kind == GraphEdgeKind::Reference && hidden_bodies.contains(&edge.source)
-                || edge.kind == GraphEdgeKind::ResolvedBy
-                    && hidden_resolutions.contains(&edge.source))
-        });
-        let kinds: BTreeMap<_, _> = receipt
-            .graph
-            .nodes
-            .iter()
-            .filter_map(|node| node.as_knowledge_object())
-            .filter(|node| node.kind == "source")
-            .map(|node| {
-                (
-                    node.id.clone(),
-                    node.fields.get("kind").cloned().unwrap_or_default(),
-                )
-            })
-            .collect();
-        for graph_node in &mut receipt.graph.nodes {
-            let crate::domain::graph::GraphNode::KnowledgeObject(node) = graph_node else {
-                continue;
-            };
-            let mut changed = false;
-            for evidence in &mut node.evidence {
-                if let Some(reference) = &evidence.reference {
-                    let kind = kinds.get(reference).cloned().unwrap_or_default();
-                    if kind != evidence.kind {
-                        evidence.kind = kind;
-                        changed = true;
-                    }
-                }
-            }
-            if changed {
-                node.evidence_quality =
-                    crate::infrastructure::artifact::graph_json::best_evidence_quality(
-                        &node.evidence,
-                    );
-            }
-        }
+        super::super::field_projection::refresh_projected_carriers(
+            &mut receipt.graph,
+            &hidden_bodies,
+            &hidden_resolutions,
+        );
     }
     Ok(denied)
 }
@@ -425,22 +343,7 @@ pub(super) fn attribute_access(
             continue;
         };
         let own = objects.get(record.id.as_str()).ok_or_else(unavailable)?;
-        let mut sources: BTreeSet<String> = record.resolved_questions.iter().cloned().collect();
-        if let Some(source) = record
-            .effective_reason
-            .as_deref()
-            .and_then(|reason| reason.strip_prefix("contradiction:"))
-        {
-            sources.insert(source.to_string());
-        }
-        if record.evidence_quality.is_some() {
-            sources.extend(
-                own.evidence
-                    .iter()
-                    .filter(|entry| EvidenceKind::try_new(&entry.kind).is_ok())
-                    .filter_map(|entry| entry.reference.clone()),
-            );
-        }
+        let sources = super::super::read_access::material_record_sources(record, own);
         let mut derived = class(own.visibility.as_deref().unwrap_or("public"))?;
         for source in &sources {
             let source = objects.get(source.as_str()).ok_or_else(unavailable)?;

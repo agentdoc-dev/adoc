@@ -1,7 +1,7 @@
 mod support;
 
 use adoc_core::RetrievalPolicy;
-use adoc_mcp::AgentDocMcpServer;
+use adoc_mcp::{AgentDocMcpServer, McpAdapterError};
 use serde_json::{Value, json};
 use support::{TestWorkspace, adoc_command};
 
@@ -149,12 +149,12 @@ fn cli(workspace: &TestWorkspace, args: &[&str], exit_code: i32) -> Value {
     serde_json::from_slice(&output.stdout).expect("CLI emits its complete retrieval envelope")
 }
 
-fn mcp(
+fn mcp_result(
     server: &AgentDocMcpServer,
     workspace: &TestWorkspace,
     command: &str,
     mut params: Value,
-) -> Value {
+) -> Result<Value, McpAdapterError> {
     params["project_root"] = json!(workspace.root);
     match command {
         "search" => server.run_search(serde_json::from_value(params).unwrap()),
@@ -165,7 +165,15 @@ fn mcp(
         "impacted-by" => server.run_impacted_by(serde_json::from_value(params).unwrap()),
         _ => unreachable!(),
     }
-    .unwrap()
+}
+
+fn mcp(
+    server: &AgentDocMcpServer,
+    workspace: &TestWorkspace,
+    command: &str,
+    params: Value,
+) -> Value {
+    mcp_result(server, workspace, command, params).unwrap()
 }
 
 fn assert_bytes(expected: &Value, actual: &Value, args: &[&str]) {
@@ -179,7 +187,7 @@ fn assert_bytes(expected: &Value, actual: &Value, args: &[&str]) {
 }
 
 #[test]
-fn trusted_gateway_matches_cli_envelopes_for_search_graph_and_signals() {
+fn trusted_gateway_requires_recording_for_sensitive_cli_exempt_output() {
     let workspace = fixture();
     let gateway = TestWorkspace::new("gateway-binding");
     let trusted = policy(true);
@@ -224,7 +232,13 @@ fn trusted_gateway_matches_cli_envelopes_for_search_graph_and_signals() {
             );
         }
         write_policy(&workspace, &project_policy);
-        assert_bytes(&expected, &mcp(&server, &workspace, args[0], params), &args);
+        assert!(
+            matches!(
+                mcp_result(&server, &workspace, args[0], params),
+                Err(McpAdapterError::AuditSinkUnavailable)
+            ),
+            "sensitive {args:?} requires recording"
+        );
     }
 }
 
@@ -274,5 +288,22 @@ fn malformed_gateway_or_project_policy_fails_closed_with_cli_envelope_parity() {
             &mcp(&invalid_server, &workspace, args[0], params),
             &args,
         );
+    }
+}
+
+#[test]
+fn ordinary_gateway_preserves_complete_cli_envelope_parity() {
+    let workspace = fixture();
+    let trusted = policy(false);
+    let server =
+        AgentDocMcpServer::new(workspace.root.clone()).with_retrieval_policy(trusted.clone());
+    write_policy(&workspace, &trusted);
+    for (mut args, mut params) in queries() {
+        if matches!(args[0], "graph" | "why") {
+            args[1] = "billing.public";
+            params["object_id"] = json!("billing.public");
+        }
+        let expected = cli(&workspace, &args, 0);
+        assert_bytes(&expected, &mcp(&server, &workspace, args[0], params), &args);
     }
 }

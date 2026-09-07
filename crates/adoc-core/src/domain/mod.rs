@@ -5,6 +5,7 @@ pub(crate) mod diagnostic;
 pub(crate) mod executor_qualification;
 pub(crate) mod external_work;
 pub(crate) mod gate_result;
+pub(crate) mod gateway_sensitive_access;
 pub(crate) mod graph;
 pub(crate) mod hashing;
 pub(crate) mod identity;

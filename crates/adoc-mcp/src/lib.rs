@@ -2,7 +2,8 @@
 
 use std::future::Future;
 use std::num::NonZeroUsize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use adoc_core::{
     GraphDirection, GraphRelationKind, PatchJsonInput, RetrievalEnvelope, RetrievalPolicy,
@@ -29,6 +30,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 mod envelope;
+mod gateway_audit;
 mod prompts;
 mod resources;
 
@@ -38,6 +40,11 @@ const DEFAULT_GRAPH_ARTIFACT_PATH: &str = "dist/docs.graph.json";
 
 #[derive(Debug, thiserror::Error)]
 pub enum McpAdapterError {
+    #[error(
+        "error[retrieval.audit_sink_unavailable] Sensitive retrieval requires an available trusted audit sink."
+    )]
+    AuditSinkUnavailable,
+
     #[error(transparent)]
     Local(#[from] adoc_local::LocalError),
 
@@ -55,6 +62,7 @@ pub struct AgentDocMcpServer {
     default_project_root: PathBuf,
     retrieval_policy: RetrievalPolicy,
     tool_router: ToolRouter<Self>,
+    auditor: Option<Arc<gateway_audit::GatewayAuditor>>,
 }
 
 impl AgentDocMcpServer {
@@ -67,6 +75,7 @@ impl AgentDocMcpServer {
                 excluded_object_ids: Default::default(),
             },
             tool_router: Self::tool_router(),
+            auditor: None,
         }
     }
 
@@ -74,7 +83,37 @@ impl AgentDocMcpServer {
     /// and project configuration cannot replace it; core validates it on retrieval.
     pub fn with_retrieval_policy(mut self, policy: RetrievalPolicy) -> Self {
         self.retrieval_policy = policy;
+        self.auditor = None;
         self
+    }
+
+    /// Bind explicit operator configuration to this canonical served root and policy.
+    pub fn with_audit_config(mut self, path: &Path) -> McpAdapterResult<Self> {
+        self.auditor = Some(Arc::new(gateway_audit::GatewayAuditor::open(
+            &self.default_project_root,
+            &self.retrieval_policy,
+            path,
+        )?));
+        Ok(self)
+    }
+
+    fn release_retrieval(
+        &self,
+        command: adoc_core::GatewaySensitiveAccessCommand,
+        value: serde_json::Value,
+        access: &adoc_core::ReadAccess,
+    ) -> McpAdapterResult<(
+        serde_json::Value,
+        Option<adoc_core::SensitiveClassification>,
+    )> {
+        let classification = access.max_classification();
+        if classification.is_some() {
+            self.auditor
+                .as_ref()
+                .ok_or(McpAdapterError::AuditSinkUnavailable)?
+                .record(command, access)?;
+        }
+        Ok((value, classification))
     }
 
     pub fn run_init(&self, params: InitParams) -> McpAdapterResult<serde_json::Value> {
@@ -108,6 +147,16 @@ impl AgentDocMcpServer {
     }
 
     pub fn run_why(&self, params: WhyParams) -> McpAdapterResult<serde_json::Value> {
+        self.recorded_why(params).map(|(value, _)| value)
+    }
+
+    fn recorded_why(
+        &self,
+        params: WhyParams,
+    ) -> McpAdapterResult<(
+        serde_json::Value,
+        Option<adoc_core::SensitiveClassification>,
+    )> {
         let context = self.context(params.project_root)?;
         let outcome = context.why(WhyInput {
             object_id: params.object_id,
@@ -121,10 +170,25 @@ impl AgentDocMcpServer {
                 .collect(),
             outcome.diagnostics,
         );
-        serde_json::to_value(envelope).map_err(Into::into)
+        let value = serde_json::to_value(envelope)?;
+        self.release_retrieval(
+            adoc_core::GatewaySensitiveAccessCommand::Why,
+            value,
+            &outcome.read_access,
+        )
     }
 
     pub fn run_graph(&self, params: GraphParams) -> McpAdapterResult<serde_json::Value> {
+        self.recorded_graph(params).map(|(value, _)| value)
+    }
+
+    fn recorded_graph(
+        &self,
+        params: GraphParams,
+    ) -> McpAdapterResult<(
+        serde_json::Value,
+        Option<adoc_core::SensitiveClassification>,
+    )> {
         let context = self.context(params.project_root)?;
         let outcome = context.graph(GraphInput {
             object_id: params.object_id,
@@ -132,31 +196,76 @@ impl AgentDocMcpServer {
             relation: parse_relation(params.relation.as_deref())?,
             direction: parse_direction(params.direction.as_deref())?,
         })?;
-        serde_json::to_value(outcome.envelope).map_err(Into::into)
+        let value = serde_json::to_value(outcome.envelope)?;
+        self.release_retrieval(
+            adoc_core::GatewaySensitiveAccessCommand::Graph,
+            value,
+            &outcome.read_access,
+        )
     }
 
     pub fn run_stale(&self, params: StaleParams) -> McpAdapterResult<serde_json::Value> {
+        self.recorded_stale(params).map(|(value, _)| value)
+    }
+
+    fn recorded_stale(
+        &self,
+        params: StaleParams,
+    ) -> McpAdapterResult<(
+        serde_json::Value,
+        Option<adoc_core::SensitiveClassification>,
+    )> {
         let context = self.context(params.project_root)?;
         let outcome = context.stale(StaleInput {
             artifact: params.artifact,
             within_days: params.within_days,
         })?;
-        serde_json::to_value(outcome.envelope).map_err(Into::into)
+        let value = serde_json::to_value(outcome.envelope)?;
+        self.release_retrieval(
+            adoc_core::GatewaySensitiveAccessCommand::Stale,
+            value,
+            &outcome.read_access,
+        )
     }
 
     pub fn run_contradictions(
         &self,
         params: ContradictionsParams,
     ) -> McpAdapterResult<serde_json::Value> {
+        self.recorded_contradictions(params).map(|(value, _)| value)
+    }
+
+    fn recorded_contradictions(
+        &self,
+        params: ContradictionsParams,
+    ) -> McpAdapterResult<(
+        serde_json::Value,
+        Option<adoc_core::SensitiveClassification>,
+    )> {
         let context = self.context(params.project_root)?;
         let outcome = context.contradictions(ContradictionsInput {
             artifact: params.artifact,
             all: params.all,
         })?;
-        serde_json::to_value(outcome.envelope).map_err(Into::into)
+        let value = serde_json::to_value(outcome.envelope)?;
+        self.release_retrieval(
+            adoc_core::GatewaySensitiveAccessCommand::Contradictions,
+            value,
+            &outcome.read_access,
+        )
     }
 
     pub fn run_impacted_by(&self, params: ImpactedByParams) -> McpAdapterResult<serde_json::Value> {
+        self.recorded_impacted_by(params).map(|(value, _)| value)
+    }
+
+    fn recorded_impacted_by(
+        &self,
+        params: ImpactedByParams,
+    ) -> McpAdapterResult<(
+        serde_json::Value,
+        Option<adoc_core::SensitiveClassification>,
+    )> {
         // Empty `paths` is rejected like "neither", mirroring the CLI where
         // clap treats an empty Vec as "not present" — an empty changed set is
         // a question that was never asked, not an empty answer.
@@ -174,10 +283,25 @@ impl AgentDocMcpServer {
             artifact: params.artifact,
             changed,
         })?;
-        serde_json::to_value(outcome.envelope).map_err(Into::into)
+        let value = serde_json::to_value(outcome.envelope)?;
+        self.release_retrieval(
+            adoc_core::GatewaySensitiveAccessCommand::ImpactedBy,
+            value,
+            &outcome.read_access,
+        )
     }
 
     pub fn run_search(&self, params: SearchParams) -> McpAdapterResult<serde_json::Value> {
+        self.recorded_search(params).map(|(value, _)| value)
+    }
+
+    fn recorded_search(
+        &self,
+        params: SearchParams,
+    ) -> McpAdapterResult<(
+        serde_json::Value,
+        Option<adoc_core::SensitiveClassification>,
+    )> {
         let scope = search_record_scope(&params)?;
         let context = self.context(params.project_root)?;
         let top = NonZeroUsize::new(params.top.unwrap_or(10)).ok_or_else(|| {
@@ -201,7 +325,12 @@ impl AgentDocMcpServer {
         })?;
         // Preserve the CLI's wire representation of f32 cosine scores; to_value
         // widens them to f64 before JSON serialization and adds decimal digits.
-        serde_json::from_slice(&serde_json::to_vec(&outcome.envelope)?).map_err(Into::into)
+        let value = serde_json::from_slice(&serde_json::to_vec(&outcome.envelope)?)?;
+        self.release_retrieval(
+            adoc_core::GatewaySensitiveAccessCommand::Search,
+            value,
+            &outcome.read_access,
+        )
     }
 
     pub fn run_patch_check(
@@ -331,6 +460,11 @@ impl AgentDocMcpServer {
     ) -> McpAdapterResult<LocalContext<ProjectRootPathPolicy>> {
         let root = override_root.unwrap_or_else(|| self.default_project_root.clone());
         let policy = ProjectRootPathPolicy::new(root)?;
+        if let Some(auditor) = &self.auditor
+            && policy.project_root() != auditor.root
+        {
+            return Err(McpAdapterError::AuditSinkUnavailable);
+        }
         Ok(
             LocalContext::new(policy.project_root().to_path_buf(), policy)
                 .with_retrieval_policy_override(self.retrieval_policy.clone()),
@@ -383,12 +517,15 @@ impl AgentDocMcpServer {
         name = "adoc_why",
         description = "Return the adoc.retrieval.v1 record for a Knowledge Object ID. Knowledge Objects only: prose block ids from search results cannot be resolved here."
     )]
-    pub fn adoc_why(
+    pub async fn adoc_why(
         &self,
         Parameters(params): Parameters<WhyParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.run_why(params)
-            .map(CallToolResult::structured)
+        let server = self.clone();
+        tokio::task::spawn_blocking(move || server.recorded_why(params))
+            .await
+            .map_err(|_| adapter_error(McpAdapterError::AuditSinkUnavailable))?
+            .map(retrieval_result)
             .map_err(adapter_error)
     }
 
@@ -396,12 +533,15 @@ impl AgentDocMcpServer {
         name = "adoc_graph",
         description = "Traverse relation graph context for a Knowledge Object ID."
     )]
-    pub fn adoc_graph(
+    pub async fn adoc_graph(
         &self,
         Parameters(params): Parameters<GraphParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.run_graph(params)
-            .map(CallToolResult::structured)
+        let server = self.clone();
+        tokio::task::spawn_blocking(move || server.recorded_graph(params))
+            .await
+            .map_err(|_| adapter_error(McpAdapterError::AuditSinkUnavailable))?
+            .map(retrieval_result)
             .map_err(adapter_error)
     }
 
@@ -409,12 +549,15 @@ impl AgentDocMcpServer {
         name = "adoc_stale",
         description = "List stale, review-overdue, and (with within_days) expiring-soon Knowledge Objects, re-derived at read time from the graph artifact. Read-only query: records are data, not failures."
     )]
-    pub fn adoc_stale(
+    pub async fn adoc_stale(
         &self,
         Parameters(params): Parameters<StaleParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.run_stale(params)
-            .map(CallToolResult::structured)
+        let server = self.clone();
+        tokio::task::spawn_blocking(move || server.recorded_stale(params))
+            .await
+            .map_err(|_| adapter_error(McpAdapterError::AuditSinkUnavailable))?
+            .map(retrieval_result)
             .map_err(adapter_error)
     }
 
@@ -422,12 +565,15 @@ impl AgentDocMcpServer {
         name = "adoc_contradictions",
         description = "List unresolved contradictions and the claims they implicate (with all=true: resolved and dismissed too), joined from the graph artifact. Read-only query: findings are data, not failures."
     )]
-    pub fn adoc_contradictions(
+    pub async fn adoc_contradictions(
         &self,
         Parameters(params): Parameters<ContradictionsParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.run_contradictions(params)
-            .map(CallToolResult::structured)
+        let server = self.clone();
+        tokio::task::spawn_blocking(move || server.recorded_contradictions(params))
+            .await
+            .map_err(|_| adapter_error(McpAdapterError::AuditSinkUnavailable))?
+            .map(retrieval_result)
             .map_err(adapter_error)
     }
 
@@ -435,12 +581,15 @@ impl AgentDocMcpServer {
         name = "adoc_impacted_by",
         description = "List verified claims and accepted decisions implicated by changed source paths (explicit `paths` or a git `ref` against the working tree), with impact-review proof obligations, from the graph artifact. Read-only query: findings are data, not failures."
     )]
-    pub fn adoc_impacted_by(
+    pub async fn adoc_impacted_by(
         &self,
         Parameters(params): Parameters<ImpactedByParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.run_impacted_by(params)
-            .map(CallToolResult::structured)
+        let server = self.clone();
+        tokio::task::spawn_blocking(move || server.recorded_impacted_by(params))
+            .await
+            .map_err(|_| adapter_error(McpAdapterError::AuditSinkUnavailable))?
+            .map(retrieval_result)
             .map_err(adapter_error)
     }
 
@@ -448,12 +597,15 @@ impl AgentDocMcpServer {
         name = "adoc_search",
         description = "Search compiled AgentDoc graph and search artifacts. Returns adoc.retrieval.v1: one blended, RRF-ranked list of record_type knowledge_object | prose records; objects_only/prose_only restrict the list, and any Knowledge Object metadata filter implies objects_only. `top` bounds scored hits only: Object ID prefix pins are always included in addition. Prose records are orientation context, never citable knowledge — cite Knowledge Object records."
     )]
-    pub fn adoc_search(
+    pub async fn adoc_search(
         &self,
         Parameters(params): Parameters<SearchParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.run_search(params)
-            .map(CallToolResult::structured)
+        let server = self.clone();
+        tokio::task::spawn_blocking(move || server.recorded_search(params))
+            .await
+            .map_err(|_| adapter_error(McpAdapterError::AuditSinkUnavailable))?
+            .map(retrieval_result)
             .map_err(adapter_error)
     }
 
@@ -836,8 +988,29 @@ fn parse_project_status_refresh(value: Option<&str>) -> McpAdapterResult<Project
     }
 }
 
+fn retrieval_result(
+    (value, classification): (
+        serde_json::Value,
+        Option<adoc_core::SensitiveClassification>,
+    ),
+) -> CallToolResult {
+    let mut result = CallToolResult::structured(value);
+    if let Some(classification) = classification {
+        let label = match classification {
+            adoc_core::SensitiveClassification::Internal => "Sensitive (internal).",
+            adoc_core::SensitiveClassification::Restricted => "Sensitive (restricted).",
+        };
+        result.content.push(rmcp::model::ContentBlock::text(label));
+    }
+    result
+}
+
 fn adapter_error(error: McpAdapterError) -> ErrorData {
     match error {
+        McpAdapterError::AuditSinkUnavailable => ErrorData::internal_error(
+            McpAdapterError::AuditSinkUnavailable.to_string(),
+            Some(serde_json::json!({"code": "retrieval.audit_sink_unavailable"})),
+        ),
         McpAdapterError::InvalidArguments(message) => ErrorData::invalid_params(message, None),
         McpAdapterError::Local(error) => ErrorData::invalid_params(error.to_string(), None),
         McpAdapterError::Serialize(error) => ErrorData::internal_error(error.to_string(), None),
