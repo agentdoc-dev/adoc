@@ -2563,3 +2563,10 @@ fn own_projection_diagnostic_is_registered_only_as_cloud_code() {
     assert!(anchored_ids(&doc, "registry:cloud-codes").contains("writeback.own_projection"));
     assert!(!anchored_ids(&doc, "registry:gate-codes").contains("writeback.own_projection"));
 }
+
+#[test]
+fn deletion_incomplete_is_registered_only_as_cloud_code() {
+    let doc = registry();
+    assert!(anchored_ids(&doc, "registry:cloud-codes").contains("privacy.deletion_incomplete"));
+    assert!(!anchored_ids(&doc, "registry:gate-codes").contains("privacy.deletion_incomplete"));
+}

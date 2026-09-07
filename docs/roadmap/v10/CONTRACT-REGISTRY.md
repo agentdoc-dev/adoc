@@ -596,6 +596,7 @@ The pre-release implementation annotations mark only the ten code rows added by 
 | `writeback.provider_unavailable` | planned (E6.5.T2) | current target-scoped provider credential or observation is unavailable; sanitized refusal without fallback |
 | `writeback.own_projection` | planned (E6.5.T3) | legacy UUID candidate admission reports exact equivalent own-projection suppression after current authorization; use structured reconciliation to retain an observation in the same transaction; no candidate UUID or synchronization claim |
 | `writeback.applied` | planned (E6.5.T2) | exact prepared target commit and payload observed; no approval, verification or effectivity claim |
+| `privacy.deletion_incomplete` | planned (E6.6.T4) | selected source evidence deletion retains unprotected residue or cannot verify the required copy scope; no completed-erasure claim; an authorized fresh retry may complete the sweep while prior outcomes remain immutable |
 <!-- /registry:cloud-codes -->
 
 ## Attestation codes — planned, owner `cloud`
