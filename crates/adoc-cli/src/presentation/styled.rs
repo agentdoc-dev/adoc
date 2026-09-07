@@ -83,16 +83,18 @@ fn render_styled_prose_record(output: &mut String, record: &adoc_core::ProseReco
         output.push('\n');
     }
 
-    output.push('\n');
-    writeln!(
-        output,
-        "{} {}:{}:{}",
-        faint_label("Source:"),
-        record.source.path,
-        record.source.line,
-        record.source.column
-    )
-    .expect("writing to String cannot fail");
+    if !record.source.is_withheld() {
+        output.push('\n');
+        writeln!(
+            output,
+            "{} {}:{}:{}",
+            faint_label("Source:"),
+            record.source.path,
+            record.source.line,
+            record.source.column
+        )
+        .expect("writing to String cannot fail");
+    }
 }
 
 fn render_styled_record(output: &mut String, presentation_record: &PresentationRecord) {
@@ -202,16 +204,18 @@ fn render_styled_record(output: &mut String, presentation_record: &PresentationR
         }
     }
 
-    output.push('\n');
-    writeln!(
-        output,
-        "{} {}:{}:{}",
-        faint_label("Source:"),
-        record.source.path,
-        record.source.line,
-        record.source.column
-    )
-    .expect("writing to String cannot fail");
+    if !record.source.is_withheld() {
+        output.push('\n');
+        writeln!(
+            output,
+            "{} {}:{}:{}",
+            faint_label("Source:"),
+            record.source.path,
+            record.source.line,
+            record.source.column
+        )
+        .expect("writing to String cannot fail");
+    }
 
     if has_relations(&record.relations) {
         output.push('\n');
@@ -344,6 +348,15 @@ mod tests {
             diagnostics: Vec::new(),
             footer: Some(default_meta()),
         }
+    }
+
+    #[test]
+    fn withheld_source_has_no_source_line_or_fabricated_coordinates() {
+        let mut record = make_record("billing.selected", "claim");
+        record.source = adoc_core::RetrievalSource::withheld();
+        let output = render(&view_for(record));
+        assert!(!output.contains("Source:"));
+        assert!(!output.contains(":0:0"));
     }
 
     #[test]

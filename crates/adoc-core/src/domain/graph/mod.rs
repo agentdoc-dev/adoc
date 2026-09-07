@@ -403,6 +403,19 @@ pub(crate) struct GraphSourceSpan {
     pub(crate) column: u32,
 }
 
+impl GraphSourceSpan {
+    pub(crate) fn withheld() -> Self {
+        Self {
+            path: String::new(),
+            line: 0,
+            column: 0,
+        }
+    }
+    pub(crate) fn is_withheld(&self) -> bool {
+        self.path.is_empty() && self.line == 0 && self.column == 0
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]
 pub(crate) struct GraphRelations {
     pub(crate) depends_on: Vec<String>,
@@ -494,6 +507,15 @@ pub(crate) struct GraphIndex {
 
 impl GraphIndex {
     pub(crate) fn from_document(document: GraphArtifactDocument) -> Result<Self, Vec<Diagnostic>> {
+        Self::from_managed_projection(document, &BTreeSet::new())
+    }
+
+    /// Only the managed assembler may admit explicitly withheld source locations.
+    /// Original receipts must pass ordinary validation before this projection.
+    pub(crate) fn from_managed_projection(
+        document: GraphArtifactDocument,
+        withheld_sources: &BTreeSet<String>,
+    ) -> Result<Self, Vec<Diagnostic>> {
         let mut nodes = BTreeMap::new();
         let mut page_ids = BTreeSet::new();
         let mut diagnostics = Vec::new();
@@ -509,7 +531,13 @@ impl GraphIndex {
                 | GraphNode::CodeBlock(block) => &block.source_span.path,
                 GraphNode::KnowledgeObject(object) => &object.source_span.path,
             };
-            if LogicalPath::parse(source_path).is_err() {
+            let withheld = node.as_knowledge_object().is_some_and(|object| {
+                withheld_sources.contains(&object.id) && object.source_span.is_withheld()
+            });
+            let invalid_allowance = node.as_knowledge_object().is_some_and(|object| {
+                withheld_sources.contains(&object.id) && !object.source_span.is_withheld()
+            });
+            if invalid_allowance || (!withheld && LogicalPath::parse(source_path).is_err()) {
                 diagnostics.push(
                     Diagnostic::error(
                         DiagnosticCode::IoArtifactMalformed,
@@ -557,6 +585,16 @@ impl GraphIndex {
                     );
                 }
             }
+        }
+
+        if withheld_sources
+            .iter()
+            .any(|id| !nodes.keys().any(|node_id| node_id.as_str() == id))
+        {
+            diagnostics.push(Diagnostic::error(
+                DiagnosticCode::IoArtifactMalformed,
+                "Managed projection has an unmatched withheld source binding.",
+            ));
         }
 
         let mut edges: Vec<_> = document
@@ -1156,6 +1194,37 @@ mod tests {
             .expect("fake but prefixed hash is accepted");
 
         assert!(graph.contains_object(&ObjectId::new_unchecked("billing.credits".to_string())));
+    }
+
+    #[test]
+    fn managed_withheld_sources_require_exact_internal_allowance() {
+        let mut document = graph_document(Some("sha256:billing.credits"));
+        let GraphNode::KnowledgeObject(node) = &mut document.nodes[1] else {
+            unreachable!()
+        };
+        node.source_span = GraphSourceSpan::withheld();
+        let allowed = BTreeSet::from(["billing.credits".to_string()]);
+        assert!(GraphIndex::from_document(document.clone()).is_err());
+        assert!(GraphIndex::from_managed_projection(document.clone(), &allowed).is_ok());
+        assert!(
+            GraphIndex::from_managed_projection(
+                document.clone(),
+                &BTreeSet::from(["other.object".into()])
+            )
+            .is_err()
+        );
+        for (path, line, column) in [("", 1, 0), ("", 0, 1), ("docs/team.adoc", 0, 0)] {
+            let mut invalid = document.clone();
+            let GraphNode::KnowledgeObject(node) = &mut invalid.nodes[1] else {
+                unreachable!()
+            };
+            node.source_span = GraphSourceSpan {
+                path: path.into(),
+                line,
+                column,
+            };
+            assert!(GraphIndex::from_managed_projection(invalid, &allowed).is_err());
+        }
     }
 
     #[test]

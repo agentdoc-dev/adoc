@@ -20,6 +20,65 @@ use serde_json::json;
 const CANONICAL_SOURCE_ACL_OBSERVED_AT: &str = "2026-08-23T11:59:00Z";
 
 #[test]
+fn withheld_retrieval_source_remains_schema_compatible() {
+    let envelope = json!({"schema_version":"adoc.retrieval.v1","records":[{
+        "record_type":"knowledge_object","id":"billing.selected","kind":"claim",
+        "content_hash":format!("sha256:{}","a".repeat(64)),"body":"Approved body.","source":{},
+        "relations":{"depends_on":[],"supersedes":[],"related_to":[]}}],"diagnostics":[]});
+    assert_valid("retrieval-envelope.json", &envelope);
+}
+
+#[test]
+fn managed_field_declassification_schema_matches_domain() {
+    let id = "00000000-0000-4000-8000-000000000001";
+    let digest = format!("sha256:{}", "a".repeat(64));
+    let value = json!({"schema_version":"adoc.managed_field_declassification.v0",
+        "request_id":id,"workspace_id":id,"canonical_id":id,"version_id":id,
+        "content_digest":digest,"provenance_record_digest":digest,"state_event_ordinal":0,
+        "state_event_digest":digest,"fields":[{"selector":"/body","prior_classification":"restricted",
+        "new_classification":"public","assertion_ids":[id]}],"principal_id":id,"auth_session_id":id,
+        "authorization_decision_id":id,"policy_version":"native-policy-v1","rationale":"Approved field release.",
+        "effective_date":"2028-02-29","restricted_evidence_remains_hidden":true});
+    let name = "adoc.managed_field_declassification.v0.schema.json";
+    assert_valid(name, &value);
+    assert!(
+        adoc_core::validate_managed_field_declassification(&serde_json::to_vec(&value).unwrap())
+            .is_ok()
+    );
+    for (key, bad) in [
+        ("state_event_ordinal", json!(-1)),
+        ("state_event_ordinal", json!(9007199254740992u64)),
+        ("restricted_evidence_remains_hidden", json!(false)),
+        ("effective_date", json!("2026-02-29")),
+        ("rationale", json!(" ")),
+        ("rationale", json!("é".repeat(4097))),
+        ("policy_version", json!(" p ")),
+        ("foreign", json!(true)),
+        ("fields", json!([])),
+    ] {
+        let mut invalid = value.clone();
+        invalid[key] = bad;
+        assert!(!schema_accepts(name, &invalid));
+        assert!(
+            adoc_core::validate_managed_field_declassification(
+                &serde_json::to_vec(&invalid).unwrap()
+            )
+            .is_err(),
+            "{key}"
+        );
+    }
+    for bad in [
+        json!(["/body", "restricted", "public", [id]]),
+        json!({"selector":"/body","prior_classification":"public","new_classification":"public","assertion_ids":[id]}),
+        json!({"selector":"/body","prior_classification":"internal","new_classification":"restricted","assertion_ids":[id]}),
+    ] {
+        let mut invalid = value.clone();
+        invalid["fields"][0] = bad;
+        assert!(!schema_accepts(name, &invalid));
+    }
+}
+
+#[test]
 fn managed_retrieval_input_is_closed_and_requires_exact_byte_bindings() {
     let name = "adoc.managed_retrieval_input.v0.schema.json";
     let valid = json!({
@@ -38,6 +97,28 @@ fn managed_retrieval_input_is_closed_and_requires_exact_byte_bindings() {
         "fields":[{"selector":"/fields/owner", "classification":null}]
     });
     assert_valid(name, &projected);
+    let mut approved = projected.clone();
+    approved["objects"][0]["field_projection"]["fields"][0]["classification"] = json!("public");
+    approved["objects"][0]["field_projection"]["fields"][0]["declassification"] = json!({
+        "state_event_ordinal":0,"state_event_digest":format!("sha256:{}","a".repeat(64)),
+        "detail_digest":format!("sha256:{}","b".repeat(64)),"prior_classification":"internal"});
+    assert_valid(name, &approved);
+    for (pointer, bad) in [
+        ("/declassification", json!(null)),
+        ("/declassification", json!([])),
+        ("/declassification/state_event_ordinal", json!(-1)),
+        ("/declassification/detail_digest", json!("bad")),
+        ("/declassification/prior_classification", json!("public")),
+        ("/classification", json!(null)),
+        ("/classification", json!("internal")),
+    ] {
+        let mut invalid = approved.clone();
+        *invalid["objects"][0]["field_projection"]["fields"][0]
+            .pointer_mut(pointer)
+            .unwrap() = bad;
+        assert!(!schema_accepts(name, &invalid), "{pointer}");
+    }
+
     let mut accepted_unknown_keys = Vec::new();
     for (key, value) in [
         ("uuid", json!("00000000-0000-4000-8000-000000000001")),
@@ -1431,6 +1512,10 @@ fn mcp_serves_schema_resources_byte_equal_to_on_disk_files() {
     let server = AgentDocMcpServer::new(workspace.path().to_path_buf());
 
     for (uri, file) in [
+        (
+            "adoc://agent/v0/schema/adoc.managed_field_declassification.v0.schema.json",
+            "adoc.managed_field_declassification.v0.schema.json",
+        ),
         (
             "adoc://agent/v0/schema/adoc.managed_field_provenance.v0.schema.json",
             "adoc.managed_field_provenance.v0.schema.json",

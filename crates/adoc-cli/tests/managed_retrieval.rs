@@ -19,6 +19,7 @@ fn managed_input_is_explicit_and_ignores_ambient_project_authority() {
             "managed-retrieve",
             "--require-sensitive-classification",
             "--require-field-projection",
+            "--require-field-declassification",
             "--input",
             "input.json",
             "--manifest-out",
@@ -165,6 +166,7 @@ fn managed_cli_projects_real_compiler_fields_and_writes_exact_access_manifest() 
             .args([
                 "managed-retrieve",
                 "--require-field-projection",
+                "--require-field-declassification",
                 "--require-sensitive-classification",
                 "--input",
                 "input.json",
