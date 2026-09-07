@@ -698,7 +698,11 @@ fn source_citation_carriers_are_withheld_whole_instead_of_serializing_hidden_met
 #[test]
 fn matching_manifest_and_stale_hidden_vector_have_complete_index_parity() {
     let workspace = TestWorkspace::new("permission-parity-vectors");
-    workspace.write("agentdoc.config.yaml", CONFIG);
+    // This adversarial read fixture needs a genuinely authorized wide index.
+    workspace.write(
+        "agentdoc.config.yaml",
+        &CONFIG.replace("audience: public", "audience: internal"),
+    );
     let public = "# Billing @doc(billing.page)\n\n::claim billing.visible\nstatus: draft\nvisibility: public\n--\nCredits flow through the public ledger.\n::\n";
     let hidden = "\n::claim billing.hidden\nstatus: draft\nvisibility: internal\n--\nPrivate credits and secret ledger policy.\n::\n";
     let build = |source: &str| {
@@ -720,6 +724,7 @@ fn matching_manifest_and_stale_hidden_vector_have_complete_index_parity() {
     };
     let (present, mut index) = build(&format!("{public}{hidden}"));
     let (absent, _) = build(public);
+    workspace.write("agentdoc.config.yaml", CONFIG);
     let entry = index["embeddings"]
         .as_array_mut()
         .unwrap()

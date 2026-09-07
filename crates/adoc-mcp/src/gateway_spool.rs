@@ -211,6 +211,10 @@ impl Spool {
     #[cfg(unix)]
     pub fn open(mut header: Header) -> McpAdapterResult<Self> {
         use adoc_local::{PathPolicy, ProjectRootPathPolicy};
+        #[cfg(test)]
+        let _process_launch = TEST_PROCESS_LAUNCH
+            .lock()
+            .expect("test process launch lock");
         let root = PathBuf::from(&header.root);
         let policy = ProjectRootPathPolicy::new(root.clone())
             .map_err(|_| McpAdapterError::AuditSinkUnavailable)?;
@@ -522,6 +526,11 @@ thread_local! {
     static IO_FAULT: std::cell::Cell<Option<Fault>> = const { std::cell::Cell::new(None) };
     static IO_FAULT_SKIP: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
+// Unit-process launch can transiently interfere with another test's lock reopen.
+// Isolate launch from open execution, while preserving real descriptor lifetimes.
+#[cfg(all(test, unix))]
+static TEST_PROCESS_LAUNCH: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[cfg(all(test, unix))]
 thread_local! { static SYNC_FAIL_INODE: std::cell::Cell<Option<(u64,u64)>> = const { std::cell::Cell::new(None) }; }
 #[cfg(test)]
@@ -886,9 +895,19 @@ mod tests {
                 .stderr(Stdio::null());
             command
         };
-        assert!(child("deny").status().unwrap().success());
+        {
+            let _process_launch = TEST_PROCESS_LAUNCH
+                .lock()
+                .expect("test process launch lock");
+            assert!(child("deny").status().unwrap().success());
+        }
         drop(spool);
-        let mut held = child("hold").spawn().unwrap();
+        let mut held = {
+            let _process_launch = TEST_PROCESS_LAUNCH
+                .lock()
+                .expect("test process launch lock");
+            child("hold").spawn().unwrap()
+        };
         let start = Instant::now();
         while !temp.path().join("ready").exists() && start.elapsed() < Duration::from_secs(3) {
             std::thread::sleep(Duration::from_millis(10));
