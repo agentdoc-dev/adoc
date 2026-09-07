@@ -263,6 +263,16 @@ const RESOURCES: &[AgentResource] = &[
         contents: include_str!("../../../docs/agent/v0/schema/retrieval-envelope.json"),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.managed_field_provenance.v0.schema.json",
+        name: "schema-managed-field-provenance-v0-json",
+        title: "Managed Field Provenance JSON Schema",
+        description: "Immutable exact-version field links to native workspace assertion rows; validity grants no authority.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/adoc.managed_field_provenance.v0.schema.json"
+        ),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/adoc.sensitive_access.v0.schema.json",
         name: "schema-sensitive-access-v0-json",
         title: "Sensitive Access Event JSON Schema",

@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.managed_field_provenance.v0.schema.json",
+  "title": "Managed Field Provenance",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "workspace_id",
+    "canonical_id",
+    "version_id",
+    "content_digest",
+    "fields"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "adoc.managed_field_provenance.v0"
+    },
+    "workspace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "canonical_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "version_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "content_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "fields": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "uniqueItems": true,
+      "description": "Selectors must be distinct even when their assertion lists differ; the AgentDoc domain validator enforces this cross-item constraint. Native storage validates selector existence, exact content binding and contributor authority.",
+      "items": {
+        "type": "object",
+        "required": [
+          "selector",
+          "assertion_ids"
+        ],
+        "properties": {
+          "selector": {
+            "type": "string",
+            "maxLength": 256,
+            "pattern": "^(?:/body|/fields/(?:[^~/]|~[01])+)$"
+          },
+          "assertion_ids": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "description": "Native assertion row UUIDs scoped to this workspace, never external assertion-envelope IDs."
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

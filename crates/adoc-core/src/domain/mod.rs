@@ -19,6 +19,7 @@ pub(crate) mod knowledge_object;
 pub(crate) mod lifecycle_mapping;
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) mod managed;
+pub(crate) mod managed_field_provenance;
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) mod managed_state;
 pub(crate) mod obligation;
