@@ -105,6 +105,15 @@ fn render_styled_record(output: &mut String, presentation_record: &PresentationR
 
     // ADR-0039: status is lifecycle-only; severity/trust have their own
     // record fields. Severity strings feed the same chip palette.
+    if let Some(classification) = record.classification {
+        writeln!(
+            output,
+            "{} {}",
+            faint_label("Sensitive:"),
+            classification.as_str()
+        )
+        .expect("writing to String cannot fail");
+    }
     if let Some(status) = &record.status {
         let chip = status_chip(status_color(Some(status.as_str())), status.as_str());
         writeln!(output, "{} {chip}", faint_label("Status:"))
@@ -314,6 +323,7 @@ mod tests {
             effective_reason: None,
             evidence_quality: None,
             resolved_questions: Vec::new(),
+            classification: None,
         }
     }
 
@@ -333,6 +343,27 @@ mod tests {
             })],
             diagnostics: Vec::new(),
             footer: Some(default_meta()),
+        }
+    }
+
+    #[test]
+    fn sensitive_classification_is_visible_in_plain_and_styled_output() {
+        for class in [
+            adoc_core::SensitiveClassification::Internal,
+            adoc_core::SensitiveClassification::Restricted,
+        ] {
+            let mut record = make_record("policy.example", "claim");
+            record.classification = Some(class);
+            let mut plain = String::new();
+            crate::presentation::plain::render_record(&mut plain, &record, None);
+            assert!(plain.contains(&format!("Sensitive: {}", class.as_str())));
+            let mut styled = Vec::new();
+            StyledPresenter
+                .present(&view_for(record), &mut styled)
+                .unwrap();
+            let text = String::from_utf8(styled).unwrap();
+            assert!(text.contains("Sensitive:"));
+            assert!(text.contains(class.as_str()));
         }
     }
 
@@ -468,6 +499,7 @@ mod tests {
             effective_reason: None,
             evidence_quality: None,
             resolved_questions: Vec::new(),
+            classification: None,
         };
         let view = view_for(record);
         let text = strip_ansi(&render(&view));
@@ -572,6 +604,7 @@ mod tests {
             effective_reason: None,
             evidence_quality: None,
             resolved_questions: Vec::new(),
+            classification: None,
         };
         let view = view_for(record);
         let raw = render(&view);
@@ -841,6 +874,7 @@ mod tests {
             effective_reason: None,
             evidence_quality: None,
             resolved_questions: Vec::new(),
+            classification: None,
         };
         let view = view_for(record);
         let raw = render(&view);
@@ -892,6 +926,7 @@ mod tests {
             effective_reason: None,
             evidence_quality: None,
             resolved_questions: Vec::new(),
+            classification: None,
         };
         let view = view_for(record);
         let raw = render(&view);
@@ -936,6 +971,7 @@ mod tests {
             effective_reason: None,
             evidence_quality: None,
             resolved_questions: Vec::new(),
+            classification: None,
         };
         let view = view_for(record);
         let raw = render(&view);

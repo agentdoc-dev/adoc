@@ -69,6 +69,7 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
             }
             match cli.command {
                 Commands::ManagedRetrieve {
+                    require_sensitive_classification: _,
                     input,
                     manifest_out,
                     operation,

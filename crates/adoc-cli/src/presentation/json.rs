@@ -136,6 +136,7 @@ mod tests {
             effective_reason: None,
             evidence_quality: None,
             resolved_questions: Vec::new(),
+            classification: None,
         }
     }
 
@@ -178,6 +179,7 @@ mod tests {
             effective_reason: None,
             evidence_quality: None,
             resolved_questions: Vec::new(),
+            classification: None,
         };
         let view = make_view(record.clone());
 

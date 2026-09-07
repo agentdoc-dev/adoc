@@ -464,6 +464,9 @@ pub(crate) struct Cli {
 pub(crate) enum Commands {
     /// Runtime port for an explicitly authorized managed corpus; always emits retrieval JSON.
     ManagedRetrieve {
+        /// Require this runtime to label every returned internal/restricted Knowledge Object.
+        #[arg(long)]
+        require_sensitive_classification: bool,
         #[arg(long, value_name = "PATH")]
         input: PathBuf,
         /// Create a private contributor manifest for the trusted caller's final authorization check.

@@ -17,6 +17,7 @@ fn managed_input_is_explicit_and_ignores_ambient_project_authority() {
         .current_dir(&workspace.root)
         .args([
             "managed-retrieve",
+            "--require-sensitive-classification",
             "--input",
             "input.json",
             "--manifest-out",

@@ -263,6 +263,16 @@ const RESOURCES: &[AgentResource] = &[
         contents: include_str!("../../../docs/agent/v0/schema/retrieval-envelope.json"),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.sensitive_access.v0.schema.json",
+        name: "schema-sensitive-access-v0-json",
+        title: "Sensitive Access Event JSON Schema",
+        description: "Clock-free managed workspace sensitive access metadata; validity grants no authority.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/adoc.sensitive_access.v0.schema.json"
+        ),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/adoc.managed_retrieval_input.v0.schema.json",
         name: "schema-managed-retrieval-input-v0-json",
         title: "Managed Retrieval Input JSON Schema",
