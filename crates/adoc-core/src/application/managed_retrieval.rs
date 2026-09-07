@@ -531,6 +531,7 @@ Retained TARGET_CANARY old knowledge.
         let path = root.join("billing.adoc");
         std::fs::write(&path, source).unwrap();
         let built = build_workspace(BuildInput {
+            policy: None,
             root: path,
             embeddings: BuildEmbeddingMode::Skipped,
             prior_search_artifact_path: None,

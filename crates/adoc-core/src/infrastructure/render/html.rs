@@ -1,4 +1,8 @@
 use std::collections::HashSet;
+use std::ops::Deref;
+
+use crate::domain::retrieval::{RetrievalPolicy, canonical_visibility};
+use crate::domain::value_objects::visibility::{Visibility, parse_field_visibility};
 
 use chrono::NaiveDate;
 
@@ -34,93 +38,263 @@ const QUARANTINED_IMAGE_CLASS: &str = "quarantined-image";
 pub(crate) struct HtmlRenderer;
 
 impl HtmlRenderer {
-    /// Render the workspace HTML with the wall-clock date for lifecycle
-    /// derivation. Equivalent to [`Self::render_workspace_for_date`] with
-    /// `today = None`.
     #[allow(dead_code)]
     pub(crate) fn render_workspace(&self, workspace: &WorkspaceAst) -> String {
         self.render_workspace_for_date(workspace, None)
     }
 
-    /// Render workspace HTML with a pinned `today` date so that the derived
-    /// `effective_status` badge can appear in tests without relying on the wall
-    /// clock. When `today` is `None` the badge is never emitted (consistent
-    /// with the pre-V5.10 behaviour).
     pub(crate) fn render_workspace_for_date(
         &self,
         workspace: &WorkspaceAst,
         today: Option<NaiveDate>,
     ) -> String {
-        self.render_pages_for_date(&workspace.pages, today)
+        self.render_workspace_for_date_and_policy(workspace, today, None)
+    }
+
+    /// Rendering authority is explicit; neither canonical state nor graph bytes change.
+    pub(crate) fn render_workspace_for_date_and_policy(
+        &self,
+        workspace: &WorkspaceAst,
+        today: Option<NaiveDate>,
+        policy: Option<&RetrievalPolicy>,
+    ) -> String {
+        let mut context = RenderContext {
+            policy,
+            ..Default::default()
+        };
+        if let Some(policy) = policy {
+            context
+                .excluded
+                .extend(policy.excluded_object_ids.iter().cloned());
+        }
+        loop {
+            context.contradicted = build_contradicted_claim_ids(&workspace.pages, &context);
+            let mut newly_excluded = HashSet::new();
+            let mut html = String::from(
+                "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>AgentDoc</title>\n</head>\n<body>\n",
+            );
+            for page in &workspace.pages {
+                if context.mentions_excluded(page.id.as_str()) {
+                    for block in &page.blocks {
+                        visit_objects(block, &mut |object| {
+                            newly_excluded.insert(object.id().as_str().to_string());
+                        });
+                    }
+                    continue;
+                }
+                html.push_str("<article data-page-id=\"");
+                html.push_str(&escape_html(page.id.as_str()));
+                html.push_str("\">\n");
+                for block in &page.blocks {
+                    let mut candidate = String::new();
+                    render_block(block, today, &context, &mut candidate);
+                    if context.mentions_excluded(&candidate) {
+                        // As in retrieval's fixed-point closure, an observable carrier
+                        // of an existence-excluded ID is itself withheld. Rendering the
+                        // candidate first covers nested prose, raw text, links and CSS.
+                        visit_objects(block, &mut |object| {
+                            newly_excluded.insert(object.id().as_str().to_string());
+                        });
+                    } else {
+                        html.push_str(&candidate);
+                    }
+                }
+                html.push_str("</article>\n");
+            }
+            html.push_str("</body>\n</html>\n");
+            let before = context.excluded.len();
+            context.excluded.extend(newly_excluded);
+            if before == context.excluded.len() {
+                return html;
+            }
+        }
     }
 
     #[cfg(test)]
     fn render(&self, pages: &[crate::domain::ast::PageAst]) -> String {
-        self.render_pages_for_date(pages, None)
-    }
-
-    fn render_pages_for_date(
-        &self,
-        pages: &[crate::domain::ast::PageAst],
-        today: Option<NaiveDate>,
-    ) -> String {
-        // V5.10 TB4: build the set of claim ids that are effectively contradicted
-        // by at least one unresolved contradiction.  This is computed once at the
-        // page-list level so we don't have to thread contradictions down into every
-        // per-object render function.
-        let contradicted_claim_ids: HashSet<String> = build_contradicted_claim_ids(pages);
-
-        let mut html = String::from(
-            "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>AgentDoc</title>\n</head>\n<body>\n",
-        );
-
-        for page in pages {
-            html.push_str("<article data-page-id=\"");
-            html.push_str(&escape_html(page.id.as_str()));
-            html.push_str("\">\n");
-
-            for block in &page.blocks {
-                render_block(block, today, &contradicted_claim_ids, &mut html);
-            }
-
-            html.push_str("</article>\n");
-        }
-
-        html.push_str("</body>\n</html>\n");
-        html
+        self.render_workspace_for_date(
+            &WorkspaceAst {
+                pages: pages.to_vec(),
+            },
+            None,
+        )
     }
 }
 
-/// Build the set of claim IDs that are effectively `contradicted` — i.e. they
-/// are referenced by at least one unresolved contradiction in the workspace.
-///
-/// This is computed once per render call at the top level so the badge logic
-/// does not need cross-page look-ups inside each per-object render function.
-fn build_contradicted_claim_ids(pages: &[crate::domain::ast::PageAst]) -> HashSet<String> {
+/// Stable rendering contract: a restricted marker carries kind and Object ID only.
+const RESTRICTED_CLASS: &str = "adoc-restricted";
+
+#[derive(Default)]
+struct RenderContext<'a> {
+    policy: Option<&'a RetrievalPolicy>,
+    excluded: HashSet<String>,
+    contradicted: HashSet<String>,
+}
+
+impl RenderContext<'_> {
+    fn mentions_excluded(&self, text: &str) -> bool {
+        self.excluded.iter().any(|id| text.contains(id))
+    }
+
+    fn permits(&self, visibility: Visibility) -> bool {
+        self.policy
+            .map_or(visibility == Visibility::Public, |policy| {
+                policy.validate().is_ok() && policy.permits_visibility(visibility)
+            })
+    }
+
+    /// None means the entire card needs a marker. Otherwise the set names
+    /// withheld fields, while authorized siblings keep their existing rendering.
+    fn hidden_fields(&self, object: &KnowledgeObject) -> Option<HashSet<String>> {
+        let floor = canonical_visibility(object.fields().get("visibility").unwrap_or("public"))?;
+        if !self.permits(floor) {
+            return None;
+        }
+        let fields = object
+            .fields()
+            .get("field_visibility")
+            .map(parse_field_visibility)
+            .transpose()
+            .ok()?
+            .unwrap_or_default();
+        let hidden: HashSet<_> = fields
+            .into_iter()
+            .filter_map(|(key, value)| {
+                (!self.permits(canonical_visibility(&value)?.max(floor))).then_some(key)
+            })
+            .collect();
+        let metadata = object.metadata_projection();
+        if (hidden.contains("status") && metadata.discriminant().is_some())
+            || (hidden.contains("severity") && metadata.severity().is_some())
+            || (hidden.contains("trust") && metadata.trust().is_some())
+            || (hidden.contains("kind") && matches!(object, KnowledgeObject::Source(_)))
+            // Without authorized classification metadata a full card could
+            // present sensitive content as unclassified. Fail closed, checking
+            // actual metadata presence so absent fields cannot invent a floor.
+            || ["visibility", "field_visibility"].iter().any(|key| {
+                hidden.contains(*key) && object.fields().get(key).is_some()
+            })
+        {
+            return None;
+        }
+        Some(hidden)
+    }
+}
+
+fn visit_objects(block: &BlockAst, visit: &mut impl FnMut(&KnowledgeObject)) {
+    match block {
+        BlockAst::KnowledgeObject(object) => visit(object),
+        BlockAst::List(list) => {
+            for item in &list.items {
+                for child in &item.content {
+                    visit_objects(child, visit);
+                }
+            }
+        }
+        BlockAst::FootnoteDefinition(footnote) => {
+            for child in &footnote.content {
+                visit_objects(child, visit);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn build_contradicted_claim_ids(
+    pages: &[crate::domain::ast::PageAst],
+    context: &RenderContext<'_>,
+) -> HashSet<String> {
     let mut set = HashSet::new();
     for page in pages {
+        if context.mentions_excluded(page.id.as_str()) {
+            continue;
+        }
         for block in &page.blocks {
-            let BlockAst::KnowledgeObject(ko) = block else {
-                continue;
-            };
-            let KnowledgeObject::Contradiction(contradiction) = ko.as_ref() else {
-                continue;
-            };
-            if !contradiction.status().is_active() {
-                continue;
-            }
-            for claim_id in contradiction.claims().as_slice() {
-                set.insert(claim_id.as_str().to_string());
-            }
+            visit_objects(block, &mut |object| {
+                let KnowledgeObject::Contradiction(contradiction) = object else {
+                    return;
+                };
+                if context.excluded.contains(object.id().as_str()) {
+                    return;
+                }
+                let Some(hidden) = context.hidden_fields(object) else {
+                    return;
+                };
+                if hidden.contains("claims") || !contradiction.status().is_active() {
+                    return;
+                }
+                for claim_id in contradiction.claims().as_slice() {
+                    set.insert(claim_id.as_str().to_string());
+                }
+            });
         }
     }
     set
 }
 
+/// Borrow the existing metadata projection and omit protected values before any
+/// specialized renderer reads it. The domain aggregate remains immutable.
+struct RenderMetadata<'a> {
+    original: KnowledgeObjectMetadata<'a>,
+    fields: Vec<MetadataField<'a>>,
+    evidence: Vec<&'a Evidence>,
+    hidden: HashSet<String>,
+}
+
+impl<'a> RenderMetadata<'a> {
+    fn new(original: KnowledgeObjectMetadata<'a>, hidden: HashSet<String>) -> Self {
+        let fields = original
+            .fields()
+            .iter()
+            // Classification metadata is itself an authorized sibling: hiding a
+            // body must not erase the class of a retained sensitive owner.
+            .filter(|field| !hidden.contains(field.key()))
+            .cloned()
+            .collect();
+        let evidence = original
+            .evidence()
+            .iter()
+            .copied()
+            .filter(|evidence| {
+                !hidden.contains("evidence")
+                    && !hidden.iter().any(|key| {
+                        if evidence.target_id().is_some() {
+                            return key == "evidence_ref";
+                        }
+                        Evidence::from_field(key, "classification-probe")
+                            .and_then(|value| value.kind())
+                            == evidence.kind()
+                    })
+            })
+            .collect();
+        Self {
+            original,
+            fields,
+            evidence,
+            hidden,
+        }
+    }
+    fn fields(&self) -> &[MetadataField<'a>] {
+        &self.fields
+    }
+    fn evidence(&self) -> &[&'a Evidence] {
+        &self.evidence
+    }
+    fn allows(&self, key: &str) -> bool {
+        !self.hidden.contains(key)
+    }
+}
+impl<'a> Deref for RenderMetadata<'a> {
+    type Target = KnowledgeObjectMetadata<'a>;
+    fn deref(&self) -> &Self::Target {
+        &self.original
+    }
+}
+
 fn render_block(
     block: &BlockAst,
     today: Option<NaiveDate>,
-    contradicted_claim_ids: &HashSet<String>,
+    context: &RenderContext<'_>,
     html: &mut String,
 ) {
     match block {
@@ -160,7 +334,7 @@ fn render_block(
                 }
                 render_inlines(&item.inlines, html);
                 for child in &item.content {
-                    render_block(child, today, contradicted_claim_ids, html);
+                    render_block(child, today, context, html);
                 }
                 html.push_str("</li>\n");
             }
@@ -180,7 +354,7 @@ fn render_block(
             html.push_str("</code></pre>\n");
         }
         BlockAst::KnowledgeObject(ko) => {
-            render_knowledge_object(ko, today, contradicted_claim_ids, html);
+            render_knowledge_object(ko, today, context, html);
         }
         BlockAst::KnowledgeObjectPending(_) => {
             unreachable!("resolver must replace pending knowledge objects before rendering")
@@ -206,7 +380,7 @@ fn render_block(
             html.push_str(&escape_html(&footnote.label));
             html.push_str("\">\n");
             for child in &footnote.content {
-                render_block(child, today, contradicted_claim_ids, html);
+                render_block(child, today, context, html);
             }
             html.push_str("<a class=\"adoc-footnote-backref\" href=\"#fnref-");
             html.push_str(&escape_html(&footnote.label));
@@ -282,10 +456,33 @@ fn unknown_extension_kind_token(kind: UnknownExtensionKind) -> &'static str {
 fn render_knowledge_object(
     knowledge_object: &KnowledgeObject,
     today: Option<NaiveDate>,
-    contradicted_claim_ids: &HashSet<String>,
+    context: &RenderContext<'_>,
     html: &mut String,
 ) {
-    let metadata = knowledge_object.metadata_projection();
+    if context.excluded.contains(knowledge_object.id().as_str()) {
+        return;
+    }
+    let Some(hidden) = context.hidden_fields(knowledge_object) else {
+        html.push_str("<section class=\"");
+        html.push_str(RESTRICTED_CLASS);
+        html.push_str("\" id=\"");
+        html.push_str(&escape_html(knowledge_object.id().as_str()));
+        html.push_str("\"><span>");
+        html.push_str(knowledge_object.kind().as_str());
+        html.push_str("</span><code>");
+        html.push_str(&escape_html(knowledge_object.id().as_str()));
+        html.push_str("</code></section>\n");
+        return;
+    };
+    let mut projected;
+    let knowledge_object = if hidden.contains("body") {
+        projected = knowledge_object.clone();
+        projected.body_mut().inlines_mut().clear();
+        &projected
+    } else {
+        knowledge_object
+    };
+    let metadata = RenderMetadata::new(knowledge_object.metadata_projection(), hidden);
 
     // V5.10: derive effective_status for badge rendering.
     // Precedence: stale > contradicted (stale is the stronger lifecycle signal).
@@ -293,6 +490,7 @@ fn render_knowledge_object(
         .discriminant()
         .map(|d| d.value_as_str().to_string());
     let stale_label = today
+        .filter(|_| metadata.allows("expires_at"))
         .and_then(|date| derive_effective_status(&status, knowledge_object, date))
         .map(|(s, _)| s);
 
@@ -302,7 +500,7 @@ fn render_knowledge_object(
         // Only apply contradicted badge when stale is not set (stale wins).
         if knowledge_object.kind().as_str() == "claim" {
             let claim_id = knowledge_object.id().as_str();
-            if contradicted_claim_ids.contains(claim_id) {
+            if context.contradicted.contains(claim_id) {
                 Some("contradicted".to_string())
             } else {
                 None
@@ -381,7 +579,7 @@ fn render_knowledge_object(
 
 fn render_glossary(
     knowledge_object: &KnowledgeObject,
-    metadata: &KnowledgeObjectMetadata<'_>,
+    metadata: &RenderMetadata<'_>,
     html: &mut String,
 ) {
     render_object_section_open(knowledge_object, "glossary", html);
@@ -393,7 +591,7 @@ fn render_glossary(
 
 fn render_warning(
     knowledge_object: &KnowledgeObject,
-    metadata: &KnowledgeObjectMetadata<'_>,
+    metadata: &RenderMetadata<'_>,
     html: &mut String,
 ) {
     let severity = required_severity(metadata);
@@ -408,7 +606,7 @@ fn render_warning(
 
 fn render_constraint(
     knowledge_object: &KnowledgeObject,
-    metadata: &KnowledgeObjectMetadata<'_>,
+    metadata: &RenderMetadata<'_>,
     html: &mut String,
 ) {
     let severity = required_severity(metadata);
@@ -423,7 +621,7 @@ fn render_constraint(
 
 fn render_contradiction(
     knowledge_object: &KnowledgeObject,
-    metadata: &KnowledgeObjectMetadata<'_>,
+    metadata: &RenderMetadata<'_>,
     html: &mut String,
 ) {
     // For contradiction the discriminant is the lifecycle status; severity
@@ -454,7 +652,9 @@ fn render_contradiction(
     let KnowledgeObject::Contradiction(contradiction) = knowledge_object else {
         unreachable!("render_contradiction called with non-contradiction object");
     };
-    render_contradiction_claims(contradiction, html);
+    if metadata.allows("claims") {
+        render_contradiction_claims(contradiction, html);
+    }
 
     render_object_body(knowledge_object, html);
     render_object_metadata(knowledge_object, metadata, html);
@@ -463,7 +663,7 @@ fn render_contradiction(
 
 fn render_source(
     knowledge_object: &KnowledgeObject,
-    metadata: &KnowledgeObjectMetadata<'_>,
+    metadata: &RenderMetadata<'_>,
     html: &mut String,
 ) {
     let KnowledgeObject::Source(source) = knowledge_object else {
@@ -484,11 +684,11 @@ fn render_source(
 
     // Path or URL metadata line.
     html.push_str("<div class=\"source__target\">\n<dl>\n");
-    if let Some(path) = source.path() {
+    if let Some(path) = source.path().filter(|_| metadata.allows("path")) {
         html.push_str("<dt>path</dt><dd><code>");
         html.push_str(&escape_html(path.as_str()));
         html.push_str("</code></dd>\n");
-    } else if let Some(url) = source.url() {
+    } else if let Some(url) = source.url().filter(|_| metadata.allows("url")) {
         // The `Url` type only allows http, https, and mailto — always safe.
         html.push_str("<dt>url</dt><dd><a href=\"");
         html.push_str(&escape_html(url.as_str()));
@@ -505,7 +705,7 @@ fn render_source(
 
 fn render_api(
     knowledge_object: &KnowledgeObject,
-    metadata: &KnowledgeObjectMetadata<'_>,
+    metadata: &RenderMetadata<'_>,
     html: &mut String,
 ) {
     let KnowledgeObject::Api(api) = knowledge_object else {
@@ -518,20 +718,23 @@ fn render_api(
     // Endpoint signature: method badge (or interface type) plus path/symbol
     // in code style, above the prose body (PRD §13.7).
     html.push_str("<div class=\"api__signature\">");
-    if let Some(method) = api.method() {
+    if let Some(method) = api.method().filter(|_| metadata.allows("method")) {
         html.push_str("<span class=\"api__method\">");
         html.push_str(method.as_str());
         html.push_str("</span>");
-    } else if let Some(interface_type) = api.interface_type() {
+    } else if let Some(interface_type) = api
+        .interface_type()
+        .filter(|_| metadata.allows("interface_type"))
+    {
         html.push_str("<span class=\"api__interface-type\">");
         html.push_str(&escape_html(interface_type));
         html.push_str("</span>");
     }
-    if let Some(path) = api.path() {
+    if let Some(path) = api.path().filter(|_| metadata.allows("path")) {
         html.push_str("<code class=\"api__path\">");
         html.push_str(&escape_html(path));
         html.push_str("</code>");
-    } else if let Some(symbol) = api.symbol() {
+    } else if let Some(symbol) = api.symbol().filter(|_| metadata.allows("symbol")) {
         html.push_str("<code class=\"api__symbol\">");
         html.push_str(&escape_html(symbol));
         html.push_str("</code>");
@@ -545,7 +748,7 @@ fn render_api(
 
 fn render_observation(
     knowledge_object: &KnowledgeObject,
-    metadata: &KnowledgeObjectMetadata<'_>,
+    metadata: &RenderMetadata<'_>,
     html: &mut String,
 ) {
     let KnowledgeObject::Observation(observation) = knowledge_object else {
@@ -557,14 +760,28 @@ fn render_observation(
 
     // Sample size and observed date as metadata chips above the prose body
     // (PRD §13.9).
-    if observation.sample_size().is_some() || observation.observed_at().is_some() {
+    if observation
+        .sample_size()
+        .filter(|_| metadata.allows("sample_size"))
+        .is_some()
+        || observation
+            .observed_at()
+            .filter(|_| metadata.allows("observed_at"))
+            .is_some()
+    {
         html.push_str("<div class=\"observation__chips\">");
-        if let Some(sample_size) = observation.sample_size() {
+        if let Some(sample_size) = observation
+            .sample_size()
+            .filter(|_| metadata.allows("sample_size"))
+        {
             html.push_str("<span class=\"observation__sample-size\">n=");
             html.push_str(&escape_html(sample_size.as_str()));
             html.push_str("</span>");
         }
-        if let Some(observed_at) = observation.observed_at() {
+        if let Some(observed_at) = observation
+            .observed_at()
+            .filter(|_| metadata.allows("observed_at"))
+        {
             html.push_str("<span class=\"observation__observed-at\">");
             html.push_str(&escape_html(observed_at.as_str()));
             html.push_str("</span>");
@@ -579,7 +796,7 @@ fn render_observation(
 
 fn render_question(
     knowledge_object: &KnowledgeObject,
-    metadata: &KnowledgeObjectMetadata<'_>,
+    metadata: &RenderMetadata<'_>,
     html: &mut String,
 ) {
     let KnowledgeObject::Question(question) = knowledge_object else {
@@ -591,11 +808,14 @@ fn render_question(
 
     // Open questions carry a prominent badge; answered ones link to the
     // resolving claim/decision (PRD §13.10).
-    if let Some(resolved_by) = question.resolved_by() {
+    if let Some(resolved_by) = question
+        .resolved_by()
+        .filter(|_| metadata.allows("resolved_by"))
+    {
         html.push_str("<div class=\"question__resolved-by\">Answered by ");
         render_object_ref_anchor(resolved_by.as_str(), html);
         html.push_str("</div>\n");
-    } else {
+    } else if metadata.allows("resolved_by") {
         html.push_str("<div class=\"question__open-badge\">Open</div>\n");
     }
 
@@ -606,7 +826,7 @@ fn render_question(
 
 fn render_task(
     knowledge_object: &KnowledgeObject,
-    metadata: &KnowledgeObjectMetadata<'_>,
+    metadata: &RenderMetadata<'_>,
     today: Option<NaiveDate>,
     html: &mut String,
 ) {
@@ -619,7 +839,8 @@ fn render_task(
     // The overdue modifier mirrors the `task.overdue` rule (task_overdue.rs):
     // open + due strictly before the injected date; undated renders unchanged.
     let status_str = task.status().as_str();
-    let overdue = task.status().is_open()
+    let overdue = metadata.allows("due")
+        && task.status().is_open()
         && task
             .due()
             .zip(today)
@@ -634,10 +855,12 @@ fn render_task(
     render_object_header(knowledge_object, status_badge(metadata), html);
 
     html.push_str("<div class=\"task__fields\">\n<dl>\n");
-    html.push_str("<div class=\"task__field-item\"><dt>owner</dt><dd>");
-    html.push_str(&escape_html(task.owner().as_str()));
-    html.push_str("</dd></div>\n");
-    if let Some(due) = task.due() {
+    if metadata.allows("owner") {
+        html.push_str("<div class=\"task__field-item\"><dt>owner</dt><dd>");
+        html.push_str(&escape_html(task.owner().as_str()));
+        html.push_str("</dd></div>\n");
+    }
+    if let Some(due) = task.due().filter(|_| metadata.allows("due")) {
         html.push_str("<div class=\"task__field-item\"><dt>due</dt><dd>");
         html.push_str(&escape_html(due.as_str()));
         html.push_str("</dd></div>\n");
@@ -663,7 +886,7 @@ fn render_contradiction_claims(contradiction: &Contradiction, html: &mut String)
 
 fn render_procedure(
     knowledge_object: &KnowledgeObject,
-    metadata: &KnowledgeObjectMetadata<'_>,
+    metadata: &RenderMetadata<'_>,
     html: &mut String,
 ) {
     render_object_section_open(knowledge_object, "procedure", html);
@@ -675,7 +898,7 @@ fn render_procedure(
 
 fn render_policy(
     knowledge_object: &KnowledgeObject,
-    metadata: &KnowledgeObjectMetadata<'_>,
+    metadata: &RenderMetadata<'_>,
     html: &mut String,
 ) {
     render_object_section_open(knowledge_object, "policy", html);
@@ -686,23 +909,33 @@ fn render_policy(
     let KnowledgeObject::Policy(policy) = knowledge_object else {
         unreachable!("render_policy called with non-policy object");
     };
-    render_policy_approval(policy, html);
+    render_policy_approval(policy, metadata, html);
 
     render_object_metadata(knowledge_object, metadata, html);
     html.push_str("</section>\n");
 }
 
-fn render_policy_approval(policy: &Policy, html: &mut String) {
+fn render_policy_approval(policy: &Policy, metadata: &RenderMetadata<'_>, html: &mut String) {
     html.push_str("<div class=\"policy__approval\">\n<dl>\n");
-    html.push_str("<div class=\"policy__approval-item\"><dt>effective_at</dt><dd>");
-    html.push_str(&escape_html(policy.effective_at().as_str()));
-    html.push_str("</dd></div>\n");
-    for approver in policy.approved_by().as_slice() {
+    if metadata.allows("effective_at") {
+        html.push_str("<div class=\"policy__approval-item\"><dt>effective_at</dt><dd>");
+        html.push_str(&escape_html(policy.effective_at().as_str()));
+        html.push_str("</dd></div>\n");
+    }
+    for approver in policy
+        .approved_by()
+        .as_slice()
+        .iter()
+        .filter(|_| metadata.allows("approved_by"))
+    {
         html.push_str("<div class=\"policy__approval-item\"><dt>approved_by</dt><dd>");
         html.push_str(&escape_html(approver.as_str()));
         html.push_str("</dd></div>\n");
     }
-    if let Some(ri) = policy.review_interval() {
+    if let Some(ri) = policy
+        .review_interval()
+        .filter(|_| metadata.allows("review_interval"))
+    {
         html.push_str("<div class=\"policy__approval-item\"><dt>review_interval</dt><dd>");
         html.push_str(&escape_html(ri.as_str()));
         html.push_str("</dd></div>\n");
@@ -712,7 +945,7 @@ fn render_policy_approval(policy: &Policy, html: &mut String) {
 
 fn render_agent_instruction(
     knowledge_object: &KnowledgeObject,
-    metadata: &KnowledgeObjectMetadata<'_>,
+    metadata: &RenderMetadata<'_>,
     html: &mut String,
 ) {
     render_object_section_open(knowledge_object, "agent_instruction", html);
@@ -726,27 +959,43 @@ fn render_agent_instruction(
     let KnowledgeObject::AgentInstruction(ai) = knowledge_object else {
         unreachable!("render_agent_instruction called with non-agent_instruction object");
     };
-    render_agent_instruction_fields(ai, html);
+    render_agent_instruction_fields(ai, metadata, html);
 
     render_object_body(knowledge_object, html);
     render_object_metadata(knowledge_object, metadata, html);
     html.push_str("</section>\n");
 }
 
-fn render_agent_instruction_fields(ai: &AgentInstruction, html: &mut String) {
+fn render_agent_instruction_fields(
+    ai: &AgentInstruction,
+    metadata: &RenderMetadata<'_>,
+    html: &mut String,
+) {
     html.push_str("<div class=\"agent_instruction__fields\">\n<dl>\n");
-    html.push_str("<div class=\"agent_instruction__field-item\"><dt>scope</dt><dd>");
-    html.push_str(&escape_html(ai.scope().as_str()));
-    html.push_str("</dd></div>\n");
+    if metadata.allows("scope") {
+        html.push_str("<div class=\"agent_instruction__field-item\"><dt>scope</dt><dd>");
+        html.push_str(&escape_html(ai.scope().as_str()));
+        html.push_str("</dd></div>\n");
+    }
     html.push_str("<div class=\"agent_instruction__field-item\"><dt>trust</dt><dd><span class=\"agent_instruction__trust\">");
     html.push_str(&escape_html(ai.trust().as_str()));
     html.push_str("</span></dd></div>\n");
-    for action in ai.action_set().allowed() {
+    for action in ai
+        .action_set()
+        .allowed()
+        .iter()
+        .filter(|_| metadata.allows("allowed_actions"))
+    {
         html.push_str("<div class=\"agent_instruction__field-item\"><dt>allowed_actions</dt><dd>");
         html.push_str(&escape_html(action.as_str()));
         html.push_str("</dd></div>\n");
     }
-    for action in ai.action_set().forbidden() {
+    for action in ai
+        .action_set()
+        .forbidden()
+        .iter()
+        .filter(|_| metadata.allows("forbidden_actions"))
+    {
         html.push_str(
             "<div class=\"agent_instruction__field-item\"><dt>forbidden_actions</dt><dd>",
         );
@@ -855,7 +1104,7 @@ fn render_ordered_step_item(line: &[InlineSegment], marker_len: usize, html: &mu
 
 fn render_example(
     knowledge_object: &KnowledgeObject,
-    metadata: &KnowledgeObjectMetadata<'_>,
+    metadata: &RenderMetadata<'_>,
     html: &mut String,
 ) {
     render_object_section_open(knowledge_object, "example", html);
@@ -865,15 +1114,23 @@ fn render_example(
     let KnowledgeObject::Example(example) = knowledge_object else {
         unreachable!("render_example called with non-example object");
     };
-    if example.checks().is_some() || example.sandbox().is_some() {
+    if example
+        .checks()
+        .filter(|_| metadata.allows("checks"))
+        .is_some()
+        || example
+            .sandbox()
+            .filter(|_| metadata.allows("sandbox"))
+            .is_some()
+    {
         html.push_str("<div class=\"example__meta\">\n<dl>\n");
-        if let Some(checks) = example.checks() {
+        if let Some(checks) = example.checks().filter(|_| metadata.allows("checks")) {
             html.push_str("<dt>checks</dt><dd>");
             html.push_str(&escape_html(checks));
             html.push_str("<span class=\"example__caveat\"> Not executed by adoc</span>");
             html.push_str("</dd>\n");
         }
-        if let Some(sandbox) = example.sandbox() {
+        if let Some(sandbox) = example.sandbox().filter(|_| metadata.allows("sandbox")) {
             html.push_str("<dt>sandbox</dt><dd>");
             html.push_str(&escape_html(sandbox.as_str()));
             html.push_str("</dd>\n");
@@ -883,13 +1140,13 @@ fn render_example(
 
     // Render body as a fenced code block using the declared lang or format.
     let body_source = knowledge_object.body().to_source();
-    if let Some(lang) = example.lang() {
+    if let Some(lang) = example.lang().filter(|_| metadata.allows("lang")) {
         html.push_str("<pre><code class=\"language-");
         html.push_str(&escape_html(lang.as_str()));
         html.push_str("\">");
         html.push_str(&escape_html(&body_source));
         html.push_str("</code></pre>\n");
-    } else if let Some(format) = example.format() {
+    } else if let Some(format) = example.format().filter(|_| metadata.allows("format")) {
         html.push_str("<pre><code class=\"format-");
         html.push_str(&escape_html(format));
         html.push_str("\">");
@@ -905,7 +1162,7 @@ fn render_example(
     html.push_str("</section>\n");
 }
 
-fn required_severity<'a>(metadata: &KnowledgeObjectMetadata<'a>) -> &'a str {
+fn required_severity<'a>(metadata: &RenderMetadata<'a>) -> &'a str {
     metadata
         .severity()
         .map(|severity| severity.as_str())
@@ -914,7 +1171,7 @@ fn required_severity<'a>(metadata: &KnowledgeObjectMetadata<'a>) -> &'a str {
 
 fn render_decision(
     knowledge_object: &KnowledgeObject,
-    metadata: &KnowledgeObjectMetadata<'_>,
+    metadata: &RenderMetadata<'_>,
     html: &mut String,
 ) {
     let class = if accepted_decision_field(metadata).is_some() {
@@ -940,7 +1197,7 @@ fn render_decision(
 
 fn render_claim(
     knowledge_object: &KnowledgeObject,
-    metadata: &KnowledgeObjectMetadata<'_>,
+    metadata: &RenderMetadata<'_>,
     html: &mut String,
 ) {
     let class = if has_claim_verification(metadata) {
@@ -952,25 +1209,24 @@ fn render_claim(
     render_object_header(knowledge_object, status_badge(metadata), html);
     render_object_body(knowledge_object, html);
 
-    if let (Some(owner), Some(verified_at)) = (
+    let verification_fields = [
         claim_owner_field(metadata),
         claim_verified_at_field(metadata),
-    ) {
+    ];
+    if verification_fields.iter().any(Option::is_some) {
         html.push_str("<div class=\"claim__verification\">\n");
         html.push_str("<dl>\n");
-        html.push_str("<div class=\"claim__verification-item\"><dt>");
-        html.push_str(owner.key());
-        html.push_str("</dt><dd>");
-        html.push_str(&escape_html(owner.value_as_str()));
-        html.push_str("</dd></div>\n");
-        html.push_str("<div class=\"claim__verification-item\"><dt>");
-        html.push_str(verified_at.key());
-        html.push_str("</dt><dd>");
-        html.push_str(&escape_html(verified_at.value_as_str()));
-        html.push_str("</dd></div>\n");
+        for field in verification_fields.into_iter().flatten() {
+            html.push_str("<div class=\"claim__verification-item\"><dt>");
+            html.push_str(field.key());
+            html.push_str("</dt><dd>");
+            html.push_str(&escape_html(field.value_as_str()));
+            html.push_str("</dd></div>\n");
+        }
         html.push_str("</dl>\n");
         html.push_str("</div>\n");
-
+    }
+    if !metadata.evidence().is_empty() {
         html.push_str("<div class=\"claim__evidence\">\n");
         html.push_str("<dl>\n");
         for evidence in claim_evidence_fields(metadata) {
@@ -984,22 +1240,18 @@ fn render_claim(
     html.push_str("</section>\n");
 }
 
-fn has_claim_verification(metadata: &KnowledgeObjectMetadata<'_>) -> bool {
+fn has_claim_verification(metadata: &RenderMetadata<'_>) -> bool {
     claim_owner_field(metadata).is_some()
 }
 
-fn claim_owner_field<'a>(
-    metadata: &'a KnowledgeObjectMetadata<'a>,
-) -> Option<&'a MetadataField<'a>> {
+fn claim_owner_field<'a>(metadata: &'a RenderMetadata<'a>) -> Option<&'a MetadataField<'a>> {
     metadata
         .fields()
         .iter()
         .find(|field| matches!(field, MetadataField::Owner(_)))
 }
 
-fn claim_verified_at_field<'a>(
-    metadata: &'a KnowledgeObjectMetadata<'a>,
-) -> Option<&'a MetadataField<'a>> {
+fn claim_verified_at_field<'a>(metadata: &'a RenderMetadata<'a>) -> Option<&'a MetadataField<'a>> {
     metadata
         .fields()
         .iter()
@@ -1007,15 +1259,13 @@ fn claim_verified_at_field<'a>(
 }
 
 fn claim_evidence_fields<'a>(
-    metadata: &'a KnowledgeObjectMetadata<'a>,
+    metadata: &'a RenderMetadata<'a>,
 ) -> impl Iterator<Item = &'a Evidence> {
     // V5.8: evidence is in the typed `evidence()` slice, not in `fields()`.
     metadata.evidence().iter().copied()
 }
 
-fn accepted_decision_field<'a>(
-    metadata: &'a KnowledgeObjectMetadata<'a>,
-) -> Option<&'a MetadataField<'a>> {
+fn accepted_decision_field<'a>(metadata: &'a RenderMetadata<'a>) -> Option<&'a MetadataField<'a>> {
     metadata
         .fields()
         .iter()
@@ -1094,7 +1344,7 @@ fn render_object_header(
     html.push_str("</header>\n");
 }
 
-fn status_badge<'a>(metadata: &KnowledgeObjectMetadata<'a>) -> Option<(&'static str, &'a str)> {
+fn status_badge<'a>(metadata: &RenderMetadata<'a>) -> Option<(&'static str, &'a str)> {
     metadata
         .discriminant()
         .map(|discriminant| ("status", discriminant.value_as_str()))
@@ -1112,7 +1362,7 @@ fn render_object_body(knowledge_object: &KnowledgeObject, html: &mut String) {
 
 fn render_object_metadata(
     knowledge_object: &KnowledgeObject,
-    metadata: &KnowledgeObjectMetadata<'_>,
+    metadata: &RenderMetadata<'_>,
     html: &mut String,
 ) {
     if !has_stored_metadata_fields(metadata) && knowledge_object.relations().is_empty() {
@@ -1124,18 +1374,18 @@ fn render_object_metadata(
     html.push_str(kind);
     html.push_str("__metadata\">\n");
     render_metadata_fields(metadata, html);
-    render_relations(kind, knowledge_object.relations(), html);
+    render_relations(kind, knowledge_object.relations(), metadata, html);
     html.push_str("</footer>\n");
 }
 
-fn has_stored_metadata_fields(metadata: &KnowledgeObjectMetadata<'_>) -> bool {
+fn has_stored_metadata_fields(metadata: &RenderMetadata<'_>) -> bool {
     metadata
         .fields()
         .iter()
         .any(|field| matches!(field, MetadataField::Stored { .. }))
 }
 
-fn render_metadata_fields(metadata: &KnowledgeObjectMetadata<'_>, html: &mut String) {
+fn render_metadata_fields(metadata: &RenderMetadata<'_>, html: &mut String) {
     let mut rendered_any = false;
     for field in metadata.fields() {
         let MetadataField::Stored { key, value } = field else {
@@ -1157,7 +1407,12 @@ fn render_metadata_fields(metadata: &KnowledgeObjectMetadata<'_>, html: &mut Str
     }
 }
 
-fn render_relations(kind: &str, relations: &Relations, html: &mut String) {
+fn render_relations(
+    kind: &str,
+    relations: &Relations,
+    metadata: &RenderMetadata<'_>,
+    html: &mut String,
+) {
     if relations.is_empty() {
         return;
     }
@@ -1166,7 +1421,9 @@ fn render_relations(kind: &str, relations: &Relations, html: &mut String) {
     html.push_str(kind);
     html.push_str("__relations\"><dl>\n");
     for relation in GraphRelationKind::ALL {
-        render_relation_group(relation, relations.targets(relation), html);
+        if metadata.allows(relation.as_str()) {
+            render_relation_group(relation, relations.targets(relation), html);
+        }
     }
     html.push_str("</dl></section>\n");
 }
@@ -1332,6 +1589,440 @@ mod tests {
                 offset: 0,
             },
         }
+    }
+
+    fn visibility_workspace(blocks: Vec<BlockAst>) -> WorkspaceAst {
+        WorkspaceAst {
+            pages: vec![crate::domain::ast::PageAst {
+                id: crate::domain::identity::PageId::new(
+                    crate::domain::identity::ObjectId::new("guide.page").unwrap(),
+                ),
+                title: None,
+                source_path: "guide.adoc".into(),
+                source_digest: String::new(),
+                blocks,
+            }],
+        }
+    }
+
+    #[test]
+    fn rendering_visibility_has_three_dispositions_and_is_deterministic() {
+        let workspace = visibility_workspace(vec![make_claim(
+            "guide.secret",
+            "draft",
+            "SECRET_BODY",
+            [
+                ("visibility".into(), "restricted".into()),
+                ("owner".into(), "SECRET_OWNER".into()),
+            ]
+            .into(),
+            dummy_span(),
+        )]);
+        let original = workspace.clone();
+        let default = HtmlRenderer.render_workspace_for_date_and_policy(&workspace, None, None);
+        assert!(default.contains("class=\"adoc-restricted\""));
+        assert!(default.contains("claim") && default.contains("guide.secret"));
+        assert!(!default.contains("SECRET") && !default.contains("draft"));
+        assert_eq!(
+            default,
+            HtmlRenderer.render_workspace_for_date_and_policy(&workspace, None, None)
+        );
+        let mut policy = crate::domain::retrieval::RetrievalPolicy {
+            audience: "restricted".into(),
+            allowed_visibilities: ["public".into(), "internal".into(), "restricted".into()].into(),
+            excluded_object_ids: Default::default(),
+        };
+        let authorized =
+            HtmlRenderer.render_workspace_for_date_and_policy(&workspace, None, Some(&policy));
+        assert!(authorized.contains("SECRET_BODY") && authorized.contains("SECRET_OWNER"));
+        policy.excluded_object_ids.insert("guide.secret".into());
+        let excluded =
+            HtmlRenderer.render_workspace_for_date_and_policy(&workspace, None, Some(&policy));
+        assert!(!excluded.contains("guide.secret") && !excluded.contains("SECRET"));
+        assert_eq!(workspace, original);
+    }
+
+    fn parsed_visibility_workspace(text: &str) -> WorkspaceAst {
+        let source = crate::domain::source::SourceFile::new_with_identity_path(
+            "guide.adoc".into(),
+            format!("# Guide @doc(guide.page)\n\n{text}"),
+            "guide.adoc".into(),
+        );
+        let (page, diagnostics) = crate::infrastructure::parser::parse_page(&source);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let mut parsed = vec![(source, page)];
+        let resolved =
+            crate::application::resolve_knowledge_objects::resolve_knowledge_objects(&mut parsed);
+        assert!(
+            resolved.diagnostics.is_empty(),
+            "{:?}",
+            resolved.diagnostics
+        );
+        let diagnostics = crate::application::resolve_object_references::resolve_object_references(
+            &mut parsed,
+            &resolved.declared_ids,
+        );
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        WorkspaceAst {
+            pages: parsed.into_iter().map(|(_, page)| page).collect(),
+        }
+    }
+
+    fn authorized_render_policy() -> RetrievalPolicy {
+        RetrievalPolicy {
+            audience: "restricted".into(),
+            allowed_visibilities: ["public".into(), "internal".into(), "restricted".into()].into(),
+            excluded_object_ids: Default::default(),
+        }
+    }
+
+    #[test]
+    fn rendering_withholds_body_and_optional_fields_without_hiding_siblings() {
+        for class in ["internal", "restricted"] {
+            for (hidden, body, fields, retained) in [
+                (
+                    "owner",
+                    "VISIBLE_BODY",
+                    "owner: SECRET_OWNER\n",
+                    "VISIBLE_BODY",
+                ),
+                (
+                    "body",
+                    "SECRET_BODY",
+                    "owner: VISIBLE_OWNER\n",
+                    "VISIBLE_OWNER",
+                ),
+                (
+                    "source",
+                    "VISIBLE_BODY",
+                    "owner: team\nverified_at: 2026-01-01\nsource: SECRET_EVIDENCE\n",
+                    "VISIBLE_BODY",
+                ),
+            ] {
+                let status = if hidden == "source" {
+                    "verified"
+                } else {
+                    "draft"
+                };
+                let workspace = parsed_visibility_workspace(&format!(
+                    "::claim guide.object\nstatus: {status}\n{fields}field_visibility: {hidden}={class}\n--\n{body}\n::\n"
+                ));
+                let original = workspace.clone();
+                let default = HtmlRenderer.render_workspace_for_date(&workspace, None);
+                assert!(default.contains(retained), "{hidden}: {default}");
+                assert!(!default.contains("SECRET"), "{hidden}: {default}");
+                assert!(
+                    !default.contains("adoc-restricted"),
+                    "safe sibling must remain: {hidden}"
+                );
+                let authorized = HtmlRenderer.render_workspace_for_date_and_policy(
+                    &workspace,
+                    None,
+                    Some(&authorized_render_policy()),
+                );
+                assert!(authorized.contains("SECRET"), "{hidden}: {authorized}");
+                assert_eq!(workspace, original);
+            }
+        }
+    }
+
+    #[test]
+    fn rendering_verified_metadata_preserves_each_authorized_sibling() {
+        let workspace = parsed_visibility_workspace(
+            "::claim guide.claim\nstatus: verified\nowner: SECRET_OWNER\nverified_at: 2026-01-01\nsource: VISIBLE_EVIDENCE.rs\nfield_visibility: owner=restricted\n--\nVISIBLE_BODY\n::\n",
+        );
+        let html = HtmlRenderer.render_workspace_for_date(&workspace, None);
+        assert!(!html.contains("SECRET_OWNER"));
+        assert!(
+            html.contains("2026-01-01")
+                && html.contains("VISIBLE_EVIDENCE.rs")
+                && html.contains("VISIBLE_BODY"),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn rendering_partial_fields_preserves_authorized_classification_metadata() {
+        let workspace = parsed_visibility_workspace(
+            "::claim guide.claim\nstatus: draft\nowner: INTERNAL_OWNER_184\nfield_visibility: owner=internal, body=restricted\n--\nSECRET_BODY\n::\n",
+        );
+        let policy = RetrievalPolicy {
+            audience: "internal".into(),
+            ..authorized_render_policy()
+        };
+        let html =
+            HtmlRenderer.render_workspace_for_date_and_policy(&workspace, None, Some(&policy));
+        assert!(html.contains("INTERNAL_OWNER_184") && !html.contains("SECRET_BODY"));
+        assert!(
+            html.contains("<dt>field_visibility</dt>") && html.contains("owner=internal"),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn rendering_protected_classification_metadata_fails_closed_without_fictional_fields() {
+        let policy = RetrievalPolicy {
+            audience: "internal".into(),
+            ..authorized_render_policy()
+        };
+        for (visibility, fields) in [
+            (
+                "",
+                "owner=internal, body=restricted, field_visibility=restricted",
+            ),
+            ("visibility: internal\n", "visibility=restricted"),
+        ] {
+            let workspace = parsed_visibility_workspace(&format!(
+                "::claim guide.claim\nstatus: draft\nowner: INTERNAL_OWNER_184\n{visibility}field_visibility: {fields}\n--\nSECRET_BODY\n::\n"
+            ));
+            let html =
+                HtmlRenderer.render_workspace_for_date_and_policy(&workspace, None, Some(&policy));
+            assert!(html.contains("adoc-restricted"), "{fields}: {html}");
+            assert!(
+                !html.contains("INTERNAL_OWNER_184")
+                    && !html.contains("SECRET_BODY")
+                    && !html.contains("field_visibility")
+            );
+        }
+        let workspace = parsed_visibility_workspace(
+            "::claim guide.claim\nstatus: draft\nfield_visibility: nonexistent=restricted, visibility=restricted\n--\nPUBLIC_BODY\n::\n",
+        );
+        let html = HtmlRenderer.render_workspace_for_date(&workspace, None);
+        assert!(
+            html.contains("PUBLIC_BODY") && !html.contains("adoc-restricted"),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn rendering_protected_discriminants_use_markers_before_badges_and_modifiers() {
+        for (kind, fields, hidden) in [
+            (
+                "claim",
+                "status: verified\nowner: team\nverified_at: 2026-01-01\nsource: code.rs\n",
+                "status",
+            ),
+            ("warning", "severity: critical\n", "severity"),
+            ("source", "kind: source_code\npath: code.rs\n", "kind"),
+            (
+                "agent_instruction",
+                "scope: docs/**\ntrust: informal\nallowed_actions: [read]\nforbidden_actions: [write]\n",
+                "trust",
+            ),
+        ] {
+            let workspace = parsed_visibility_workspace(&format!(
+                "::{kind} guide.object\n{fields}field_visibility: {hidden}=restricted\n--\nSECRET_BODY\n::\n"
+            ));
+            let html = HtmlRenderer.render_workspace_for_date(&workspace, None);
+            assert!(html.contains("adoc-restricted"), "{kind}: {html}");
+            assert!(
+                !html.contains("SECRET")
+                    && !html.contains("__status")
+                    && !html.contains("--verified")
+                    && !html.contains("critical")
+                    && !html.contains("informal"),
+                "{kind}: {html}"
+            );
+        }
+    }
+
+    #[test]
+    fn rendering_optional_dedicated_members_cannot_escape_specialized_cards() {
+        for (kind, fields, protected) in [
+            (
+                "task",
+                "status: open\nowner: SECRET_OWNER\ndue: 2000-01-01\n",
+                "owner=restricted, due=restricted",
+            ),
+            (
+                "source",
+                "kind: source_code\npath: SECRET_PATH.rs\n",
+                "path=restricted",
+            ),
+            (
+                "api",
+                "method: GET\npath: /SECRET_PATH\n",
+                "path=restricted",
+            ),
+            (
+                "observation",
+                "status: observed\nsample_size: 987654\n",
+                "sample_size=restricted",
+            ),
+            (
+                "example",
+                "lang: secret_lang\nchecks: SECRET_CHECKS\n",
+                "lang=restricted, checks=restricted",
+            ),
+            (
+                "agent_instruction",
+                "scope: SECRET_SCOPE/**\ntrust: informal\nallowed_actions: [SECRET_ACTION]\nforbidden_actions: [write]\n",
+                "scope=restricted, allowed_actions=restricted",
+            ),
+            (
+                "question",
+                "status: answered\nresolved_by: guide.target\n",
+                "resolved_by=restricted",
+            ),
+        ] {
+            let workspace = parsed_visibility_workspace(&format!(
+                "::{kind} guide.object\n{fields}field_visibility: {protected}\n--\nVISIBLE_BODY\n::\n\n::claim guide.target\nstatus: draft\n--\nTarget.\n::\n"
+            ));
+            let html = HtmlRenderer.render_workspace_for_date(
+                &workspace,
+                Some(NaiveDate::from_ymd_opt(2026, 9, 1).unwrap()),
+            );
+            assert!(html.contains("VISIBLE_BODY"), "{kind}: {html}");
+            assert!(
+                !html.contains("SECRET")
+                    && !html.contains("secret_lang")
+                    && !html.contains("987654")
+                    && !html.contains("2000-01-01")
+                    && !html.contains("task--overdue")
+                    && !html.contains("Answered by")
+                    && !html.contains("question__open-badge"),
+                "{kind}: {html}"
+            );
+            assert!(
+                !html.contains("adoc-restricted"),
+                "optional field must retain card: {kind}"
+            );
+        }
+    }
+
+    #[test]
+    fn rendering_excluded_carriers_close_transitively_and_hidden_fields_do_not_taint() {
+        let workspace = parsed_visibility_workspace(
+            "::claim guide.hidden\nstatus: draft\n--\nSECRET_BODY\n::\n\n::claim guide.first\nstatus: draft\nrelated_to: guide.hidden\n--\nFirst.\n::\n\n::claim guide.second\nstatus: draft\n--\nMentions guide.first in plain text.\n::\n\n::question guide.question\nstatus: answered\nresolved_by: guide.hidden\n--\nQuestion.\n::\n\n::claim guide.safe\nstatus: draft\nowner: guide.hidden\nfield_visibility: owner=restricted\n--\nVISIBLE_SIBLING\n::\n\nA nested **guide.hidden** reference.\n\n- An inline [[guide.hidden]] link.\n\n```text\nguide.second\n```\n",
+        );
+        let policy = RetrievalPolicy {
+            audience: "public".into(),
+            allowed_visibilities: ["public".into()].into(),
+            excluded_object_ids: ["guide.hidden".into()].into(),
+        };
+        let html =
+            HtmlRenderer.render_workspace_for_date_and_policy(&workspace, None, Some(&policy));
+        for id in [
+            "guide.hidden",
+            "guide.first",
+            "guide.second",
+            "guide.question",
+        ] {
+            assert!(!html.contains(id), "{id}: {html}");
+        }
+        assert!(html.contains("VISIBLE_SIBLING") && html.contains("guide.safe"));
+        assert_eq!(
+            html,
+            HtmlRenderer.render_workspace_for_date_and_policy(&workspace, None, Some(&policy))
+        );
+    }
+
+    #[test]
+    fn rendering_excluded_page_identity_omits_wrapper_and_propagates_carrier_ids() {
+        let mut workspace = parsed_visibility_workspace(
+            "::claim guide.object\nstatus: draft\n--\nVISIBLE_BODY\n::\n",
+        );
+        workspace.pages[0].id = crate::domain::identity::PageId::new(
+            crate::domain::identity::ObjectId::new("guide.hidden-page").unwrap(),
+        );
+        let mut policy = authorized_render_policy();
+        policy.excluded_object_ids.insert("guide.hidden".into());
+        let html =
+            HtmlRenderer.render_workspace_for_date_and_policy(&workspace, None, Some(&policy));
+        assert!(
+            !html.contains("guide.hidden")
+                && !html.contains("guide.object")
+                && !html.contains("VISIBLE_BODY")
+        );
+        assert!(!html.contains("<article"));
+    }
+
+    #[test]
+    fn rendering_nested_markdown_carriers_never_expose_excluded_ids() {
+        let mut policy = authorized_render_policy();
+        policy.excluded_object_ids.insert("guide.hidden".into());
+        for carrier in [
+            "- Outer\n\n  - Inner guide.hidden\n",
+            "| Safe |\n| --- |\n| guide.hidden |\n",
+            "Reference[^note].\n\n[^note]: guide.hidden\n",
+            "[Safe label](https://example.test/guide.hidden)\n",
+            "![guide.hidden](https://example.test/image.png)\n",
+            "<div>guide.hidden</div>\n",
+            "<Widget value=\"guide.hidden\" />\n",
+            "```guide.hidden\nSafe code.\n```\n",
+        ] {
+            let source = crate::domain::source::SourceFile::new_with_identity_path(
+                "guide/page.md".into(),
+                format!("# Guide\n\n{carrier}\nVISIBLE_SIBLING\n"),
+                "guide/page.md".into(),
+            );
+            let (page, diagnostics) = crate::infrastructure::parser::parse_markdown_page(&source);
+            assert!(
+                diagnostics
+                    .iter()
+                    .all(|diagnostic| diagnostic.severity
+                        != crate::domain::diagnostic::Severity::Error),
+                "{diagnostics:?}"
+            );
+            let workspace = WorkspaceAst { pages: vec![page] };
+            let html =
+                HtmlRenderer.render_workspace_for_date_and_policy(&workspace, None, Some(&policy));
+            assert!(!html.contains("guide.hidden"), "{carrier}: {html}");
+            assert!(html.contains("VISIBLE_SIBLING"), "{carrier}: {html}");
+        }
+    }
+
+    #[test]
+    fn rendering_carrier_closure_refreshes_derived_contradiction_status() {
+        let workspace = parsed_visibility_workspace(
+            "::claim guide.hidden\nstatus: draft\n--\nSecret.\n::\n\n::claim guide.first\nstatus: draft\n--\nFirst.\n::\n\n::claim guide.second\nstatus: draft\n--\nSecond.\n::\n\n::contradiction guide.conflict\nstatus: unresolved\nseverity: high\nclaims: [guide.first, guide.second]\n--\nMentions guide.hidden.\n::\n",
+        );
+        let mut policy = authorized_render_policy();
+        let visible =
+            HtmlRenderer.render_workspace_for_date_and_policy(&workspace, None, Some(&policy));
+        assert!(visible.contains("ko__effective-status--contradicted"));
+        policy.excluded_object_ids.insert("guide.hidden".into());
+        let closed =
+            HtmlRenderer.render_workspace_for_date_and_policy(&workspace, None, Some(&policy));
+        assert!(!closed.contains("guide.hidden") && !closed.contains("guide.conflict"));
+        assert!(!closed.contains("ko__effective-status--contradicted"));
+        assert!(closed.contains("guide.first") && closed.contains("guide.second"));
+    }
+
+    #[test]
+    fn rendering_hidden_contradiction_contributions_and_expiry_do_not_change_badges() {
+        for protection in [
+            "visibility: restricted",
+            "field_visibility: status=restricted",
+            "field_visibility: claims=restricted",
+        ] {
+            let workspace = parsed_visibility_workspace(&format!(
+                "::claim guide.claim\nstatus: draft\n--\nClaim.\n::\n\n::contradiction guide.conflict\nstatus: unresolved\nseverity: high\nclaims: [guide.claim, guide.other]\n{protection}\n--\nConflict.\n::\n"
+            ));
+            let html = HtmlRenderer.render_workspace_for_date(&workspace, None);
+            assert!(
+                !html.contains("ko__effective-status--contradicted"),
+                "{protection}: {html}"
+            );
+            let authorized = HtmlRenderer.render_workspace_for_date_and_policy(
+                &workspace,
+                None,
+                Some(&authorized_render_policy()),
+            );
+            assert!(
+                authorized.contains("ko__effective-status--contradicted"),
+                "{protection}"
+            );
+        }
+        let workspace = parsed_visibility_workspace(
+            "::claim guide.claim\nstatus: verified\nowner: team\nverified_at: 2026-01-01\nsource: code.rs\nexpires_at: 2000-01-01\nfield_visibility: expires_at=restricted\n--\nVISIBLE_BODY\n::\n",
+        );
+        let html = HtmlRenderer.render_workspace_for_date(
+            &workspace,
+            Some(NaiveDate::from_ymd_opt(2026, 9, 1).unwrap()),
+        );
+        assert!(!html.contains("stale") && !html.contains("2000-01-01"));
+        assert!(html.contains("VISIBLE_BODY"));
     }
 
     #[test]
@@ -1582,7 +2273,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &HashSet::new(), &mut html);
+        render_block(&block, None, &RenderContext::default(), &mut html);
 
         assert!(
             html.contains("<section class=\"procedure\" id=\"auth.key.rotate\">"),
@@ -1628,7 +2319,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &HashSet::new(), &mut html);
+        render_block(&block, None, &RenderContext::default(), &mut html);
 
         assert!(
             html.contains("<section class=\"example\" id=\"auth.credits.example\">"),
@@ -1669,7 +2360,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &HashSet::new(), &mut html);
+        render_block(&block, None, &RenderContext::default(), &mut html);
 
         assert!(
             !html.contains("example__status"),
@@ -1691,7 +2382,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &HashSet::new(), &mut html);
+        render_block(&block, None, &RenderContext::default(), &mut html);
 
         assert!(
             html.contains("<section class=\"claim\" id=\"billing.credits\">"),
@@ -1725,7 +2416,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &HashSet::new(), &mut html);
+        render_block(&block, None, &RenderContext::default(), &mut html);
 
         assert!(
             !html.contains("<footer class=\"claim__metadata\">"),
@@ -1746,7 +2437,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &HashSet::new(), &mut html);
+        render_block(&block, None, &RenderContext::default(), &mut html);
 
         assert!(
             html.contains("<footer class=\"claim__metadata\">\n<dl>\n"),
@@ -1776,7 +2467,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &HashSet::new(), &mut html);
+        render_block(&block, None, &RenderContext::default(), &mut html);
 
         let alpha = html.find("<dt>alpha</dt>").expect("missing alpha field");
         let middle = html.find("<dt>middle</dt>").expect("missing middle field");
@@ -1803,7 +2494,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &HashSet::new(), &mut html);
+        render_block(&block, None, &RenderContext::default(), &mut html);
 
         assert!(
             html.contains(
@@ -1824,7 +2515,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &HashSet::new(), &mut html);
+        render_block(&block, None, &RenderContext::default(), &mut html);
 
         // Status tag content must be escaped
         assert!(
@@ -1852,7 +2543,7 @@ mod tests {
         ]);
         let block = make_verified_claim("billing.credits", "body content", fields, dummy_span());
         let mut html = String::new();
-        render_block(&block, None, &HashSet::new(), &mut html);
+        render_block(&block, None, &RenderContext::default(), &mut html);
 
         assert!(
             html.contains("<section class=\"claim claim--verified\" id=\"billing.credits\">"),
@@ -1898,7 +2589,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &HashSet::new(), &mut html);
+        render_block(&block, None, &RenderContext::default(), &mut html);
 
         assert!(
             html.contains("<section class=\"decision decision--accepted\" id=\"billing.policy\">"),
@@ -1934,7 +2625,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &HashSet::new(), &mut html);
+        render_block(&block, None, &RenderContext::default(), &mut html);
 
         assert!(
             html.contains(
@@ -1970,7 +2661,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &HashSet::new(), &mut html);
+        render_block(&block, None, &RenderContext::default(), &mut html);
         assert!(
             !html.contains("<footer class=\"warning__metadata\">"),
             "unexpected metadata footer: {html}"
@@ -1984,7 +2675,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &HashSet::new(), &mut html);
+        render_block(&block, None, &RenderContext::default(), &mut html);
         assert!(
             html.contains("<footer class=\"warning__metadata\">\n<dl>\n"),
             "missing metadata footer: {html}"
@@ -2005,7 +2696,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &HashSet::new(), &mut html);
+        render_block(&block, None, &RenderContext::default(), &mut html);
 
         assert!(
             html.contains("clock &lt; token &amp;&amp; token &gt; drift"),
@@ -2055,7 +2746,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &HashSet::new(), &mut html);
+        render_block(&block, None, &RenderContext::default(), &mut html);
 
         assert!(
             html.contains("<section class=\"glossary\" id=\"billing.credits\">"),
@@ -2087,7 +2778,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &HashSet::new(), &mut html);
+        render_block(&block, None, &RenderContext::default(), &mut html);
         assert!(
             html.contains("<footer class=\"glossary__metadata\">\n<dl>\n"),
             "missing metadata footer: {html}"

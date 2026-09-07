@@ -912,6 +912,7 @@ where
         BuildEmbeddingMode::Enabled => application::compile::build_with_provider(
             &provider,
             application::compile::BuildOptions {
+                policy: input.policy,
                 embeddings: application::compile::BuildEmbeddingBehavior::EnabledFactory {
                     provider_factory: &mut provider_factory,
                 },
@@ -921,6 +922,7 @@ where
         BuildEmbeddingMode::Skipped => application::compile::build_with_provider(
             &provider,
             application::compile::BuildOptions {
+                policy: input.policy,
                 embeddings: application::compile::BuildEmbeddingBehavior::Skipped,
                 prior_search_artifact_path: input.prior_search_artifact_path,
             },
@@ -949,6 +951,7 @@ where
         None => infrastructure::source::fs::FsSourceProvider::new(input.root),
     };
     let options = application::compile::BuildOptions {
+        policy: input.policy,
         embeddings: match input.embeddings {
             BuildEmbeddingMode::Enabled => {
                 application::compile::BuildEmbeddingBehavior::EnabledFactory {
@@ -1137,6 +1140,7 @@ mod tests {
         let workspace = tempfile::tempdir().expect("temp workspace");
         let result = build_workspace_with_embedding_provider_factory(
             BuildInput {
+                policy: None,
                 root: workspace.path().to_path_buf(),
                 embeddings: BuildEmbeddingMode::Enabled,
                 prior_search_artifact_path: None,
@@ -1166,6 +1170,7 @@ mod tests {
         let constructed = Cell::new(false);
         let result = build_workspace_with_embedding_provider_factory(
             BuildInput {
+                policy: None,
                 root: workspace.path().to_path_buf(),
                 embeddings: BuildEmbeddingMode::Skipped,
                 prior_search_artifact_path: None,
@@ -1192,6 +1197,7 @@ mod tests {
 
         let result = build_workspace_with_embedding_provider_factory(
             BuildInput {
+                policy: None,
                 root: workspace.path().to_path_buf(),
                 embeddings: BuildEmbeddingMode::Enabled,
                 prior_search_artifact_path: None,
@@ -1219,6 +1225,7 @@ mod tests {
         let workspace = tempfile::tempdir().expect("temp workspace");
 
         let result = build_workspace(BuildInput {
+            policy: None,
             root: workspace.path().to_path_buf(),
             embeddings: BuildEmbeddingMode::Enabled,
             prior_search_artifact_path: None,

@@ -234,7 +234,7 @@ adoc build
 ```bash
 adoc init
 adoc check [path] [--as-of <YYYY-MM-DD>]
-adoc build [path] [--out <directory>] [--no-embeddings] [--as-of <YYYY-MM-DD>]
+adoc build [path] [--out <directory>] [--no-embeddings] [--as-of <YYYY-MM-DD>] [--audience <public|internal|restricted>]
 adoc why <object-id> [--artifact <path>] [--format auto|plain|styled|json]
 adoc graph <object-id> [--artifact <path>] [--relation depends_on|supersedes|related_to] [--direction outgoing|incoming|both] [--format auto|plain|styled|json]
 adoc stale [--artifact <path>] [--within <Nd>] [--format auto|plain|styled|json]
@@ -289,6 +289,18 @@ as global config.
 - if embedding model load, compute, or dimension validation fails after clean source compilation, exits `1`, still writes `docs.html` and `docs.graph.json`, omits a new `docs.search.json`, and leaves any prior `docs.search.json` untouched
 - accepts `--no-embeddings` to skip model loading and search artifact writes; any existing `docs.search.json` is left untouched and an info diagnostic `build.embeddings_skipped` is emitted
 - also skips embeddings when config sets `embeddings.provider: none`; config `local` and missing `embeddings` both enable the shipped local provider
+
+HTML rendering defaults to public-only. `--audience` selects an explicit local
+audience; the project's `retrieval_policy` supplies the default audience and
+retains its allowed-visibility restrictions and Object ID exclusions when a flag
+is supplied. Unknown audiences produce `retrieval.audience_unresolved`.
+Restricted objects render as kind-and-ID markers (`adoc-restricted`), sensitive fields are withheld,
+and existence-excluded objects are omitted. An MCP gateway's trusted policy takes
+precedence over project configuration. No audience is read from the environment.
+
+This rendering policy applies to `docs.html`. The canonical Graph Artifact is
+unchanged; search/vector exclusion is tracked separately in E6.3.T3. Neither
+artifact should be treated as an audience-filtered HTML export.
 
 `adoc why`:
 

@@ -13,6 +13,7 @@ use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider};
 use crate::domain::ports::evidence_file::EvidenceFileReader;
 use crate::domain::ports::source_provider::{SourceLoadError, SourceLoadErrorKind, SourceProvider};
+use crate::domain::retrieval::RetrievalPolicy;
 use crate::domain::source::SourceFile;
 use crate::infrastructure::artifact::GraphJsonArtifact;
 use crate::infrastructure::render::HtmlRenderer;
@@ -33,6 +34,8 @@ pub struct CompileInput {
 
 #[derive(Debug, Clone)]
 pub struct BuildInput {
+    /// Explicit HTML rendering authority. Absence uses the public audience.
+    pub policy: Option<RetrievalPolicy>,
     /// Input path for compilation: either one `.adoc` file or a directory that
     /// will be scanned recursively for `.adoc` files.
     pub root: PathBuf,
@@ -122,6 +125,7 @@ pub(crate) fn build_with_provider_for_date<P: SourceProvider>(
 }
 
 pub(crate) struct BuildOptions<'a> {
+    pub(crate) policy: Option<RetrievalPolicy>,
     pub(crate) embeddings: BuildEmbeddingBehavior<'a>,
     pub(crate) prior_search_artifact_path: Option<PathBuf>,
 }
@@ -143,6 +147,17 @@ fn run_compile_pipeline<P: SourceProvider>(
     today: NaiveDate,
     anchor: Option<&dyn EvidenceFileReader>,
 ) -> CompileResult {
+    // Refuse unresolved authority before source inspection or embedding setup.
+    if let Some(policy) = build_options
+        .as_ref()
+        .and_then(|options| options.policy.as_ref())
+        && let Err(diagnostic) = policy.validate()
+    {
+        return CompileResult {
+            diagnostics: vec![*diagnostic],
+            artifacts: None,
+        };
+    }
     let repository_identity = provider.repository_identity();
     // Pipeline stages: load → validate-source-pages → resolve-KOs →
     // resolve-object-references → validate-resolved-pages → assemble →
@@ -347,7 +362,13 @@ fn build_artifacts_for_build(
     let graph_json = graph_document
         .to_pretty_json()
         .expect("graph artifact serialization should not fail");
-    let html = HtmlRenderer.render_workspace_for_date(workspace, today);
+    let html = HtmlRenderer.render_workspace_for_date_and_policy(
+        workspace,
+        today,
+        build_options
+            .as_ref()
+            .and_then(|options| options.policy.as_ref()),
+    );
     let prior_search_artifact_path = build_options
         .as_ref()
         .and_then(|options| options.prior_search_artifact_path.clone());
@@ -460,6 +481,7 @@ mod tests {
     use crate::domain::artifact::SearchArtifactDocument;
     use crate::domain::ast::BlockAst;
     use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider, ModelId};
+    use crate::domain::retrieval::RetrievalPolicy;
     use crate::domain::source::SourceFile;
     use crate::infrastructure::artifact::search_json::SUPPORTED_SEARCH_SCHEMA_VERSION;
     use crate::infrastructure::embedding::deterministic::DeterministicProvider;
@@ -850,6 +872,97 @@ mod tests {
     }
 
     #[test]
+    fn build_invalid_policy_refuses_before_source_or_embedding_provider_calls() {
+        struct UntouchedSource;
+        impl SourceProvider for UntouchedSource {
+            fn repository_identity(&self) -> crate::domain::graph::GraphRepositoryIdentity {
+                panic!("invalid policy must precede source inspection")
+            }
+            fn load_sources(&self) -> Vec<Result<SourceFile, SourceLoadError>> {
+                panic!("invalid policy must precede source loading")
+            }
+            fn contains(&self, _: &std::path::Path) -> bool {
+                panic!("invalid policy must precede source lookup")
+            }
+        }
+        for (audience, allowed, excluded, code) in [
+            (
+                "unknown",
+                "public",
+                "billing.valid",
+                DiagnosticCode::RetrievalAudienceUnresolved,
+            ),
+            (
+                "public",
+                "unknown",
+                "billing.valid",
+                DiagnosticCode::RetrievalPolicyInvalid,
+            ),
+            (
+                "public",
+                "public",
+                "invalid id",
+                DiagnosticCode::RetrievalPolicyInvalid,
+            ),
+        ] {
+            let mut provider_factory = || -> Result<Box<dyn EmbeddingProvider>, EmbeddingError> {
+                panic!("invalid policy must precede embedding provider creation")
+            };
+            let result = build_with_provider(
+                &UntouchedSource,
+                BuildOptions {
+                    policy: Some(RetrievalPolicy {
+                        audience: audience.into(),
+                        allowed_visibilities: [allowed.into()].into(),
+                        excluded_object_ids: [excluded.into()].into(),
+                    }),
+                    embeddings: BuildEmbeddingBehavior::EnabledFactory {
+                        provider_factory: &mut provider_factory,
+                    },
+                    prior_search_artifact_path: None,
+                },
+            );
+            assert!(result.artifacts.is_none());
+            assert_eq!(result.diagnostics.len(), 1);
+            assert_eq!(result.diagnostics[0].code, code);
+        }
+    }
+
+    #[test]
+    fn build_rendering_policy_does_not_mutate_graph_or_search_artifacts() {
+        let source_provider = InMemorySourceProvider::new().with_source(source_file(
+            "billing.adoc",
+            "# Billing @doc(team.billing)\n\n::claim billing.private\nstatus: draft\nvisibility: internal\n--\nPrivate body.\n::\n",
+        ));
+        let embedding_provider = DeterministicProvider::new(4);
+        let build = |policy| {
+            build_with_provider_for_date(
+                &source_provider,
+                BuildOptions {
+                    policy,
+                    embeddings: BuildEmbeddingBehavior::Enabled {
+                        provider: &embedding_provider,
+                    },
+                    prior_search_artifact_path: None,
+                },
+                fixed_today(),
+            )
+            .artifacts
+            .expect("valid artifacts")
+        };
+        let public = build(None);
+        let internal = build(Some(RetrievalPolicy {
+            audience: "internal".into(),
+            allowed_visibilities: ["public".into(), "internal".into()].into(),
+            excluded_object_ids: Default::default(),
+        }));
+        assert!(!public.html.contains("Private body."));
+        assert!(internal.html.contains("Private body."));
+        assert_eq!(public.graph_json, internal.graph_json);
+        assert_eq!(public.search_json, internal.search_json);
+    }
+
+    #[test]
     fn build_with_provider_embeds_knowledge_objects_into_search_artifact() {
         let source_provider = InMemorySourceProvider::new().with_source(source_file(
             "billing.adoc",
@@ -869,6 +982,7 @@ mod tests {
         let result = build_with_provider(
             &source_provider,
             BuildOptions {
+                policy: None,
                 embeddings: BuildEmbeddingBehavior::Enabled {
                     provider: &embedding_provider,
                 },
@@ -915,6 +1029,7 @@ mod tests {
         let result = build_with_provider(
             &source_provider,
             BuildOptions {
+                policy: None,
                 embeddings: BuildEmbeddingBehavior::Enabled {
                     provider: &embedding_provider,
                 },
@@ -960,6 +1075,7 @@ mod tests {
         let result = build_with_provider(
             &source_provider,
             BuildOptions {
+                policy: None,
                 embeddings: BuildEmbeddingBehavior::Enabled {
                     provider: &embedding_provider,
                 },
@@ -1001,6 +1117,7 @@ mod tests {
         let first_result = build_with_provider(
             &first_source,
             BuildOptions {
+                policy: None,
                 embeddings: BuildEmbeddingBehavior::Enabled {
                     provider: &first_provider,
                 },
@@ -1032,6 +1149,7 @@ mod tests {
         let second_result = build_with_provider(
             &second_source,
             BuildOptions {
+                policy: None,
                 embeddings: BuildEmbeddingBehavior::Enabled {
                     provider: &second_provider,
                 },
@@ -1088,6 +1206,7 @@ mod tests {
         let first_result = build_with_provider(
             &first_source,
             BuildOptions {
+                policy: None,
                 embeddings: BuildEmbeddingBehavior::Enabled {
                     provider: &first_provider,
                 },
@@ -1118,6 +1237,7 @@ mod tests {
         let second_result = build_with_provider(
             &second_source,
             BuildOptions {
+                policy: None,
                 embeddings: BuildEmbeddingBehavior::Enabled {
                     provider: &second_provider,
                 },
@@ -1157,6 +1277,7 @@ mod tests {
         let result = build_with_provider(
             &source_provider,
             BuildOptions {
+                policy: None,
                 embeddings: BuildEmbeddingBehavior::Enabled {
                     provider: &embedding_provider,
                 },
@@ -1212,6 +1333,7 @@ mod tests {
         let result = build_with_provider(
             &source_provider,
             BuildOptions {
+                policy: None,
                 embeddings: BuildEmbeddingBehavior::Enabled {
                     provider: &embedding_provider,
                 },
@@ -1250,6 +1372,7 @@ mod tests {
         let first_result = build_with_provider(
             &source_provider,
             BuildOptions {
+                policy: None,
                 embeddings: BuildEmbeddingBehavior::Enabled {
                     provider: &first_provider,
                 },
@@ -1280,6 +1403,7 @@ mod tests {
         let second_result = build_with_provider(
             &source_provider,
             BuildOptions {
+                policy: None,
                 embeddings: BuildEmbeddingBehavior::Enabled {
                     provider: &second_provider,
                 },
@@ -1317,6 +1441,7 @@ mod tests {
         let result = build_with_provider(
             &source_provider,
             BuildOptions {
+                policy: None,
                 embeddings: BuildEmbeddingBehavior::Enabled {
                     provider: &embedding_provider,
                 },
@@ -1341,6 +1466,7 @@ mod tests {
         let result = build_with_provider(
             &source_provider,
             BuildOptions {
+                policy: None,
                 embeddings: BuildEmbeddingBehavior::Enabled {
                     provider: &embedding_provider,
                 },
@@ -1373,6 +1499,7 @@ mod tests {
         let result = build_with_provider(
             &source_provider,
             BuildOptions {
+                policy: None,
                 embeddings: BuildEmbeddingBehavior::Enabled {
                     provider: &embedding_provider,
                 },
@@ -1392,6 +1519,7 @@ mod tests {
         let result = build_with_provider(
             &source_provider,
             BuildOptions {
+                policy: None,
                 embeddings: BuildEmbeddingBehavior::Enabled {
                     provider: &embedding_provider,
                 },
