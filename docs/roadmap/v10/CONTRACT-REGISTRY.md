@@ -357,6 +357,16 @@ Explicit mapping (RT-21, like the attestation family): `audit.persistence_failed
 | `validation.context_artifact_drift` |
 <!-- /registry:diagnostic-codes -->
 
+## Gateway audit codes — owner `adoc`
+
+These adapter codes are emitted by the MCP gateway and consumed by its clients; native Cloud admission also uses the refusal internally. They are separate from the core Diagnostic table. Meanings are wire-stable; changes require a disposition.
+
+<!-- registry:gateway-audit-codes -->
+| code | status | meaning |
+| --- | --- | --- |
+| `retrieval.audit_sink_unavailable` | unreleased (E6.3.T1) | synchronous sensitive retrieval is refused because trusted audit admission or a matching durable recording receipt is unavailable; no sensitive response is released |
+<!-- /registry:gateway-audit-codes -->
+
 ## Action codes — owner `action`
 
 Shared row values for shipped rows: producer Action v2.0.0-alpha.19 (workflow annotations, check conclusions, receipt `reason_codes`); consumers are GitHub check/annotation readers and receipt consumers. Migration posture: wire-stable string — meaning change or removal requires a row in “Dispositions”.

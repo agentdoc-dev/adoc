@@ -589,18 +589,32 @@ pub(crate) fn validate_changed_paths(paths: &[String]) -> Result<Vec<RelPath>, V
 /// First non-empty (ASCII-trimmed) body line, truncated to
 /// [`SUMMARY_MAX_CHARS`] characters with a trailing `…` when cut.
 fn body_summary(body: &str) -> String {
+    let (first_line, exposed_bytes) = body_summary_prefix(body);
+    let mut summary = first_line[..exposed_bytes].to_string();
+    if exposed_bytes < first_line.len() {
+        summary.push('…');
+    }
+    summary
+}
+
+/// The exact source prefix released by the summary, excluding its ellipsis.
+/// Byte offsets stay on Unicode scalar boundaries and also bind reference spans.
+pub(super) fn body_summary_prefix(body: &str) -> (&str, usize) {
     let first_line = body
         .lines()
         .map(str::trim)
         .find(|line| !line.is_empty())
         .unwrap_or("");
-    if first_line.chars().count() <= SUMMARY_MAX_CHARS {
-        first_line.to_string()
+    let exposed_bytes = if first_line.chars().count() <= SUMMARY_MAX_CHARS {
+        first_line.len()
     } else {
-        let mut truncated: String = first_line.chars().take(SUMMARY_MAX_CHARS - 1).collect();
-        truncated.push('…');
-        truncated
-    }
+        first_line
+            .chars()
+            .take(SUMMARY_MAX_CHARS - 1)
+            .map(char::len_utf8)
+            .sum()
+    };
+    (first_line, exposed_bytes)
 }
 
 #[cfg(test)]
