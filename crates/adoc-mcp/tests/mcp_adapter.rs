@@ -340,6 +340,7 @@ fn lists_and_reads_all_stable_agent_resources() {
         "adoc://agent/v0/schema/change-assessment",
         "adoc://agent/v0/schema/migrate-report",
         "adoc://agent/v0/schema/retrieval-envelope.json",
+        "adoc://agent/v0/schema/adoc.managed_field_provenance.v0.schema.json",
         "adoc://agent/v0/schema/adoc.sensitive_access.v0.schema.json",
         "adoc://agent/v0/schema/adoc.managed_retrieval_input.v0.schema.json",
         "adoc://agent/v0/schema/retrieval-envelope.v0.json",
