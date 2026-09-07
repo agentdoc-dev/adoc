@@ -1275,6 +1275,7 @@ fn placement_only_move_keeps_the_proposal_set_digest_and_content_change_changes_
         let workspace = TestWorkspace::new("proposal-hash-twins");
         let root = workspace.write(file, source);
         let result = adoc_core::build_workspace(BuildInput {
+            policy: None,
             root,
             embeddings: BuildEmbeddingMode::Skipped,
             prior_search_artifact_path: None,

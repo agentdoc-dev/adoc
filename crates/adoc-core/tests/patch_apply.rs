@@ -194,6 +194,7 @@ impl Workspace {
     fn build(&self) -> PathBuf {
         let result = build_project_workspace(
             BuildInput {
+                policy: None,
                 root: self.docs_root(),
                 embeddings: BuildEmbeddingMode::Skipped,
                 prior_search_artifact_path: None,

@@ -117,6 +117,11 @@ controls artifact paths and embedding providers, and invalid project configurati
 still refuses retrieval. Embedded callers can use
 `AgentDocMcpServer::with_retrieval_policy` to bind the same complete policy.
 
+The same binding controls HTML emitted by `adoc_build` and
+`adoc_project_status` with `refresh: "build"`. Those tools cannot select an
+audience through their arguments. Canonical graph output is unchanged; embedding
+exclusion remains tracked under E6.3.T3.
+
 This changes gateways that previously inherited an internal/restricted audience
 from a selected project's configuration: they must now explicitly pass `--config`.
 CLI commands continue to discover project policy. Both drivers pass their selected

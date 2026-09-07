@@ -68,6 +68,15 @@ fn tool_selected_project_policy_cannot_widen_the_gateway_audience() {
         })
         .expect("fixture builds");
     assert_eq!(built["ok"], true);
+    let html = fs::read_to_string(selected.path().join("dist/docs.html")).expect("built HTML");
+    assert!(
+        html.contains("billing.credits"),
+        "restricted marker preserves existence"
+    );
+    assert!(
+        !html.contains("Credits apply after payment."),
+        "gateway build policy wins over selected project policy"
+    );
     let local = adoc_local::LocalContext::new(
         selected.path().to_path_buf(),
         ProjectRootPathPolicy::new(selected.path()).expect("local path policy"),

@@ -186,6 +186,7 @@ fn build_workspace_skips_embeddings_without_affecting_check_path() {
     );
 
     let build_result = build_workspace(BuildInput {
+        policy: None,
         root: source,
         embeddings: BuildEmbeddingMode::Skipped,
         prior_search_artifact_path: None,

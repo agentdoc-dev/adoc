@@ -116,6 +116,7 @@ fn managed_cli_projects_real_compiler_fields_and_writes_exact_access_manifest() 
     let workspace = TestWorkspace::new("managed-field-projection");
     workspace.write("source.adoc", "# Policy @doc(team.policy)\n\n::claim policy.example\nstatus: draft\nowner: OWNERPHOTONCANARY\n--\nRetained billing knowledge.\n::\n");
     let built = build_workspace(BuildInput {
+        policy: None,
         root: workspace.root.join("source.adoc"),
         embeddings: BuildEmbeddingMode::Skipped,
         prior_search_artifact_path: None,

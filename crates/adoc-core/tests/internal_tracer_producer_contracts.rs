@@ -310,6 +310,7 @@ fn internal_synthetic_producer_contracts_are_linked_by_real_digests() {
         let docs_root = repo.root_path().join("docs");
         let result = build_project_workspace(
             BuildInput {
+                policy: None,
                 root: docs_root.clone(),
                 embeddings: BuildEmbeddingMode::Skipped,
                 prior_search_artifact_path: None,
