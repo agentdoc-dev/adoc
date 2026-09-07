@@ -12,8 +12,9 @@ use crate::commands::{
     AssessChangesCommandInput, BaselineCommandInput, ContradictionsCommandInput, DiffCommandInput,
     GraphCommandInput, ImpactedByCommandInput, MigrateCommandInput, PatchCommandInput,
     ReviewCommandInput, SearchCommandInput, StaleCommandInput, assess_changes, baseline, build,
-    check, check_receipt, contradictions, diff, graph, impacted_by, init, migrate, patch,
-    proposal_record, review, search_command, semantic_context, semantic_executor, stale, why,
+    check, check_receipt, contradictions, diff, graph, impacted_by, init, managed_retrieve,
+    migrate, patch, proposal_record, review, search_command, semantic_context, semantic_executor,
+    stale, why,
 };
 use crate::presentation::{ResolvedFormat, terminal};
 
@@ -67,6 +68,11 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                 return 2;
             }
             match cli.command {
+                Commands::ManagedRetrieve {
+                    input,
+                    manifest_out,
+                    operation,
+                } => managed_retrieve(input, manifest_out, operation),
                 Commands::Init => init(),
                 Commands::Check {
                     path,
