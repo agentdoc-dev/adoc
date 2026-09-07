@@ -71,6 +71,8 @@ impl fmt::Display for GraphDirection {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct GraphArtifactDocument {
+    #[serde(skip)]
+    pub(crate) raw_nonnull_members: BTreeMap<String, BTreeSet<String>>,
     pub(crate) schema_version: String,
     #[serde(deserialize_with = "deserialize_repository_identity")]
     pub(crate) repository_identity: GraphRepositoryIdentity,
@@ -243,6 +245,7 @@ pub(crate) struct GraphProseBlock {
     /// `"Billing basics > How credits are spent"`. `None` for blocks that
     /// precede any heading on their page.
     pub(crate) heading_context: Option<String>,
+    pub(crate) heading_sources: Vec<String>,
     pub(crate) source_span: GraphSourceSpan,
 }
 
@@ -489,6 +492,7 @@ pub(crate) struct GraphIndex {
     nodes: BTreeMap<ObjectId, GraphKnowledgeObjectNode>,
     page_ids: BTreeSet<String>,
     edges: Vec<GraphEdge>,
+    reference_targets: BTreeMap<String, BTreeSet<String>>,
     outgoing: BTreeMap<ObjectId, Vec<usize>>,
     incoming: BTreeMap<ObjectId, Vec<usize>>,
     /// V1.7.1: prose-block nodes (Heading, Paragraph, List, CodeBlock)
@@ -597,6 +601,15 @@ impl GraphIndex {
             ));
         }
 
+        let mut reference_targets: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for edge in &document.edges {
+            if edge.kind == GraphEdgeKind::Reference {
+                reference_targets
+                    .entry(edge.source.clone())
+                    .or_default()
+                    .insert(edge.target.clone());
+            }
+        }
         let mut edges: Vec<_> = document
             .edges
             .into_iter()
@@ -652,6 +665,7 @@ impl GraphIndex {
                 nodes,
                 page_ids,
                 edges,
+                reference_targets,
                 outgoing,
                 incoming,
                 prose,
@@ -758,6 +772,14 @@ impl GraphIndex {
             edges,
             diagnostics: Vec::new(),
         }
+    }
+
+    pub(crate) fn reference_targets(&self, source: &str) -> impl Iterator<Item = &str> {
+        self.reference_targets
+            .get(source)
+            .into_iter()
+            .flatten()
+            .map(String::as_str)
     }
 
     pub(crate) fn object(&self, id: &ObjectId) -> Option<&GraphKnowledgeObjectNode> {
@@ -886,7 +908,7 @@ fn index_prose_blocks(
 
     for (page_id, mut blocks) in by_page {
         blocks.sort_by_key(|(_, block)| block.order);
-        let mut heading_stack: Vec<(u8, String)> = Vec::new();
+        let mut heading_stack: Vec<(u8, String, String)> = Vec::new();
         let mut page_block_ids = Vec::with_capacity(blocks.len());
 
         for (kind, block) in blocks {
@@ -894,7 +916,7 @@ fn index_prose_blocks(
                 let level = block.level.unwrap_or(1);
                 while heading_stack
                     .last()
-                    .is_some_and(|(open_level, _)| *open_level >= level)
+                    .is_some_and(|(open_level, _, _)| *open_level >= level)
                 {
                     heading_stack.pop();
                 }
@@ -902,16 +924,17 @@ fn index_prose_blocks(
             let heading_context = (!heading_stack.is_empty()).then(|| {
                 heading_stack
                     .iter()
-                    .map(|(_, text)| text.as_str())
+                    .map(|(_, text, _)| text.as_str())
                     .collect::<Vec<_>>()
                     .join(" > ")
             });
+            let heading_sources = heading_stack.iter().map(|(_, _, id)| id.clone()).collect();
             if kind == ProseBlockKind::Heading {
                 // Untitled headings (malformed source) contribute no
                 // breadcrumb segment.
                 let text = block.text.clone().unwrap_or_default();
                 if !text.is_empty() {
-                    heading_stack.push((block.level.unwrap_or(1), text));
+                    heading_stack.push((block.level.unwrap_or(1), text, block.id.clone()));
                 }
             }
 
@@ -927,6 +950,7 @@ fn index_prose_blocks(
                     code: block.code,
                     items: block.items,
                     heading_context,
+                    heading_sources,
                     source_span: block.source_span,
                 },
             );
@@ -1112,6 +1136,7 @@ mod tests {
 
     fn graph_document(content_hash: Option<&str>) -> GraphArtifactDocument {
         GraphArtifactDocument {
+            raw_nonnull_members: Default::default(),
             schema_version: "adoc.graph.v6".to_string(),
             repository_identity: Default::default(),
             nodes: vec![
@@ -1265,6 +1290,7 @@ mod tests {
             })
             .collect();
         GraphArtifactDocument {
+            raw_nonnull_members: Default::default(),
             schema_version: "adoc.graph.v6".to_string(),
             repository_identity: Default::default(),
             nodes,
@@ -1300,6 +1326,7 @@ mod tests {
         })];
         all_nodes.extend(nodes);
         GraphArtifactDocument {
+            raw_nonnull_members: Default::default(),
             schema_version: "adoc.graph.v6".to_string(),
             repository_identity: Default::default(),
             nodes: all_nodes,
@@ -1442,6 +1469,7 @@ mod tests {
     #[test]
     fn content_text_ref_matches_content_text_and_borrows_where_possible() {
         let prose_block = |kind: ProseBlockKind| GraphProseBlock {
+            heading_sources: Vec::new(),
             id: "guides.page#block-0000".to_string(),
             page_id: "guides.page".to_string(),
             kind,

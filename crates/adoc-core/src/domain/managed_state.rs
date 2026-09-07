@@ -1079,6 +1079,7 @@ mod tests {
 
     fn artifact(nodes: Vec<GraphKnowledgeObjectNode>) -> GraphArtifactDocument {
         GraphArtifactDocument {
+            raw_nonnull_members: Default::default(),
             schema_version: "adoc.graph.v6".to_string(),
             repository_identity: GraphRepositoryIdentity::local_project(
                 "agentdoc.config.yaml".to_string(),

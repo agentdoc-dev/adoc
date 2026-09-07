@@ -712,35 +712,27 @@ fn stdio_gateway_binds_explicit_policy_once_independently_of_selected_project() 
         }}));
         let response = server.receive();
         assert_eq!(response["id"], 2);
-        assert_eq!(response["result"]["isError"], false);
-        let expected = if configured {
-            adoc_mcp::AgentDocMcpServer::new(root.into()).with_retrieval_policy(
-                adoc_core::parse_project_config(config)
-                    .unwrap()
-                    .retrieval_policy
-                    .unwrap(),
-            )
+        if configured {
+            assert_eq!(
+                response["error"]["data"]["code"],
+                "retrieval.audit_sink_unavailable"
+            );
+            assert!(
+                !response
+                    .to_string()
+                    .contains("Credits apply after payment.")
+            );
         } else {
-            adoc_mcp::AgentDocMcpServer::new(root.into())
-        }
-        .run_why(adoc_mcp::WhyParams {
-            project_root: None,
-            object_id: "billing.credits".into(),
-            artifact: Some("dist/docs.graph.json".into()),
-        })
-        .unwrap();
-        assert_eq!(
-            serde_json::to_vec(structured_content(&response)).unwrap(),
-            serde_json::to_vec(&expected).unwrap()
-        );
-        assert_eq!(
-            expected["records"].as_array().unwrap().len(),
-            usize::from(configured)
-        );
-        let framed: serde_json::Value =
-            serde_json::from_str(response["result"]["content"][0]["text"].as_str().unwrap())
+            let expected = adoc_mcp::AgentDocMcpServer::new(root.into())
+                .run_why(adoc_mcp::WhyParams {
+                    project_root: None,
+                    object_id: "billing.credits".into(),
+                    artifact: Some("dist/docs.graph.json".into()),
+                })
                 .unwrap();
-        assert_eq!(framed, expected);
+            assert_eq!(structured_content(&response), &expected);
+            assert_eq!(expected["records"], serde_json::json!([]));
+        }
         server.send(serde_json::json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{
             "name":"adoc_why","arguments":{"object_id":"billing.restricted","artifact":"dist/docs.graph.json","project_root":root}
         }}));

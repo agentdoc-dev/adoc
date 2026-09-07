@@ -367,7 +367,9 @@ pub(super) fn retrieval_session_from_document(
     document: GraphArtifactDocument,
     policy: Option<&RetrievalPolicy>,
 ) -> Result<RetrievalSession, Box<Diagnostic>> {
-    retrieval_session_from_managed_projection(document, policy, &BTreeSet::new())
+    let mut document = document;
+    filter_retrieval_document(&mut document, policy)?;
+    session_from_filtered_document(document, &BTreeSet::new())
 }
 
 pub(super) fn retrieval_session_from_managed_projection(
@@ -376,6 +378,13 @@ pub(super) fn retrieval_session_from_managed_projection(
     withheld_sources: &BTreeSet<String>,
 ) -> Result<RetrievalSession, Box<Diagnostic>> {
     filter_retrieval_document_with_sources(&mut document, policy, withheld_sources)?;
+    session_from_filtered_document(document, withheld_sources)
+}
+
+fn session_from_filtered_document(
+    document: GraphArtifactDocument,
+    withheld_sources: &BTreeSet<String>,
+) -> Result<RetrievalSession, Box<Diagnostic>> {
     let graph_session = GraphSession::new(
         GraphIndex::from_managed_projection(document, withheld_sources)
             .map_err(|_| Box::new(retrieval_artifact_error()))?,
@@ -403,6 +412,10 @@ pub(super) fn filter_retrieval_document(
     document: &mut GraphArtifactDocument,
     policy: Option<&RetrievalPolicy>,
 ) -> Result<(), Box<Diagnostic>> {
+    if let Some(policy) = policy {
+        policy.validate()?;
+    }
+    super::field_projection::project_local_fields(document, policy)?;
     filter_retrieval_document_with_sources(document, policy, &BTreeSet::new())
 }
 
@@ -2118,6 +2131,7 @@ mod tests {
         edges: Vec<GraphEdge>,
     ) -> GraphArtifactDocument {
         GraphArtifactDocument {
+            raw_nonnull_members: Default::default(),
             schema_version: "adoc.graph.v6".to_string(),
             repository_identity: Default::default(),
             nodes: objects
@@ -2162,6 +2176,7 @@ mod tests {
             },
         }));
         GraphArtifactDocument {
+            raw_nonnull_members: Default::default(),
             schema_version: "adoc.graph.v6".to_string(),
             repository_identity: Default::default(),
             nodes,

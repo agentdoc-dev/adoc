@@ -283,6 +283,16 @@ const RESOURCES: &[AgentResource] = &[
         ),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.sensitive_access.v1.schema.json",
+        name: "schema-sensitive-access-v1-json",
+        title: "Gateway-Reported Sensitive Access Event JSON Schema",
+        description: "Immutable gateway-reported repository access metadata; validity grants no authority.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/adoc.sensitive_access.v1.schema.json"
+        ),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/adoc.sensitive_access.v0.schema.json",
         name: "schema-sensitive-access-v0-json",
         title: "Sensitive Access Event JSON Schema",
