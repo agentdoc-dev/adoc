@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.managed_retrieval_input.v0.schema.json",
+  "title": "Managed Retrieval Input",
+  "description": "Private trusted-runtime input, never an end-user authorization request. Cloud supplies current authorized bindings; core verifies exact bytes and receipt-local projection. Schema validity does not grant access or establish current authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "workspace_id", "policy", "receipts", "objects"],
+  "properties": {
+    "schema_version": { "const": "adoc.managed_retrieval_input.v0" },
+    "workspace_id": { "$ref": "#/$defs/identity" },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["audience", "allowed_visibilities"],
+      "properties": {
+        "audience": { "$ref": "#/$defs/visibility" },
+        "allowed_visibilities": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/visibility" } },
+        "excluded_object_ids": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/objectId" } }
+      }
+    },
+    "receipts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "workspace_id", "graph_bytes", "graph_digest"],
+        "properties": {
+          "id": { "$ref": "#/$defs/identity" },
+          "workspace_id": { "$ref": "#/$defs/identity" },
+          "graph_bytes": { "type": "string", "minLength": 1 },
+          "graph_digest": { "$ref": "#/$defs/digest" }
+        }
+      }
+    },
+    "objects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["canonical", "version_id", "object_id", "receipt_id", "content_bytes", "content_digest"],
+        "properties": {
+          "canonical": { "$ref": "#/$defs/canonical" },
+          "version_id": { "$ref": "#/$defs/identity" },
+          "object_id": { "$ref": "#/$defs/objectId" },
+          "receipt_id": { "$ref": "#/$defs/identity" },
+          "content_bytes": { "type": "string", "minLength": 1 },
+          "content_digest": { "$ref": "#/$defs/digest" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "identity": { "type": "string", "minLength": 1, "pattern": "^\\S(?:[\\s\\S]*\\S)?$" },
+    "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "objectId": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?:\\.[a-z0-9]+(?:-[a-z0-9]+)*)+$" },
+    "visibility": { "enum": ["public", "internal", "restricted"] },
+    "canonical": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workspace_id", "canonical_id"],
+      "properties": {
+        "workspace_id": { "$ref": "#/$defs/identity" },
+        "canonical_id": { "$ref": "#/$defs/identity" }
+      }
+    }
+  }
+}

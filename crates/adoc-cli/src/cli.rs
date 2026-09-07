@@ -462,6 +462,16 @@ pub(crate) struct Cli {
 
 #[derive(Subcommand)]
 pub(crate) enum Commands {
+    /// Runtime port for an explicitly authorized managed corpus; always emits retrieval JSON.
+    ManagedRetrieve {
+        #[arg(long, value_name = "PATH")]
+        input: PathBuf,
+        /// Create a private contributor manifest for the trusted caller's final authorization check.
+        #[arg(long, value_name = "PATH")]
+        manifest_out: Option<PathBuf>,
+        #[command(subcommand)]
+        operation: ManagedRetrievalCommand,
+    },
     #[command(
         about = "Create AgentDoc config and starter docs.",
         after_long_help = INIT_LONG_HELP
@@ -861,6 +871,27 @@ pub(crate) enum Commands {
         #[arg(long, default_value = "10")]
         top: NonZeroUsize,
     },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum ManagedRetrievalCommand {
+    Search {
+        query: String,
+        #[arg(long, value_enum, default_value = "lexical")]
+        mode: ManagedSearchMode,
+        #[arg(long, default_value = "20")]
+        top: NonZeroUsize,
+    },
+    Why {
+        object_id: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub(crate) enum ManagedSearchMode {
+    Lexical,
+    Semantic,
+    Hybrid,
 }
 
 #[cfg(test)]

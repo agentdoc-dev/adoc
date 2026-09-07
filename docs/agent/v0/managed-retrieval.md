@@ -1,0 +1,62 @@
+# Managed retrieval runtime input
+
+`adoc managed-retrieve` accepts the closed
+[`adoc.managed_retrieval_input.v0`](schema/adoc.managed_retrieval_input.v0.schema.json)
+input and emits the existing `adoc.retrieval.v1` JSON envelope. This is the
+E6.1.T5 runtime boundary. It does not authenticate a Cloud caller, select current
+managed versions, or establish source access. The trusted Cloud caller performs
+those checks and constructs the input; an HTTP client cannot supply it.
+
+```sh
+adoc managed-retrieve --input input.json --manifest-out contributors.json search billing --mode lexical --top 20
+adoc managed-retrieve --input input.json --manifest-out contributors.json why billing.credit
+```
+
+The input contains one Workspace, an explicit `RetrievalPolicy`, exact selected
+canonical/version bindings, and deduplicated retained graph receipts. The
+`graph_bytes` and `content_bytes` fields are UTF-8 strings containing the exact
+stored JSON bytes. Their digests use SHA-256 over those string bytes. A node's
+authored `content_hash` is a separate semantic identity and is preserved.
+Opaque managed identities must be nonempty and unpadded; Cloud's UUID-backed
+identities are a narrower admissible set. Every binding must name the same
+Workspace and the exact node in its named receipt. Ambiguous identities, changed
+bytes, foreign bindings, unsupported graphs and unused receipts fail closed.
+
+Each retained receipt supplies the reference context for its selected objects.
+An absent, inactive, unauthorized or mismatched receipt target is non-admitted.
+Core applies its existing permission predicate and whole-carrier closure before
+indexing. Missing structured references also withhold their owner. Withholding
+propagates across selected owners until stable. An old receipt's target cannot
+stand in for a different current version with the same Object ID, nor globally
+exclude that current version. Historical page prose is never made searchable by
+attachment to a selected object. Surviving objects retain their complete authored
+fields, body and hash; this is not partial-field redaction or text classification.
+
+The optional manifest file is a private JSON array of
+`{canonical:{workspace_id,canonical_id},version_id,receipt_id}` bindings. It
+includes every surviving index contributor, including nonhits, and contains no
+object bodies. It is separate from stdout and must never be returned to an API
+client. Cloud rechecks the current session, scoped authorization, source ACL and
+active version for every contributor immediately before releasing the buffered
+response. A changed contributor discards that response. Unrelated new or hidden
+objects do not invalidate the initial corpus snapshot through a global digest.
+
+The runtime reads only the explicit input (at most 64 MiB). It does not discover
+project configuration, consult environment authority, or initialize an embedding
+provider. The manifest path must be fresh; an existing path is never replaced.
+On Unix, its file mode is `0600`. Use an isolated private directory and remove
+both files after the invocation. Input/output failures return zero records and
+`retrieval.visibility_unavailable`, without private bytes or filesystem details.
+
+There is no admitted managed vector index in this tracer. Lexical search uses
+the existing core ranking. Semantic mode refuses with `search.artifact_missing`;
+hybrid mode returns lexical results with a fixed missing-index warning. No vector
+or semantic coverage is implied. `why` uses the existing core lookup and treats
+non-admitted and absent IDs identically. Exit codes are 0 for success (including
+hybrid fallback), 1 for invalid Object ID, 2 for unsafe input/index unavailability,
+and 3 for an absent/non-admitted `why` target.
+
+Cloud's first managed route binds a public-only policy plus current native
+authorization and source access. Wider audiences, sensitive classification and
+auditing belong to E6.1.T6/E6.3. This runtime prerequisite alone does not claim
+that the Cloud route is deployed or that sensitive-access delivery is complete.

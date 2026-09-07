@@ -18,6 +18,55 @@ use adoc_mcp::{
 use serde_json::json;
 
 const CANONICAL_SOURCE_ACL_OBSERVED_AT: &str = "2026-08-23T11:59:00Z";
+
+#[test]
+fn managed_retrieval_input_is_closed_and_requires_exact_byte_bindings() {
+    let name = "adoc.managed_retrieval_input.v0.schema.json";
+    let valid = json!({
+        "schema_version": "adoc.managed_retrieval_input.v0",
+        "workspace_id": "workspace-1",
+        "policy": {"audience":"public", "allowed_visibilities":["public"], "excluded_object_ids":[]},
+        "receipts": [{"id":"receipt-1", "workspace_id":"workspace-1", "graph_bytes":"{}", "graph_digest":format!("sha256:{}", "a".repeat(64))}],
+        "objects": [{"canonical":{"workspace_id":"workspace-1", "canonical_id":"object-1"}, "version_id":"version-1", "object_id":"billing.credit", "receipt_id":"receipt-1", "content_bytes":"{}", "content_digest":format!("sha256:{}", "b".repeat(64))}]
+    });
+    // Structural admission only; core separately verifies JSON, digests and joins.
+    assert_valid(name, &valid);
+    for pointer in [
+        "/objects/0/content_digest",
+        "/receipts/0/graph_digest",
+        "/objects/0/canonical/workspace_id",
+        "/policy/audience",
+    ] {
+        let mut invalid = valid.clone();
+        *invalid.pointer_mut(pointer).unwrap() = json!(null);
+        assert!(!schema_accepts(name, &invalid), "accepted null {pointer}");
+    }
+    for pointer in [
+        "",
+        "/policy",
+        "/objects/0",
+        "/objects/0/canonical",
+        "/receipts/0",
+    ] {
+        let mut invalid = valid.clone();
+        invalid
+            .pointer_mut(pointer)
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .insert("authority".into(), json!("caller-asserted"));
+        assert!(
+            !schema_accepts(name, &invalid),
+            "accepted extra key {pointer}"
+        );
+    }
+    let mut invalid = valid.clone();
+    invalid["schema_version"] = json!("unregistered version");
+    assert!(!schema_accepts(name, &invalid));
+    invalid = valid;
+    invalid["objects"][0]["object_id"] = json!("INVALID");
+    assert!(!schema_accepts(name, &invalid));
+}
 const CANONICAL_SOURCE_ACL_EXPIRED_AT: &str = "2026-08-23T11:59:30Z";
 const CANONICAL_EVALUATION_TIME: &str = "2026-08-23T12:00:00Z";
 const CANONICAL_SOURCE_ACL_EXPIRES_AT: &str = "2026-08-23T12:04:00Z";

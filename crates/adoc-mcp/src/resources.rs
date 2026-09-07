@@ -263,6 +263,16 @@ const RESOURCES: &[AgentResource] = &[
         contents: include_str!("../../../docs/agent/v0/schema/retrieval-envelope.json"),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.managed_retrieval_input.v0.schema.json",
+        name: "schema-managed-retrieval-input-v0-json",
+        title: "Managed Retrieval Input JSON Schema",
+        description: "Private trusted-runtime input; schema validity does not grant managed access.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/adoc.managed_retrieval_input.v0.schema.json"
+        ),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/retrieval-envelope.v0.json",
         name: "schema-retrieval-envelope-v0-json",
         title: "Retrieval Envelope JSON Schema (legacy v0)",

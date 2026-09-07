@@ -186,7 +186,7 @@ where
             diagnostics: vec![*diagnostic],
         };
     }
-    let mut document = match graph_reader.read(&input.artifact_path) {
+    let document = match graph_reader.read(&input.artifact_path) {
         Ok(document) => document,
         Err(diagnostics) => {
             return RetrievalLoadResult {
@@ -196,24 +196,19 @@ where
         }
     };
 
-    if let Err(diagnostic) = filter_retrieval_document(&mut document, input.policy.as_ref()) {
-        return RetrievalLoadResult {
-            session: None,
-            diagnostics: vec![*diagnostic],
-        };
-    }
-
-    let graph_session = match GraphIndex::from_document(document) {
-        Ok(index) => GraphSession::new(index),
-        Err(_) => {
+    let RetrievalSession {
+        graph_session,
+        lexical_index,
+        ..
+    } = match retrieval_session_from_document(document, input.policy.as_ref()) {
+        Ok(session) => session,
+        Err(diagnostic) => {
             return RetrievalLoadResult {
                 session: None,
-                diagnostics: vec![retrieval_artifact_error()],
+                diagnostics: vec![*diagnostic],
             };
         }
     };
-    let lexical_index =
-        LexicalIndex::from_corpus(graph_session.objects(), graph_session.prose_blocks());
 
     let mut diagnostics = Vec::new();
     let mut vector_index: Option<VectorIndex> = None;
@@ -367,6 +362,24 @@ pub(super) fn safe_artifact_diagnostics(
         .collect()
 }
 
+/// Assemble one index only after the shared permission/source projection.
+pub(super) fn retrieval_session_from_document(
+    mut document: GraphArtifactDocument,
+    policy: Option<&RetrievalPolicy>,
+) -> Result<RetrievalSession, Box<Diagnostic>> {
+    filter_retrieval_document(&mut document, policy)?;
+    let graph_session = GraphSession::new(
+        GraphIndex::from_document(document).map_err(|_| Box::new(retrieval_artifact_error()))?,
+    );
+    let lexical_index =
+        LexicalIndex::from_corpus(graph_session.objects(), graph_session.prose_blocks());
+    Ok(RetrievalSession {
+        graph_session,
+        lexical_index,
+        vector_index: None,
+    })
+}
+
 pub(super) fn retrieval_artifact_error() -> Diagnostic {
     Diagnostic::error(
         DiagnosticCode::RetrievalVisibilityUnavailable,
@@ -429,6 +442,15 @@ pub(super) fn filter_retrieval_document(
     if GraphIndex::from_document(document.clone()).is_err() {
         return Err(Box::new(retrieval_artifact_error()));
     }
+    project_retrieval_document(document, excluded)
+}
+
+/// Whole-source closure shared with receipt-local managed assembly. Callers
+/// validate their bindings before projection and the surviving graph afterward.
+pub(super) fn project_retrieval_document(
+    document: &mut GraphArtifactDocument,
+    mut excluded: BTreeSet<String>,
+) -> Result<(), Box<Diagnostic>> {
     // ponytail: repeated projection scans cover citation chains; use a reverse
     // reference index if the worst-case cubic cost fails the E6.1.T3 corpus guard.
     loop {
@@ -447,23 +469,7 @@ pub(super) fn filter_retrieval_document(
         document
             .edges
             .retain(|edge| !excluded.contains(&edge.source) && !excluded.contains(&edge.target));
-        for object in document.nodes.iter_mut().filter_map(|node| {
-            if let GraphNode::KnowledgeObject(object) = node {
-                Some(object)
-            } else {
-                None
-            }
-        }) {
-            if object
-                .effective_reason
-                .as_deref()
-                .is_some_and(|reason| reason.starts_with("contradiction:"))
-            {
-                object.effective_status = None;
-                object.effective_reason = None;
-            }
-        }
-        crate::domain::graph::apply_contradiction_effective_status(&mut document.nodes);
+        refresh_retrieval_contradictions(&mut document.nodes);
         // Hashes and embeddings commit source metadata even when a field is
         // absent from RetrievalRecord. Withhold the whole source carrier rather
         // than redact fields and expose their old hash/vector (field reads: E6.2).
@@ -493,6 +499,21 @@ pub(super) fn filter_retrieval_document(
         excluded.extend(referenced);
     }
     Ok(())
+}
+
+pub(super) fn refresh_retrieval_contradictions(nodes: &mut [GraphNode]) {
+    for node in nodes.iter_mut() {
+        if let GraphNode::KnowledgeObject(object) = node
+            && object
+                .effective_reason
+                .as_deref()
+                .is_some_and(|reason| reason.starts_with("contradiction:"))
+        {
+            object.effective_status = None;
+            object.effective_reason = None;
+        }
+    }
+    crate::domain::graph::apply_contradiction_effective_status(nodes);
 }
 
 pub fn why_object(session: &RetrievalSession, id: &str) -> WhyResult {
