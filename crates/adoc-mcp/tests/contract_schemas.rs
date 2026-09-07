@@ -38,6 +38,24 @@ fn managed_retrieval_input_is_closed_and_requires_exact_byte_bindings() {
         "fields":[{"selector":"/fields/owner", "classification":null}]
     });
     assert_valid(name, &projected);
+    let mut accepted_unknown_keys = Vec::new();
+    for (key, value) in [
+        ("uuid", json!("00000000-0000-4000-8000-000000000001")),
+        (
+            "fieldProjection",
+            projected["objects"][0]["field_projection"].clone(),
+        ),
+    ] {
+        let mut invalid = valid.clone();
+        invalid["objects"][0][key] = value;
+        if schema_accepts(name, &invalid) {
+            accepted_unknown_keys.push(key);
+        }
+    }
+    assert!(
+        accepted_unknown_keys.is_empty(),
+        "accepted unsupported object keys: {accepted_unknown_keys:?}"
+    );
     for (pointer, value) in [
         ("", json!(null)),
         ("", json!([])),

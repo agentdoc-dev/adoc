@@ -126,6 +126,9 @@ fn assemble(
 > {
     let shape: Value = serde_json::from_slice(input).map_err(|_| unavailable())?;
     for object in shape["objects"].as_array().ok_or_else(unavailable)? {
+        if !object.is_object() {
+            return Err(unavailable());
+        }
         if let Some(projection) = object.get("field_projection") {
             field_projection::validate_shape(projection)?;
         }
@@ -1624,12 +1627,63 @@ Retained TARGET_CANARY old knowledge.
     }
 
     #[test]
+    fn positional_selected_objects_cannot_bypass_projection_shape_validation() {
+        let root = tempfile::tempdir().unwrap();
+        let retained = receipt(root.path(), SOURCE);
+        let mut valid = projected_input(&retained, &["billing.selected"]);
+        add_projection(&mut valid, "billing.selected", "/body", Value::Null);
+        let mut accepted = Vec::new();
+        for positional_row in [false, true] {
+            let mut input = valid.clone();
+            let object = &mut input["objects"][0];
+            if positional_row {
+                object["field_projection"]["fields"][0] = json!(["/body", null]);
+            }
+            *object = json!([
+                object["canonical"],
+                object["version_id"],
+                object["object_id"],
+                object["receipt_id"],
+                object["content_bytes"],
+                object["content_digest"],
+                object["field_projection"]
+            ]);
+            let result = why(&input, "billing.selected");
+            if result.exit_code != 2 {
+                accepted.push(positional_row);
+                continue;
+            }
+            assert!(result.envelope.records.is_empty());
+            assert!(result.contributing_bindings.is_empty());
+            assert_eq!(
+                result.envelope.diagnostics[0].code,
+                DiagnosticCode::RetrievalVisibilityUnavailable
+            );
+        }
+        assert!(
+            accepted.is_empty(),
+            "accepted positional objects (positional row): {accepted:?}"
+        );
+    }
+
+    #[test]
     fn malformed_projection_metadata_fails_closed_without_payload_or_bindings() {
         let root = tempfile::tempdir().unwrap();
         let retained = receipt(root.path(), SOURCE);
         let mut valid = projected_input(&retained, &["billing.selected"]);
         add_projection(&mut valid, "billing.selected", "/fields/owner", Value::Null);
         let mut malformed = Vec::new();
+        for (key, value) in [
+            ("uuid", json!("00000000-0000-4000-8000-000000000001")),
+            (
+                "fieldProjection",
+                valid["objects"][0]["field_projection"].clone(),
+            ),
+        ] {
+            let mut input = valid.clone();
+            input["objects"][0][key] = value;
+            malformed.push(input);
+        }
         for (pointer, value) in [
             ("", Value::Null),
             ("", json!([])),
