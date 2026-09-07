@@ -340,6 +340,7 @@ fn lists_and_reads_all_stable_agent_resources() {
         "adoc://agent/v0/schema/change-assessment",
         "adoc://agent/v0/schema/migrate-report",
         "adoc://agent/v0/schema/retrieval-envelope.json",
+        "adoc://agent/v0/schema/adoc.sensitive_access.v0.schema.json",
         "adoc://agent/v0/schema/adoc.managed_retrieval_input.v0.schema.json",
         "adoc://agent/v0/schema/retrieval-envelope.v0.json",
         "adoc://agent/v0/schema/graph-traversal-envelope.json",
@@ -1169,4 +1170,64 @@ fn adoc_search_rejects_conflicting_scope_arguments() {
         .run_search(prose_direction)
         .expect_err("prose_only + direction conflicts");
     assert!(error.to_string().contains("metadata filters"));
+}
+
+#[test]
+fn sensitive_classification_matches_local_and_mcp_why() {
+    for class in ["internal", "restricted"] {
+        let workspace = tempfile::tempdir().unwrap();
+        write(
+            &workspace.path().join("agentdoc.config.yaml"),
+            "version: 1\nmode: strict\ndocs_path: docs\nretrieval_policy:\n  audience: restricted\n  allowed_visibilities: [public, internal, restricted]\n",
+        );
+        write(
+            &workspace.path().join("docs/index.adoc"),
+            &source().replace(
+                "status: draft",
+                &format!("status: draft\nvisibility: {class}"),
+            ),
+        );
+        let server = AgentDocMcpServer::new(workspace.path().to_path_buf()).with_retrieval_policy(
+            serde_json::from_value(serde_json::json!({"audience":"restricted", "allowed_visibilities":["public", "internal", "restricted"], "excluded_object_ids":[]})).unwrap()
+        );
+        assert_eq!(
+            server
+                .run_build(BuildParams {
+                    project_root: None,
+                    path: Some("docs".into()),
+                    out: Some("dist".into()),
+                    no_embeddings: true
+                })
+                .unwrap()["ok"],
+            true
+        );
+        let local = adoc_local::LocalContext::new(
+            workspace.path().to_path_buf(),
+            ProjectRootPathPolicy::new(workspace.path()).unwrap(),
+        )
+        .why(adoc_local::WhyInput {
+            object_id: "billing.credits".into(),
+            artifact: Some("dist/docs.graph.json".into()),
+        })
+        .unwrap();
+        let mcp = server
+            .run_why(WhyParams {
+                project_root: None,
+                object_id: "billing.credits".into(),
+                artifact: Some("dist/docs.graph.json".into()),
+            })
+            .unwrap();
+        assert_eq!(mcp["records"][0]["classification"], class);
+        assert_eq!(
+            mcp["records"][0],
+            serde_json::to_value(adoc_core::RetrievalEntry::KnowledgeObject(
+                local.records[0].record.clone()
+            ))
+            .unwrap()
+        );
+        assert!(
+            mcp.get("sensitive_access").is_none(),
+            "authenticated MCP audit is E6.3"
+        );
+    }
 }

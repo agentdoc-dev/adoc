@@ -54,6 +54,10 @@ pub(crate) fn render_record(
     writeln!(output, "Kind: {}", record.kind).expect("writing to String cannot fail");
     // ADR-0039: status is lifecycle-only; severity/trust have their own
     // record fields (this also fixes constraints mislabelled "Status:").
+    if let Some(classification) = record.classification {
+        writeln!(output, "Sensitive: {}", classification.as_str())
+            .expect("writing to String cannot fail");
+    }
     if let Some(status) = &record.status {
         writeln!(output, "Status: {status}").expect("writing to String cannot fail");
     }
@@ -253,6 +257,7 @@ mod tests {
             effective_reason: None,
             evidence_quality: None,
             resolved_questions: Vec::new(),
+            classification: None,
         }
     }
 
@@ -384,6 +389,7 @@ mod tests {
             effective_reason: None,
             evidence_quality: None,
             resolved_questions: Vec::new(),
+            classification: None,
         };
         let view = view_for(record);
         let text = render(&view);
@@ -449,6 +455,7 @@ mod tests {
             effective_reason: None,
             evidence_quality: None,
             resolved_questions: Vec::new(),
+            classification: None,
         };
         let view = view_for(record);
         let text = render(&view);
@@ -497,6 +504,7 @@ mod tests {
             effective_reason: None,
             evidence_quality: None,
             resolved_questions: Vec::new(),
+            classification: None,
         };
         let view = view_for(record);
         let text = render(&view);
@@ -538,6 +546,7 @@ mod tests {
             effective_reason: None,
             evidence_quality: None,
             resolved_questions: Vec::new(),
+            classification: None,
         };
         let view = view_for(record);
         let text = render(&view);

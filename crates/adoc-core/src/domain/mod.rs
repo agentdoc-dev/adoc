@@ -37,6 +37,7 @@ pub(crate) mod scan;
 pub(crate) mod semantic_assessment;
 pub(crate) mod semantic_context;
 pub(crate) mod semantic_executor;
+pub(crate) mod sensitive_access;
 pub(crate) mod services;
 pub(crate) mod source;
 pub(crate) mod source_edit;

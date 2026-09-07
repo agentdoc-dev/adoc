@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.sensitive_access.v0.schema.json",
+  "title": "Sensitive Access Event",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "event_id",
+    "context",
+    "caller",
+    "command",
+    "policy_version",
+    "sequence",
+    "objects"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "adoc.sensitive_access.v0"
+    },
+    "event_id": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "context": {
+      "type": "object",
+      "required": [
+        "kind",
+        "workspace_id"
+      ],
+      "properties": {
+        "kind": {
+          "const": "managed_workspace"
+        },
+        "workspace_id": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "caller": {
+      "type": "object",
+      "required": [
+        "principal_id",
+        "session_id"
+      ],
+      "properties": {
+        "principal_id": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "session_id": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "command": {
+      "enum": [
+        "search",
+        "why"
+      ]
+    },
+    "policy_version": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "objects": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Strict Object ID ascending order; Object IDs, canonical IDs and version IDs must each be unique. Cross-item identity and order are enforced by the AgentDoc domain validator. Only actual returned sensitive subjects belong here.",
+      "items": {
+        "type": "object",
+        "required": [
+          "canonical_id",
+          "version_id",
+          "object_id",
+          "content_hash",
+          "classification"
+        ],
+        "properties": {
+          "canonical_id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "version_id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "object_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$"
+          },
+          "content_hash": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "classification": {
+            "enum": [
+              "internal",
+              "restricted"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
