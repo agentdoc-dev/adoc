@@ -5,6 +5,7 @@ pub(crate) mod change_assessment;
 pub(crate) mod compile;
 pub(crate) mod evidence_anchor;
 pub(crate) mod graph;
+pub(crate) mod managed_retrieval;
 pub(crate) mod migrate;
 pub(crate) mod patch;
 pub(crate) mod proposal;

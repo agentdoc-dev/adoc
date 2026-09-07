@@ -32,6 +32,11 @@ pub use application::graph::{
     GRAPH_TRAVERSAL_SCHEMA_VERSION, GraphInput, GraphLoadResult, GraphSession,
     GraphTraversalEnvelope, traverse_graph,
 };
+pub use application::managed_retrieval::{
+    MANAGED_RETRIEVAL_INPUT_SCHEMA_VERSION, ManagedRetrievalBinding,
+    ManagedRetrievalCanonicalIdentity, ManagedRetrievalOutcome, ManagedRetrievalQuery,
+    run_managed_retrieval,
+};
 pub use application::migrate::{
     MIGRATE_REPORT_SCHEMA_VERSION, MigrateCounts, MigrateDirection, MigrateMode,
     MigrateReportEnvelope, MigrateReportFile, MigrateResult, MigratedFile,
