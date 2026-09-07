@@ -97,6 +97,7 @@ impl AgentDocMcpServer {
     pub fn run_build(&self, params: BuildParams) -> McpAdapterResult<serde_json::Value> {
         let context = self.context(params.project_root)?;
         let outcome = context.build(BuildInput {
+            audience: None,
             path: params.path,
             out: params.out,
             no_embeddings: params.no_embeddings,

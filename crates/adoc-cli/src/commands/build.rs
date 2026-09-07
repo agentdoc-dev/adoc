@@ -9,6 +9,7 @@ pub(crate) fn build(
     out: Option<PathBuf>,
     no_embeddings: bool,
     as_of: Option<chrono::NaiveDate>,
+    audience: Option<String>,
 ) -> i32 {
     let config_start = match current_dir() {
         Ok(path) => path,
@@ -21,6 +22,7 @@ pub(crate) fn build(
         out,
         no_embeddings,
         as_of,
+        audience,
     }) {
         Ok(outcome) => outcome,
         Err(error) => return report(error.into()),

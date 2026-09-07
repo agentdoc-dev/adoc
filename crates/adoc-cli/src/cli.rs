@@ -610,6 +610,9 @@ pub(crate) enum Commands {
         /// Pin lifecycle evaluation to this UTC calendar date.
         #[arg(long, value_name = "YYYY-MM-DD", value_parser = parse_evaluation_date)]
         as_of: Option<chrono::NaiveDate>,
+        /// HTML visibility ceiling: public, internal, or restricted.
+        #[arg(long, value_name = "AUDIENCE")]
+        audience: Option<String>,
     },
     #[command(
         about = "Explain one Knowledge Object from a compiled artifact.",

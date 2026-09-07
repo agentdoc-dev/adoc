@@ -61,6 +61,7 @@ fn build_valid_artifacts(root: &Path) -> (std::path::PathBuf, std::path::PathBuf
     write(&root.join("docs/billing.adoc"), valid_source());
     let result = build_workspace_with_embedding_provider(
         BuildInput {
+            policy: None,
             root: root.join("docs"),
             embeddings: BuildEmbeddingMode::Enabled,
             prior_search_artifact_path: None,

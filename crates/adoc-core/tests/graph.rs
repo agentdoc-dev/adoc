@@ -132,6 +132,7 @@ fn build_graph_value(source: &str) -> Value {
     let workspace = TestWorkspace::new("graph-hash");
     let source_path = workspace.write("graph.adoc", source);
     let result = adoc_core::build_workspace(BuildInput {
+        policy: None,
         root: source_path,
         embeddings: BuildEmbeddingMode::Skipped,
         prior_search_artifact_path: None,
@@ -243,6 +244,7 @@ fn graph_content_hash_is_stable_for_same_source() {
     let source_path = workspace.write("graph.adoc", &source);
     let build = || {
         let result = adoc_core::build_workspace(BuildInput {
+            policy: None,
             root: source_path.clone(),
             embeddings: BuildEmbeddingMode::Skipped,
             prior_search_artifact_path: None,
@@ -296,6 +298,7 @@ fn graph_content_hash_is_stable_across_file_path_and_object_position() {
         let workspace = TestWorkspace::new("graph-hash-placement");
         let source_path = workspace.write(file, source);
         let result = adoc_core::build_workspace(BuildInput {
+            policy: None,
             root: source_path,
             embeddings: BuildEmbeddingMode::Skipped,
             prior_search_artifact_path: None,
@@ -386,6 +389,7 @@ fn source_binding_tracks_moves_while_content_hash_is_stable() {
         let workspace = TestWorkspace::new("graph-source-binding");
         let source_path = workspace.write(file, source);
         let result = adoc_core::build_workspace(BuildInput {
+            policy: None,
             root: source_path,
             embeddings: BuildEmbeddingMode::Skipped,
             prior_search_artifact_path: None,
@@ -722,6 +726,7 @@ fn project_build_emits_repository_identity_and_project_relative_source_paths() {
 
     let result = build_project_workspace(
         BuildInput {
+            policy: None,
             root: docs_root.clone(),
             embeddings: BuildEmbeddingMode::Skipped,
             prior_search_artifact_path: None,
@@ -755,6 +760,7 @@ fn project_graph_objects_are_portable_across_checkout_locations() {
         .expect("source");
         let result = build_project_workspace(
             BuildInput {
+                policy: None,
                 root: docs_root.clone(),
                 embeddings: BuildEmbeddingMode::Skipped,
                 prior_search_artifact_path: None,
@@ -901,6 +907,7 @@ fn build_workspace_emits_graph_artifact_with_deterministic_order_when_embeddings
     );
 
     let result = adoc_core::build_workspace(BuildInput {
+        policy: None,
         root: source,
         embeddings: BuildEmbeddingMode::Skipped,
         prior_search_artifact_path: None,
