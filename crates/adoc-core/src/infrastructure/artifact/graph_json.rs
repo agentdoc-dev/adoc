@@ -646,7 +646,7 @@ pub(crate) fn derive_effective_status_from_fields(
 ///
 /// Returns `Some(tier_str)` when at least one tier-able entry exists; `None`
 /// when the evidence list is empty or all kinds are unrecognised.
-fn best_evidence_quality(evidence: &[GraphEvidence]) -> Option<String> {
+pub(crate) fn best_evidence_quality(evidence: &[GraphEvidence]) -> Option<String> {
     let best = evidence
         .iter()
         .filter_map(|ev| EvidenceKind::try_new(&ev.kind).ok())

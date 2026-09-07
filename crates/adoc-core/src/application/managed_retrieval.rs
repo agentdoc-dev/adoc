@@ -23,6 +23,9 @@ use crate::infrastructure::artifact::graph_json::{
     SUPPORTED_GRAPH_SCHEMA_VERSION, parse_graph_artifact_document,
 };
 
+mod field_projection;
+pub use field_projection::{ManagedAccessedObject, ManagedFieldProjection};
+
 pub const MANAGED_RETRIEVAL_INPUT_SCHEMA_VERSION: &str = "adoc.managed_retrieval_input.v0";
 
 #[derive(Debug, Clone)]
@@ -50,6 +53,10 @@ pub struct ManagedRetrievalBinding {
     pub canonical: ManagedRetrievalCanonicalIdentity,
     pub version_id: String,
     pub receipt_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub field_projection: Option<ManagedFieldProjection>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accessed_object: Option<ManagedAccessedObject>,
 }
 
 #[derive(Debug, Clone)]
@@ -87,6 +94,8 @@ struct SelectedObject {
     receipt_id: String,
     content_bytes: String,
     content_digest: String,
+    #[serde(default)]
+    field_projection: Option<ManagedFieldProjection>,
 }
 
 struct DecodedReceipt {
@@ -107,7 +116,20 @@ fn opaque_id(value: &str) -> bool {
 
 fn assemble(
     input: &[u8],
-) -> Result<(RetrievalSession, Vec<ManagedRetrievalBinding>), Box<Diagnostic>> {
+) -> Result<
+    (
+        RetrievalSession,
+        BTreeMap<String, ManagedRetrievalBinding>,
+        bool,
+    ),
+    Box<Diagnostic>,
+> {
+    let shape: Value = serde_json::from_slice(input).map_err(|_| unavailable())?;
+    for object in shape["objects"].as_array().ok_or_else(unavailable)? {
+        if let Some(projection) = object.get("field_projection") {
+            field_projection::validate_shape(projection)?;
+        }
+    }
     let input: Input = serde_json::from_slice(input).map_err(|_| unavailable())?;
     if input.schema_version != MANAGED_RETRIEVAL_INPUT_SCHEMA_VERSION
         || !opaque_id(&input.workspace_id)
@@ -197,6 +219,9 @@ fn assemble(
         if receipt.objects.get(&object.object_id) != Some(&content) {
             return Err(unavailable());
         }
+        if let Some(projection) = &object.field_projection {
+            projection.validate(&object, &content)?;
+        }
         used_receipts.insert(object.receipt_id.clone());
         if selected.insert(object.object_id.clone(), object).is_some() {
             return Err(unavailable());
@@ -206,7 +231,12 @@ fn assemble(
         return Err(unavailable());
     }
 
-    let mut surviving: BTreeSet<String> = selected.keys().cloned().collect();
+    let denied = field_projection::project_receipts(&mut receipts, &selected, &policy)?;
+    let mut surviving: BTreeSet<String> = selected
+        .keys()
+        .filter(|id| !denied.contains(*id))
+        .cloned()
+        .collect();
     // ponytail: repeated receipt projection is finite but can be quadratic in
     // selected owners; use a dependency work queue if measured corpus size needs it.
     loop {
@@ -348,21 +378,30 @@ fn assemble(
         .objects()
         .map(|node| {
             let object = &selected[&node.id];
-            ManagedRetrievalBinding {
-                canonical: object.canonical.clone(),
-                version_id: object.version_id.clone(),
-                receipt_id: object.receipt_id.clone(),
-            }
+            (
+                node.id.clone(),
+                ManagedRetrievalBinding {
+                    canonical: object.canonical.clone(),
+                    version_id: object.version_id.clone(),
+                    receipt_id: object.receipt_id.clone(),
+                    field_projection: object.field_projection.clone(),
+                    accessed_object: None,
+                },
+            )
         })
         .collect();
-    Ok((session, bindings))
+    let attribute = session
+        .graph_session()
+        .objects()
+        .any(|node| field_projection::requires_attribution(&receipts, &selected, &node.id));
+    Ok((session, bindings, attribute))
 }
 
 pub fn run_managed_retrieval(
     input: &[u8],
     query: ManagedRetrievalQuery,
 ) -> ManagedRetrievalOutcome {
-    let (session, contributing_bindings) = match assemble(input) {
+    let (session, mut bindings, attribute) = match assemble(input) {
         Ok(assembled) => assembled,
         Err(diagnostic) => {
             return ManagedRetrievalOutcome {
@@ -372,7 +411,7 @@ pub fn run_managed_retrieval(
             };
         }
     };
-    let envelope = match query {
+    let mut envelope = match query {
         ManagedRetrievalQuery::Why { object_id } => why_object(&session, &object_id).into(),
         ManagedRetrievalQuery::Search {
             mode: SearchMode::Semantic,
@@ -411,6 +450,17 @@ pub fn run_managed_retrieval(
             result.into()
         }
     };
+    if attribute
+        && let Err(diagnostic) =
+            field_projection::attribute_access(&mut envelope, &session, &mut bindings)
+    {
+        return ManagedRetrievalOutcome {
+            envelope: RetrievalEnvelope::new(Vec::new(), vec![*diagnostic]),
+            exit_code: 2,
+            contributing_bindings: Vec::new(),
+        };
+    }
+    let contributing_bindings = bindings.into_values().collect();
     let exit_code = envelope
         .diagnostics
         .iter()
@@ -442,7 +492,8 @@ mod tests {
     };
     use serde_json::{Value, json};
 
-    use super::{ManagedRetrievalQuery, run_managed_retrieval};
+    use super::{ManagedRetrievalOutcome, ManagedRetrievalQuery, run_managed_retrieval};
+    use crate::DiagnosticCode;
     use crate::domain::hashing::sha256_prefixed;
 
     const SOURCE: &str = "\
@@ -581,6 +632,51 @@ Retained TARGET_CANARY old knowledge.
             )
         );
         node
+    }
+
+    #[test]
+    fn unresolved_field_projection_preserves_authorized_siblings_and_exact_hash() {
+        let root = tempfile::tempdir().unwrap();
+        let retained = receipt(root.path(), SOURCE);
+        let selected = node(&retained, "billing.selected");
+        let mut input = managed_input(
+            &[("receipt", &retained)],
+            &[("selected", "receipt", selected.clone())],
+        );
+        input["workspace_id"] = json!("00000000-0000-4000-8000-000000000001");
+        input["receipts"][0]["workspace_id"] = input["workspace_id"].clone();
+        input["objects"][0]["canonical"]["workspace_id"] = input["workspace_id"].clone();
+        input["objects"][0]["canonical"]["canonical_id"] =
+            json!("00000000-0000-4000-8000-000000000002");
+        input["objects"][0]["version_id"] = json!("00000000-0000-4000-8000-000000000003");
+        input["objects"][0]["field_projection"] = json!({
+            "workspace_id":input["workspace_id"], "canonical_id":input["objects"][0]["canonical"]["canonical_id"],
+            "version_id":input["objects"][0]["version_id"], "content_digest":input["objects"][0]["content_digest"],
+            "fields":[{"selector":"/fields/owner", "classification":null}]
+        });
+        let output = run_managed_retrieval(
+            &serde_json::to_vec(&input).unwrap(),
+            ManagedRetrievalQuery::Why {
+                object_id: "billing.selected".into(),
+            },
+        );
+        assert_eq!(output.exit_code, 0, "{:?}", output.envelope);
+        let value = serde_json::to_value(&output.envelope).unwrap();
+        assert!(value["records"][0].get("owner").is_none());
+        assert_eq!(value["records"][0]["body"], selected["body"]);
+        assert_eq!(
+            value["records"][0]["content_hash"],
+            selected["content_hash"]
+        );
+        let manifest = serde_json::to_value(&output.contributing_bindings).unwrap();
+        assert_eq!(
+            manifest[0]["field_projection"],
+            input["objects"][0]["field_projection"]
+        );
+        assert_eq!(
+            manifest[0]["accessed_object"]["classification"],
+            Value::Null
+        );
     }
 
     #[test]
@@ -1187,5 +1283,407 @@ Retained TARGET_CANARY old knowledge.
                 .unwrap()
                 .contains("FORGED_BODY_CANARY")
         );
+    }
+
+    fn projected_input(retained: &Value, ids: &[&str]) -> Value {
+        let objects: Vec<_> = ids
+            .iter()
+            .enumerate()
+            .map(|(i, id)| (format!("canonical-{i}"), node(retained, id)))
+            .collect();
+        let entries: Vec<_> = objects
+            .iter()
+            .map(|(canonical, node)| (canonical.as_str(), "receipt", node.clone()))
+            .collect();
+        let mut input = managed_input(&[("receipt", retained)], &entries);
+        input["workspace_id"] = json!("00000000-0000-4000-8000-000000000001");
+        input["receipts"][0]["workspace_id"] = input["workspace_id"].clone();
+        for (i, object) in input["objects"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .enumerate()
+        {
+            object["canonical"]["workspace_id"] = json!("00000000-0000-4000-8000-000000000001");
+            object["canonical"]["canonical_id"] =
+                json!(format!("00000000-0000-4000-8000-{:012x}", i + 2));
+            object["version_id"] = json!(format!("00000000-0000-4000-8000-{:012x}", i + 100));
+        }
+        input
+    }
+
+    fn add_projection(input: &mut Value, id: &str, selector: &str, classification: Value) {
+        let object = input["objects"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|o| o["object_id"] == id)
+            .unwrap();
+        if object.get("field_projection").is_none() {
+            object["field_projection"] = json!({"workspace_id":object["canonical"]["workspace_id"], "canonical_id":object["canonical"]["canonical_id"], "version_id":object["version_id"], "content_digest":object["content_digest"], "fields":[]});
+        }
+        object["field_projection"]["fields"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"selector":selector,"classification":classification}));
+    }
+
+    fn query(input: &Value, text: &str, mode: SearchMode) -> ManagedRetrievalOutcome {
+        run_managed_retrieval(
+            &serde_json::to_vec(input).unwrap(),
+            ManagedRetrievalQuery::Search {
+                text: text.into(),
+                mode,
+                top: NonZeroUsize::new(20).unwrap(),
+            },
+        )
+    }
+
+    fn why(input: &Value, id: &str) -> ManagedRetrievalOutcome {
+        run_managed_retrieval(
+            &serde_json::to_vec(input).unwrap(),
+            ManagedRetrievalQuery::Why {
+                object_id: id.into(),
+            },
+        )
+    }
+
+    fn restricted_policy(input: &mut Value) {
+        input["policy"] = json!({"audience":"restricted","allowed_visibilities":["public","internal","restricted"],"excluded_object_ids":[]});
+    }
+
+    #[test]
+    fn partial_field_indexing_sensitive_labels_and_no_hit_attribution() {
+        let root = tempfile::tempdir().unwrap();
+        let retained = receipt(
+            root.path(),
+            &SOURCE.replace("billing-team", "OWNERPHOTONCANARY"),
+        );
+        for (selector, hidden_query, sibling_query) in [
+            ("/fields/owner", "OWNERPHOTONCANARY", "retained"),
+            ("/body", "retained", "OWNERPHOTONCANARY"),
+        ] {
+            let mut input = projected_input(&retained, &["billing.selected"]);
+            add_projection(&mut input, "billing.selected", selector, Value::Null);
+            for mode in [SearchMode::Lexical, SearchMode::Hybrid] {
+                let absent = query(&input, hidden_query, mode);
+                assert_eq!(absent.exit_code, 0);
+                assert!(absent.envelope.records.is_empty());
+                let bindings = serde_json::to_value(&absent.contributing_bindings).unwrap();
+                assert_eq!(bindings.as_array().unwrap().len(), 1);
+                assert!(bindings[0].get("accessed_object").is_none());
+                assert!(bindings[0].get("field_projection").is_some());
+                let found = query(&input, sibling_query, mode);
+                assert_eq!(found.envelope.records.len(), 1);
+                let record = serde_json::to_value(&found.envelope.records[0]).unwrap();
+                if selector == "/body" {
+                    assert_eq!(record["body"], "");
+                } else {
+                    assert!(record.get("owner").is_none());
+                }
+            }
+        }
+        for class in ["internal", "restricted"] {
+            let mut input = projected_input(&retained, &["billing.selected"]);
+            add_projection(
+                &mut input,
+                "billing.selected",
+                "/fields/owner",
+                json!(class),
+            );
+            assert!(
+                serde_json::to_value(&why(&input, "billing.selected").envelope.records[0])
+                    .unwrap()
+                    .get("owner")
+                    .is_none()
+            );
+            restricted_policy(&mut input);
+            let result = why(&input, "billing.selected");
+            assert_eq!(result.exit_code, 0);
+            assert_eq!(
+                serde_json::to_value(&result.envelope.records[0]).unwrap()["classification"],
+                class
+            );
+            assert_eq!(
+                serde_json::to_value(&result.contributing_bindings).unwrap()[0]["accessed_object"]
+                    ["classification"],
+                class
+            );
+        }
+    }
+
+    #[test]
+    fn hidden_body_edges_expiry_and_generic_body_collision_do_not_hide_siblings() {
+        let root = tempfile::tempdir().unwrap();
+        let retained = receipt(
+            root.path(),
+            &SOURCE.replace(
+                "Retained reference to billing.target.",
+                "Retained reference to [[billing.target]].",
+            ),
+        );
+        let mut input = projected_input(&retained, &["billing.referrer"]);
+        assert!(why(&input, "billing.referrer").envelope.records.is_empty());
+        add_projection(&mut input, "billing.referrer", "/body", Value::Null);
+        let result = why(&input, "billing.referrer");
+        assert_eq!(result.exit_code, 0, "{:?}", result.envelope);
+        assert_eq!(
+            serde_json::to_value(&result.envelope.records[0]).unwrap()["body"],
+            ""
+        );
+        let mut selected = node(&retained, "billing.selected");
+        selected["fields"]["body"] = json!("GENERIC_BODY_SECRET");
+        selected["fields"]["expires_at"] = json!("2000-01-01");
+        selected["effective_status"] = json!("stale");
+        selected["effective_reason"] = json!("expired:2000-01-01");
+        let selected = seal_node(selected);
+        let retained = graph(vec![selected.clone()]);
+        let mut input = projected_input(&retained, &["billing.selected"]);
+        add_projection(&mut input, "billing.selected", "/fields/body", Value::Null);
+        add_projection(
+            &mut input,
+            "billing.selected",
+            "/fields/expires_at",
+            Value::Null,
+        );
+        let result = why(&input, "billing.selected");
+        assert_eq!(result.exit_code, 0);
+        let record = serde_json::to_value(&result.envelope.records[0]).unwrap();
+        assert_eq!(record["body"], selected["body"]);
+        assert!(record["fields"].get("body").is_none());
+        assert!(record.get("effective_status").is_none());
+        assert!(record.get("effective_reason").is_none());
+    }
+
+    #[test]
+    fn authored_floors_preserve_object_gates_and_protect_actual_dedicated_members() {
+        let root = tempfile::tempdir().unwrap();
+        let compiled = receipt(root.path(), SOURCE);
+        for key in ["status", "does_not_exist"] {
+            let mut selected = node(&compiled, "billing.selected");
+            selected["field_visibility"] = json!({key:"restricted"});
+            let retained = graph(vec![seal_node(selected)]);
+            let mut input = projected_input(&retained, &["billing.selected"]);
+            let result = why(&input, "billing.selected");
+            assert_eq!(result.envelope.records.is_empty(), key == "status");
+            restricted_policy(&mut input);
+            let result = why(&input, "billing.selected");
+            let record = serde_json::to_value(&result.envelope.records[0]).unwrap();
+            assert_eq!(
+                record.get("classification").and_then(Value::as_str),
+                (key == "status").then_some("restricted")
+            );
+        }
+        let mut selected = node(&compiled, "billing.selected");
+        selected["visibility"] = json!("internal");
+        let retained = graph(vec![seal_node(selected)]);
+        let mut input = projected_input(&retained, &["billing.selected"]);
+        input["policy"] = json!({"audience":"restricted","allowed_visibilities":["public","restricted"],"excluded_object_ids":[]});
+        add_projection(
+            &mut input,
+            "billing.selected",
+            "/fields/owner",
+            json!("restricted"),
+        );
+        assert!(
+            why(&input, "billing.selected").envelope.records.is_empty(),
+            "field promotion cannot widen the authored object gate"
+        );
+    }
+
+    #[test]
+    fn copied_sensitive_metadata_labels_returned_records_and_audits_actual_sources() {
+        let root = tempfile::tempdir().unwrap();
+        let compiled = receipt(root.path(), SOURCE);
+        for carrier in ["question", "evidence", "contradiction"] {
+            let mut owner = node(&compiled, "billing.selected");
+            let mut source = node(&compiled, "billing.target");
+            source["visibility"] = json!("restricted");
+            match carrier {
+                "question" => {
+                    source["kind"] = json!("question");
+                    source["status"] = json!("answered");
+                    source["fields"]["resolved_by"] = json!("billing.selected");
+                }
+                "evidence" => {
+                    source["kind"] = json!("source");
+                    source["fields"]["kind"] = json!("source_code");
+                    owner["evidence"] =
+                        json!([{"kind":"source_code","reference":"billing.target"}]);
+                    owner["evidence_quality"] = json!("high");
+                }
+                "contradiction" => {
+                    source["kind"] = json!("contradiction");
+                    source["status"] = json!("unresolved");
+                    source["contradiction_claims"] = json!(["billing.selected"]);
+                }
+                _ => unreachable!(),
+            }
+            let retained = graph(vec![seal_node(owner), seal_node(source)]);
+            let mut input = projected_input(&retained, &["billing.selected", "billing.target"]);
+            restricted_policy(&mut input);
+            let result = why(&input, "billing.selected");
+            assert_eq!(result.exit_code, 0, "{carrier}: {:?}", result.envelope);
+            let record = serde_json::to_value(&result.envelope.records[0]).unwrap();
+            assert_eq!(record["classification"], "restricted", "{carrier}");
+            let accesses: Vec<_> = serde_json::to_value(&result.contributing_bindings)
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(|b| b.get("accessed_object").cloned())
+                .collect();
+            assert_eq!(accesses.len(), 2, "{carrier}");
+            assert_eq!(accesses[0]["object_id"], "billing.selected");
+            assert_eq!(
+                accesses[0]["classification"],
+                Value::Null,
+                "derived class must not replace direct target class"
+            );
+            assert_eq!(accesses[1]["object_id"], "billing.target");
+            assert_eq!(accesses[1]["classification"], "restricted");
+            if carrier == "question" || carrier == "evidence" {
+                add_projection(
+                    &mut input,
+                    "billing.target",
+                    if carrier == "question" {
+                        "/fields/resolved_by"
+                    } else {
+                        "/fields/kind"
+                    },
+                    Value::Null,
+                );
+                let result = why(&input, "billing.selected");
+                assert_eq!(result.exit_code, 0, "{carrier}: {:?}", result.envelope);
+                let record = serde_json::to_value(&result.envelope.records[0]).unwrap();
+                assert!(
+                    record.get("classification").is_none(),
+                    "hidden copied field must not taint {carrier}"
+                );
+                let manifest = serde_json::to_value(&result.contributing_bindings).unwrap();
+                assert!(
+                    manifest[1].get("accessed_object").is_none(),
+                    "hidden {carrier} source is only a corpus contributor"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn expiry_precedence_does_not_attribute_unrendered_contradiction_metadata() {
+        let root = tempfile::tempdir().unwrap();
+        let compiled = receipt(root.path(), SOURCE);
+        let mut owner = node(&compiled, "billing.selected");
+        owner["fields"]["expires_at"] = json!("2000-01-01");
+        owner["effective_status"] = json!("stale");
+        owner["effective_reason"] = json!("expired:2000-01-01");
+        let mut source = node(&compiled, "billing.target");
+        source["visibility"] = json!("restricted");
+        source["kind"] = json!("contradiction");
+        source["status"] = json!("unresolved");
+        source["contradiction_claims"] = json!(["billing.selected"]);
+        let retained = graph(vec![seal_node(owner), seal_node(source)]);
+        let mut input = projected_input(&retained, &["billing.selected", "billing.target"]);
+        restricted_policy(&mut input);
+        let result = why(&input, "billing.selected");
+        assert_eq!(result.exit_code, 0);
+        let record = serde_json::to_value(&result.envelope.records[0]).unwrap();
+        assert_eq!(record["effective_reason"], "expired:2000-01-01");
+        assert!(record.get("classification").is_none());
+        let manifest = serde_json::to_value(&result.contributing_bindings).unwrap();
+        assert!(manifest[0].get("accessed_object").is_some());
+        assert!(manifest[1].get("accessed_object").is_none());
+    }
+
+    #[test]
+    fn no_visibility_or_provenance_preserves_exact_binding_bytes() {
+        let root = tempfile::tempdir().unwrap();
+        let compiled = receipt(
+            root.path(),
+            &SOURCE
+                .replace("visibility: public\n", "")
+                .replace("visibility: restricted\n", ""),
+        );
+        let input = managed_input(
+            &[("r", &compiled)],
+            &[("c", "r", node(&compiled, "billing.selected"))],
+        );
+        let result = why(&input, "billing.selected");
+        assert_eq!(
+            serde_json::to_string(&result.contributing_bindings).unwrap(),
+            r#"[{"canonical":{"workspace_id":"workspace-billing","canonical_id":"c"},"version_id":"version-c","receipt_id":"r"}]"#
+        );
+        assert_eq!(
+            serde_json::to_vec(&result.envelope).unwrap(),
+            serde_json::to_vec(&RetrievalEnvelope::from(why_object(
+                &session(&graph(vec![node(&compiled, "billing.selected")]), &[]),
+                "billing.selected"
+            )))
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn malformed_projection_metadata_fails_closed_without_payload_or_bindings() {
+        let root = tempfile::tempdir().unwrap();
+        let retained = receipt(root.path(), SOURCE);
+        let mut valid = projected_input(&retained, &["billing.selected"]);
+        add_projection(&mut valid, "billing.selected", "/fields/owner", Value::Null);
+        let mut malformed = Vec::new();
+        for (pointer, value) in [
+            ("", Value::Null),
+            ("", json!([])),
+            ("/fields", json!([])),
+            ("/fields", json!([["/body", null]])),
+            (
+                "/workspace_id",
+                json!("00000000-0000-4000-8000-000000000099"),
+            ),
+            ("/version_id", json!("bad")),
+            (
+                "/content_digest",
+                json!(format!("sha256:{}", "f".repeat(64))),
+            ),
+            ("/fields/0/selector", json!("/status")),
+            ("/fields/0/selector", json!("/fields/not_present")),
+            ("/fields/0/classification", json!("secret")),
+        ] {
+            let mut input = valid.clone();
+            *input["objects"][0]["field_projection"]
+                .pointer_mut(pointer)
+                .unwrap() = value;
+            malformed.push(input);
+        }
+        let mut missing = valid.clone();
+        missing["objects"][0]["field_projection"]["fields"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("classification");
+        malformed.push(missing);
+        let mut duplicate = valid.clone();
+        let row = duplicate["objects"][0]["field_projection"]["fields"][0].clone();
+        duplicate["objects"][0]["field_projection"]["fields"]
+            .as_array_mut()
+            .unwrap()
+            .push(row);
+        malformed.push(duplicate);
+        let mut unknown = valid.clone();
+        unknown["objects"][0]["field_projection"]["private_body"] = json!("PROJECTION_SECRET");
+        malformed.push(unknown);
+        for input in malformed {
+            let result = why(&input, "billing.selected");
+            assert_eq!(result.exit_code, 2);
+            assert!(result.envelope.records.is_empty());
+            assert!(result.contributing_bindings.is_empty());
+            assert_eq!(
+                result.envelope.diagnostics[0].code,
+                DiagnosticCode::RetrievalVisibilityUnavailable
+            );
+            assert!(
+                !serde_json::to_string(&result.envelope)
+                    .unwrap()
+                    .contains("PROJECTION_SECRET")
+            );
+        }
     }
 }

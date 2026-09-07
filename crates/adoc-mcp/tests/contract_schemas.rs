@@ -29,6 +29,35 @@ fn managed_retrieval_input_is_closed_and_requires_exact_byte_bindings() {
         "receipts": [{"id":"receipt-1", "workspace_id":"workspace-1", "graph_bytes":"{}", "graph_digest":format!("sha256:{}", "a".repeat(64))}],
         "objects": [{"canonical":{"workspace_id":"workspace-1", "canonical_id":"object-1"}, "version_id":"version-1", "object_id":"billing.credit", "receipt_id":"receipt-1", "content_bytes":"{}", "content_digest":format!("sha256:{}", "b".repeat(64))}]
     });
+    let mut projected = valid.clone();
+    projected["objects"][0]["field_projection"] = json!({
+        "workspace_id":"00000000-0000-4000-8000-000000000001",
+        "canonical_id":"00000000-0000-4000-8000-000000000002",
+        "version_id":"00000000-0000-4000-8000-000000000003",
+        "content_digest":format!("sha256:{}", "b".repeat(64)),
+        "fields":[{"selector":"/fields/owner", "classification":null}]
+    });
+    assert_valid(name, &projected);
+    for (pointer, value) in [
+        ("", json!(null)),
+        ("", json!([])),
+        ("/fields", json!([])),
+        ("/fields", json!([["/body", null]])),
+        ("/fields/0/selector", json!("/status")),
+        ("/fields/0/classification", json!("secret")),
+    ] {
+        let mut invalid = projected.clone();
+        *invalid["objects"][0]["field_projection"]
+            .pointer_mut(pointer)
+            .unwrap() = value;
+        assert!(!schema_accepts(name, &invalid), "projection {pointer}");
+    }
+    let mut missing = projected.clone();
+    missing["objects"][0]["field_projection"]["fields"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("classification");
+    assert!(!schema_accepts(name, &missing));
     // Structural admission only; core separately verifies JSON, digests and joins.
     assert_valid(name, &valid);
     for pointer in [
