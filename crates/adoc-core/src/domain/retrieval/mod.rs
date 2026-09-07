@@ -44,6 +44,14 @@ impl RetrievalPolicy {
         Ok(())
     }
 
+    pub(crate) fn permits_visibility(
+        &self,
+        visibility: super::value_objects::visibility::Visibility,
+    ) -> bool {
+        self.allowed_visibilities.contains(visibility.as_str())
+            && canonical_visibility(&self.audience).is_some_and(|audience| visibility <= audience)
+    }
+
     /// One permission predicate, evaluated before any retrieval index exists.
     pub(crate) fn permits(
         policy: Option<&Self>,
@@ -62,9 +70,7 @@ impl RetrievalPolicy {
             return Ok(visibility == Visibility::Public);
         };
         Ok(!policy.excluded_object_ids.contains(&object.id)
-            && policy.allowed_visibilities.contains(visibility.as_str())
-            && canonical_visibility(&policy.audience)
-                .is_some_and(|audience| visibility <= audience))
+            && policy.permits_visibility(visibility))
     }
 }
 

@@ -80,3 +80,36 @@ SHA256; bodies, paths, query text, vectors and timestamps are forbidden. Cloud
 owns emission/persistence; validation alone does not establish authorization.
 MCP authenticated delivery and local CLI exemption are E6.3 work; no local audit
 or spool is introduced here.
+
+## Partial fields and direct-source attribution (E6.2.T2)
+
+`--require-field-projection` requires the compatible runtime. The optional
+`field_projection` on each selected object carries current native T1 metadata:
+exact workspace/canonical/version/content-digest coordinates and 1–100 distinct
+`fields[{selector,classification}]` rows. Classification is required and may be
+null. An absent extension means no manifest; a present empty projection refuses.
+Core validates the object-only shape and exact string targets before filtering.
+
+Null/unreadable body becomes the required empty output string; generic fields
+and their aliases are omitted. Authored floors still apply without a manifest.
+A protected actual non-null top-level member other than body is a dedicated
+carrier: unreadable means whole-object exclusion, readable means its floor joins
+the direct classification. No aliases are invented; a name present in both the
+generic map and top-level node protects both. Unknown/absent member names do not
+create fictional payload. Canonical bytes and content hashes never change.
+
+Hidden body/resolution edges and copied expiry/evidence metadata are removed or
+recomputed before reference closure and indexing. Each retained private binding
+carries its field projection for current revalidation, even when it is a nonhit.
+When surviving visibility metadata or provenance exists, an optional
+`accessed_object: {object_id,content_hash,classification}` marks every returned
+root and the direct sources of its copied reverse-question, evidence-quality or
+contradiction metadata. Public classification is an explicit null. Nonhits retain
+bindings without access markers; empty results create no access subjects.
+
+The displayed record classification includes the strictest copied source; its
+direct source class can be lower. Native finalization audits the marked actual
+source objects, independently verifies direct classes and current authority,
+and releases no bytes until the audit commits. It must not substitute a derived
+record label for an audited source class. Corpora with neither visibility metadata
+nor field provenance preserve their prior envelope and binding bytes.

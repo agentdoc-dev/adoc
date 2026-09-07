@@ -229,7 +229,7 @@ pub fn strictest_contributing_visibility(
     Ok((!unresolved).then(|| strictest.as_str().to_string()))
 }
 
-fn is_canonical_uuid(value: &str) -> bool {
+pub(crate) fn is_canonical_uuid(value: &str) -> bool {
     value.len() == 36
         && value.bytes().enumerate().all(|(index, byte)| {
             if matches!(index, 8 | 13 | 18 | 23) {
@@ -240,7 +240,7 @@ fn is_canonical_uuid(value: &str) -> bool {
         })
 }
 
-fn is_selector(selector: &str) -> bool {
+pub(crate) fn is_selector(selector: &str) -> bool {
     if selector.chars().count() > MAX_SELECTOR_LENGTH {
         return false;
     }
