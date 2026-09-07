@@ -365,6 +365,8 @@ These adapter codes are emitted by the MCP gateway and consumed by its clients; 
 | code | status | meaning |
 | --- | --- | --- |
 | `retrieval.audit_sink_unavailable` | unreleased (E6.3.T1) | synchronous sensitive retrieval is refused because trusted audit admission or a matching durable recording receipt is unavailable; no sensitive response is released |
+| `retrieval.sensitive_access_unrecorded` | unreleased (E6.3.T2) | sensitive MCP output was permitted under current authority after exact metadata was durably spooled; Cloud recording remains pending and the response includes a visible warning |
+| `retrieval.audit_spool_corrupt` | unreleased (E6.3.T2) | journal integrity failed; the next application request is refused without sensitive content or journal details, and retained bytes require operator investigation |
 <!-- /registry:gateway-audit-codes -->
 
 ## Action codes — owner `action`

@@ -447,7 +447,11 @@ fn gateway_audit_refusal_is_registered() {
         .unwrap();
     assert_eq!(
         anchored_ids(&registry(), "registry:gateway-audit-codes"),
-        BTreeSet::from([code.to_string()])
+        BTreeSet::from([
+            code.to_string(),
+            "retrieval.sensitive_access_unrecorded".into(),
+            "retrieval.audit_spool_corrupt".into()
+        ])
     );
 }
 

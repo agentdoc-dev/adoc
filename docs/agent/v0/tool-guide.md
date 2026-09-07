@@ -20,13 +20,13 @@ Its operator-owned file must contain a valid `retrieval_policy`; selecting anoth
 project or artifact cannot widen that audience. Restart the gateway after changing
 its authority configuration. See the [MCP Agent Gateway guide](../../guides/mcp-agent-gateway.md#bind-retrieval-authority).
 
-For connected sensitive MCP retrieval, start the gateway from its served repository:
+For sensitive MCP retrieval, start the gateway from its served repository:
 
 ```sh
 adoc-mcp --config gateway.yaml --audit-config audit.json
 ```
 
-The separate operator-owned `audit.json` has exactly these fields:
+The separate operator-owned `audit.json` requires these four fields:
 
 ```json
 {
@@ -43,16 +43,49 @@ auth session, gateway session, and effective local-policy digest. The gateway fi
 one canonical served root; tool arguments cannot select another root or identity.
 Only HTTPS origins are accepted, except literal loopback HTTP for local integration.
 
-`search`, `why`, `graph`, `stale`, `contradictions`, and `impacted_by` record exact
-sensitive Object IDs, original content hashes and classes before returning content.
-Each attempt first checks current Cloud audit-metadata egress permission. Successful
-sensitive results append `Sensitive (internal).` or `Sensitive (restricted).` without
-changing their existing envelopes. Public, no-hit and denied results emit no event.
-Unavailable recording returns the machine-readable `retrieval.audit_sink_unavailable`
-refusal and withholds sensitive output. Ambiguous acknowledgement is retried with the
-same event bytes before a newly prepared response can receive its own event.
-This connected cut has no durable offline spool; direct single-user CLI retrieval
-requires no gateway auditor.
+The optional fifth field `delivery_policy` accepts `"spool"` (the default) or
+`"synchronous"`. Unknown properties and values refuse startup. The token file is
+reloaded per transaction; replacing it with a fresh login from the same person
+allows unchanged historical events to upload under current read and egress checks.
+New reads bind that current login. A saved binding never grants authority.
+
+`search`, `why`, `graph`, `stale`, `contradictions`, and `impacted_by` durably append
+exact sensitive Object IDs, original hashes and classes to
+`.adoc-audit/spool.log` before transmission. Both policies require current authority.
+If recording is temporarily unavailable after successful preflight, default spool
+mode permits output only after another current-authority check succeeds. Synchronous
+mode withholds output until a matching receipt is durably acknowledged. Public and
+no-hit calls may retry pending history but create no new event. Recovery never
+returns an old stored response; the journal contains metadata, not content or tokens.
+
+Sensitive success preserves the existing structured envelope and first JSON text
+block, appends `Sensitive (internal).` or `Sensitive (restricted).`, and adds one
+closed status object:
+
+```json
+{"_meta":{"adoc.sensitive_access":{"state":"recorded","event_id":"<uuid>"}}}
+```
+
+Pending success instead uses
+`{"state":"spooled_pending","event_id":"<uuid>","code":"retrieval.sensitive_access_unrecorded"}`
+and appends `Sensitive access audit is pending recording (retrieval.sensitive_access_unrecorded).`
+after the classification block. Ordinary results have no status or warning. The six
+public Rust `run_*` retrieval methods return this same `CallToolResult`, including
+metadata and warnings, as the actual async MCP handlers.
+
+Refusal has no sensitive result and uses ErrorData `data` exactly
+`{"code":"retrieval.audit_sink_unavailable","sensitive_access":{"state":"refused"}}`.
+Journal corruption substitutes `retrieval.audit_spool_corrupt`; it refuses the next
+application tool, resource or prompt request, including public queries. Corruption
+requires explicit operator investigation: preserve the journal and do not truncate,
+delete or silently reset it. Restart retains pending bytes, IDs and original sessions.
+The fixed journal cannot change root, origin, repository or local policy in place.
+
+The private directory and journal require modes 0700/0600, reject symlinks and
+hardlinks, and retain an exclusive process lock. A second gateway refuses promptly;
+abrupt process exit releases the OS lock. Inode/path checks detect replacement;
+these operator-controlled paths do not provide protection against malicious
+same-user ancestor rename races. Direct single-user CLI retrieval needs no auditor.
 
 `search` and `why` discover local retrieval policy even with an explicit
 `--artifact`. For example, an operator can configure:
