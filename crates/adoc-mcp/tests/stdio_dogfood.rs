@@ -757,3 +757,110 @@ fn stdio_gateway_binds_explicit_policy_once_independently_of_selected_project() 
         assert!(!restricted.to_string().contains("RESTRICTED_GATEWAY_CANARY"));
     }
 }
+
+#[test]
+fn unclassified_stdio_search_and_why_preserve_complete_local_payloads() {
+    let workspace = tempfile::tempdir().unwrap();
+    let root = workspace.path();
+    fs::create_dir(root.join("docs")).unwrap();
+    fs::write(root.join("docs/index.adoc"), "# Billing @doc(team.billing)\n\nCredits are ordinary billing context.\n\n::claim billing.credits\nstatus: draft\nowner: billing-team\n--\nCredits apply after payment.\n::\n").unwrap();
+    let local = adoc_local::LocalContext::new(
+        root.into(),
+        adoc_local::ProjectRootPathPolicy::new(root).unwrap(),
+    );
+    assert_eq!(
+        local
+            .build(adoc_local::BuildInput {
+                audience: None,
+                path: Some("docs".into()),
+                out: Some("dist".into()),
+                no_embeddings: true,
+                as_of: None,
+            })
+            .unwrap()
+            .exit_code,
+        0
+    );
+    let why = local
+        .why(adoc_local::WhyInput {
+            object_id: "billing.credits".into(),
+            artifact: Some("dist/docs.graph.json".into()),
+        })
+        .unwrap();
+    let why = serde_json::to_value(adoc_core::RetrievalEnvelope::new(
+        why.records
+            .into_iter()
+            .map(|record| adoc_core::RetrievalEntry::KnowledgeObject(record.record))
+            .collect(),
+        why.diagnostics,
+    ))
+    .unwrap();
+    let search = local
+        .search(adoc_local::SearchInput {
+            query: "credits".into(),
+            artifact: Some("dist/docs.graph.json".into()),
+            search_artifact: None,
+            semantic: false,
+            lexical: true,
+            kind: None,
+            status: None,
+            owner: None,
+            source_path: None,
+            related_to: None,
+            relation: None,
+            direction: None,
+            top: std::num::NonZeroUsize::new(10).unwrap(),
+            scope: adoc_core::SearchRecordScope::Blended,
+        })
+        .unwrap();
+    // Match the local wire serializer, including f32 score precision.
+    let search: serde_json::Value =
+        serde_json::from_slice(&serde_json::to_vec(&search.envelope).unwrap()).unwrap();
+
+    // The harness sets ambient restricted hints; they confer no authority.
+    let mut server = StdioServer::spawn(root);
+    server.send(serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+        "protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"unclassified-parity","version":"0"}
+    }}));
+    assert_eq!(server.receive()["id"], 1);
+    server.send(serde_json::json!({"jsonrpc":"2.0","method":"notifications/initialized"}));
+    for (id, name, arguments, expected) in [
+        (
+            2,
+            "adoc_search",
+            serde_json::json!({"query":"credits","lexical":true,"artifact":"dist/docs.graph.json"}),
+            search,
+        ),
+        (
+            3,
+            "adoc_why",
+            serde_json::json!({"object_id":"billing.credits","artifact":"dist/docs.graph.json"}),
+            why,
+        ),
+    ] {
+        assert!(!expected["records"].as_array().unwrap().is_empty());
+        for record in expected["records"].as_array().unwrap() {
+            for key in ["classification", "field_projection", "declassification"] {
+                assert!(record.get(key).is_none(), "unexpected {key}: {record}");
+            }
+        }
+        assert!(expected.get("sensitive_access").is_none());
+        server.send(
+            serde_json::json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{
+                "name":name,"arguments":arguments
+            }}),
+        );
+        let response = server.receive();
+        assert_eq!(response["id"], id);
+        assert_eq!(response["result"]["isError"], false);
+        assert_eq!(structured_content(&response), &expected);
+        assert_eq!(response["result"]["content"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            response["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .as_bytes(),
+            expected.to_string().as_bytes()
+        );
+    }
+}
