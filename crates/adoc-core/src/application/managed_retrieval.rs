@@ -221,6 +221,17 @@ fn assemble(
         if receipt.objects.get(&object.object_id) != Some(&content) {
             return Err(unavailable());
         }
+        // A withheld span is private projection state, never an admissible
+        // original selected source (including inputs without declassification).
+        if receipt
+            .graph
+            .nodes
+            .iter()
+            .filter_map(GraphNode::as_knowledge_object)
+            .any(|node| node.id == object.object_id && node.source_span.is_withheld())
+        {
+            return Err(unavailable());
+        }
         if let Some(projection) = &object.field_projection {
             projection.validate(&object, &content)?;
         }
@@ -1445,6 +1456,48 @@ Retained TARGET_CANARY old knowledge.
             .exit_code,
             0
         );
+    }
+
+    #[test]
+    fn original_withheld_source_sentinel_without_declassification_is_refused() {
+        let root = tempfile::tempdir().unwrap();
+        let compiled = receipt(root.path(), SOURCE);
+        for explicit_visibility in [false, true] {
+            let mut selected = node(&compiled, "billing.selected");
+            if !explicit_visibility {
+                selected.as_object_mut().unwrap().remove("visibility");
+            }
+            selected["source_span"] = json!({"path":"", "line":0, "column":0});
+            let selected = seal_node(selected);
+            let retained = graph(vec![selected]);
+            let input = projected_input(&retained, &["billing.selected"]);
+            assert!(input["objects"][0].get("field_projection").is_none());
+            for result in [
+                why(&input, "billing.selected"),
+                query(&input, "retained", SearchMode::Lexical),
+            ] {
+                assert_eq!(
+                    result.exit_code, 2,
+                    "original sentinel became trusted: {:?}",
+                    result.envelope
+                );
+                assert_eq!(
+                    result.envelope.diagnostics[0].code,
+                    DiagnosticCode::RetrievalVisibilityUnavailable
+                );
+                assert!(result.envelope.records.is_empty());
+                assert!(result.contributing_bindings.is_empty());
+            }
+        }
+        // Do not broaden legacy validation to unrelated, unselected sources.
+        let selected = node(&compiled, "billing.selected");
+        let mut unselected = node(&compiled, "billing.target");
+        unselected["source_span"] = json!({"path":"", "line":0, "column":0});
+        let retained = graph(vec![selected.clone(), seal_node(unselected)]);
+        let input = projected_input(&retained, &["billing.selected"]);
+        let control = projected_input(&graph(vec![selected]), &["billing.selected"]);
+        assert_eq!(managed_search_bytes(&input), managed_search_bytes(&control));
+        assert_eq!(why(&input, "billing.selected").exit_code, 0);
     }
 
     #[test]
