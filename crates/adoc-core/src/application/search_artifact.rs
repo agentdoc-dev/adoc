@@ -8,10 +8,12 @@ use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::graph::{GraphArtifactDocument, GraphKnowledgeObjectNode, GraphNode};
 use crate::domain::hashing::sha256_prefixed;
 use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider};
-use crate::domain::retrieval::metadata;
+use crate::domain::retrieval::{RetrievalPolicy, metadata};
 use crate::infrastructure::artifact::search_json::{
     SUPPORTED_SEARCH_SCHEMA_VERSION, read_search_artifact_document,
 };
+
+use super::retrieval::filter_retrieval_document;
 
 pub(crate) struct SearchArtifactBuild {
     pub(crate) json: String,
@@ -39,7 +41,12 @@ pub(crate) fn build_search_artifact(
     graph_json: &str,
     provider: &dyn EmbeddingProvider,
     prior_search_artifact_path: Option<&PathBuf>,
+    policy: Option<&RetrievalPolicy>,
 ) -> Result<SearchArtifactBuild, Vec<Diagnostic>> {
+    // Compose and reuse only material admitted by the same policy as retrieval.
+    // The original graph and its artifact binding remain unchanged.
+    let mut searchable = graph_document.clone();
+    filter_retrieval_document(&mut searchable, policy).map_err(|diagnostic| vec![*diagnostic])?;
     let model = search_model_header(provider);
     let cache_load = load_matching_search_cache(prior_search_artifact_path, &model);
     let cached_embeddings = cache_load.embeddings;
@@ -48,7 +55,7 @@ pub(crate) fn build_search_artifact(
     let mut misses = Vec::new();
     let mut cached_count = 0;
 
-    for knowledge_object in graph_knowledge_objects(graph_document) {
+    for knowledge_object in graph_knowledge_objects(&searchable) {
         let input = metadata::embedding_input(knowledge_object);
         let content_hash = sha256_prefixed(input.as_bytes());
         let id = knowledge_object.id.clone();
@@ -82,7 +89,7 @@ pub(crate) fn build_search_artifact(
         .filter(|cached| cached.entry_kind == SearchEntryKind::Prose)
         .map(|cached| (cached.content_hash.as_str(), cached))
         .collect();
-    for (kind, block) in graph_document
+    for (kind, block) in searchable
         .nodes
         .iter()
         .filter_map(GraphNode::as_prose_block)
@@ -386,7 +393,7 @@ mod tests {
         provider: &DeterministicProvider,
         prior: Option<&PathBuf>,
     ) -> SearchArtifactBuild {
-        build_search_artifact(document, "{}", provider, prior)
+        build_search_artifact(document, "{}", provider, prior, None)
             .expect("search artifact build succeeds")
     }
 

@@ -1997,6 +1997,71 @@ mod tests {
     }
 
     #[test]
+    fn authored_field_projection_rejects_old_wide_vectors_before_ranking() {
+        let mut partial = object("billing.partial", "PROTECTED_BODY_CANARY");
+        partial
+            .fields
+            .insert("owner".into(), "PROTECTED_OWNER_CANARY".into());
+        partial.field_visibility = Some(BTreeMap::from([
+            ("body".into(), "restricted".into()),
+            ("owner".into(), "internal".into()),
+        ]));
+        let mut hidden = object("billing.hidden", "PROTECTED_OBJECT_CANARY");
+        hidden.visibility = Some("internal".into());
+        let safe = object("billing.safe", "Public credit explanation.");
+        let graph = graph_document(vec![partial.clone(), hidden.clone(), safe.clone()], vec![]);
+        let mut vectors =
+            search_document(&sha256_prefixed(graph.to_pretty_json().unwrap().as_bytes()));
+        vectors.embeddings = [partial, hidden, safe]
+            .iter()
+            .map(|node| SearchEmbedding {
+                id: node.id.clone(),
+                entry_kind: SearchEntryKind::KnowledgeObject,
+                content_hash: sha256_prefixed(metadata::embedding_input(node).as_bytes()),
+                // Both excluded compositions would outrank the safe vector if admitted.
+                vector: if node.id == "billing.safe" {
+                    vec![0.0, 1.0]
+                } else {
+                    vec![1.0, 0.0]
+                },
+            })
+            .collect();
+        let loaded = load_retrieval_session_with_readers(
+            RetrievalInput {
+                artifact_path: "ignored.graph.json".into(),
+                search_artifact_path: Some("ignored.search.json".into()),
+                policy: None,
+            },
+            &StubSearchArtifactReader { document: vectors },
+            &StubGraphArtifactReader { document: graph },
+            None,
+        );
+        assert_eq!(loaded.diagnostics.len(), 1);
+        assert_eq!(loaded.diagnostics[0].code, DiagnosticCode::SearchHashDrift);
+        let session = loaded.session.expect("public partial session");
+        let partial = why_object(&session, "billing.partial");
+        assert_eq!(
+            partial.records.len(),
+            1,
+            "public identity remains retrievable"
+        );
+        assert!(partial.records[0].body.is_empty());
+        assert!(!partial.records[0].fields.contains_key("owner"));
+        let hits = session.vector_index().unwrap().rank(&[1.0, 0.0], 10);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].id, "billing.safe");
+        assert_eq!(hits[0].vector_rank, 1);
+        for mode in [SearchMode::Semantic, SearchMode::Hybrid] {
+            let mut query = lexical_search_query("Public credit", SearchRecordScope::ObjectsOnly);
+            query.mode = mode;
+            query.query_vector = Some(vec![1.0, 0.0]);
+            let result = search(&session, query);
+            assert_eq!(result.records.len(), 1, "{mode:?}");
+            assert_eq!(result.records[0].id(), "billing.safe");
+        }
+    }
+
+    #[test]
     fn prose_vector_admission_checks_current_composition_and_kind() {
         use crate::domain::retrieval::metadata;
         for change in ["body", "page", "kind", "unchanged"] {
