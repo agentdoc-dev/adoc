@@ -1,7 +1,7 @@
 # V10 Decision Annex — Identity, Authorization, ACLs, and Groups
 
-**Status:** Locked planning decisions from 2026-08-12  
-**Invariant authority:** [ADR-0057](../../adr/0057-fix-four-managed-product-invariants.md) fixes the deterministic, deny-by-default authorization precedence (invariant 3, D38) — this annex elaborates that order and never redefines it  
+**Status:** Locked planning decisions from 2026-08-12
+**Invariant authority:** [ADR-0057](../../adr/0057-fix-four-managed-product-invariants.md) fixes the deterministic, deny-by-default authorization precedence (invariant 3, D38) — this annex elaborates that order and never redefines it
 **Parent:** [`DECISION-REGISTER.md`](DECISION-REGISTER.md)
 
 This annex is normative for V10 planning. Shipped code and accepted ADRs remain implementation truth.
@@ -269,3 +269,7 @@ Post-V1 required evolution:
 - separation of duties;
 - approval quorum;
 - advanced enterprise identity (SSO/SCIM administration) and policy administration.
+
+## Native writeback permission addition (E6.5.T2)
+
+Permission vocabulary version 2 adds `source.writeback` to the unchanged version-1 set. See the separate CONTRACT-REGISTRY native-additions table. It permits current scoped service/workload dispatch to an explicitly enrolled source target, subject to current delegation, deny/expiry, source access, provider write permission and qualified adapter capability. No builtin role or source.sync/manage grant implies it. Its authorization evidence is a private native dispatch fact; frozen adoc.authorization_decision.v0 remains restricted to its original30 permissions. A shared successor must be registered before emitting this permission in a public authorization decision.
