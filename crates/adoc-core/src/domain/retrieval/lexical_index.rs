@@ -433,6 +433,7 @@ mod tests {
         heading_context: Option<&str>,
     ) -> GraphProseBlock {
         GraphProseBlock {
+            heading_sources: Vec::new(),
             id: id.to_string(),
             page_id: "guides.page".to_string(),
             kind,

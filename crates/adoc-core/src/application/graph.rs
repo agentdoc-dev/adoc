@@ -40,6 +40,10 @@ impl GraphSession {
         self.index.related_candidate_ids(query)
     }
 
+    pub(crate) fn reference_targets(&self, source: &str) -> impl Iterator<Item = &str> {
+        self.index.reference_targets(source)
+    }
+
     pub(crate) fn object(&self, id: &ObjectId) -> Option<&GraphKnowledgeObjectNode> {
         self.index.object(id)
     }

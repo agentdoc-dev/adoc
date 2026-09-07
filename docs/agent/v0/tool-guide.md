@@ -20,6 +20,40 @@ Its operator-owned file must contain a valid `retrieval_policy`; selecting anoth
 project or artifact cannot widen that audience. Restart the gateway after changing
 its authority configuration. See the [MCP Agent Gateway guide](../../guides/mcp-agent-gateway.md#bind-retrieval-authority).
 
+For connected sensitive MCP retrieval, start the gateway from its served repository:
+
+```sh
+adoc-mcp --config gateway.yaml --audit-config audit.json
+```
+
+The separate operator-owned `audit.json` has exactly these fields:
+
+```json
+{
+  "cloud_url": "https://cloud.example",
+  "workspace_id": "10000000-0000-4000-8000-000000000001",
+  "repository_id": "10000000-0000-4000-8000-000000000002",
+  "bearer_token_file": "human-session-token"
+}
+```
+
+The token file is resolved relative to `audit.json` and contains the authenticated
+human session bearer token. Cloud binds the registered repository and actual human,
+auth session, gateway session, and effective local-policy digest. The gateway fixes
+one canonical served root; tool arguments cannot select another root or identity.
+Only HTTPS origins are accepted, except literal loopback HTTP for local integration.
+
+`search`, `why`, `graph`, `stale`, `contradictions`, and `impacted_by` record exact
+sensitive Object IDs, original content hashes and classes before returning content.
+Each attempt first checks current Cloud audit-metadata egress permission. Successful
+sensitive results append `Sensitive (internal).` or `Sensitive (restricted).` without
+changing their existing envelopes. Public, no-hit and denied results emit no event.
+Unavailable recording returns the machine-readable `retrieval.audit_sink_unavailable`
+refusal and withholds sensitive output. Ambiguous acknowledgement is retried with the
+same event bytes before a newly prepared response can receive its own event.
+This connected cut has no durable offline spool; direct single-user CLI retrieval
+requires no gateway auditor.
+
 `search` and `why` discover local retrieval policy even with an explicit
 `--artifact`. For example, an operator can configure:
 

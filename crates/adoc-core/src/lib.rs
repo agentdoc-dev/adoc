@@ -4,6 +4,14 @@ mod infrastructure;
 
 use std::path::PathBuf;
 
+pub use domain::gateway_sensitive_access::{
+    AccessedKnowledgeObject, GATEWAY_SENSITIVE_ACCESS_SCHEMA_VERSION,
+    GatewaySensitiveAccessCommand, GatewaySensitiveAccessError, GatewaySensitiveAccessEvent,
+    GatewaySensitiveAccessInput, GatewaySensitiveAccessObject, MAX_GATEWAY_SENSITIVE_ACCESS_BYTES,
+    ReadAccess, build_gateway_sensitive_access, gateway_policy_digest,
+    validate_gateway_sensitive_access,
+};
+
 pub const CONNECTOR_CAPABILITIES_SCHEMA_VERSION: &str = "agentdoc.connector_capabilities.v0";
 
 pub use application::apply::{
@@ -46,6 +54,10 @@ pub use application::patch::{
 };
 pub use application::proposal::{
     build_proposal_record, build_proposal_record_with_dispositions, validate_proposal_record,
+};
+pub use application::read_access::{
+    contradictions_read_access, graph_read_access, impacted_read_access, retrieval_read_access,
+    stale_read_access,
 };
 pub use application::retrieval::{
     RETRIEVAL_SCHEMA_VERSION, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult,

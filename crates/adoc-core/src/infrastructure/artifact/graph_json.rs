@@ -113,7 +113,23 @@ pub(crate) fn parse_graph_artifact_document(
         }
     }
 
-    let document = match serde_json::from_value::<GraphArtifactDocument>(value) {
+    let raw_nonnull_members = value["nodes"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|node| node["type"] == "knowledge_object")
+        .filter_map(|node| {
+            Some((
+                node["id"].as_str()?.to_string(),
+                node.as_object()?
+                    .iter()
+                    .filter(|(_, value)| !value.is_null())
+                    .map(|(key, _)| key.clone())
+                    .collect(),
+            ))
+        })
+        .collect();
+    let mut document = match serde_json::from_value::<GraphArtifactDocument>(value) {
         Ok(document) => document,
         Err(error) => {
             return Err(vec![
@@ -126,6 +142,7 @@ pub(crate) fn parse_graph_artifact_document(
         }
     };
 
+    document.raw_nonnull_members = raw_nonnull_members;
     Ok(document)
 }
 
@@ -292,6 +309,7 @@ impl GraphJsonArtifact {
         edges.sort();
 
         GraphArtifactDocument {
+            raw_nonnull_members: Default::default(),
             schema_version: SUPPORTED_GRAPH_SCHEMA_VERSION.to_string(),
             repository_identity,
             nodes,

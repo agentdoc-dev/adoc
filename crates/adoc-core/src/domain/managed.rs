@@ -811,6 +811,7 @@ mod tests {
         nodes: Vec<GraphKnowledgeObjectNode>,
     ) -> GraphArtifactDocument {
         GraphArtifactDocument {
+            raw_nonnull_members: Default::default(),
             schema_version: "adoc.graph.v6".to_string(),
             repository_identity,
             nodes: nodes.into_iter().map(GraphNode::KnowledgeObject).collect(),
