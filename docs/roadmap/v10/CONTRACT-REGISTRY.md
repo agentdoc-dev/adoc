@@ -594,6 +594,7 @@ The pre-release implementation annotations mark only the ten code rows added by 
 | `writeback.precondition_failed` | planned (E6.5.T2) | exact retained target revision cannot be applied; never overwrite or rebase onto the current revision |
 | `writeback.outcome_unknown` | planned (E6.5.T2) | a claimed attempt has no confirmed outcome; read-only recovery only, never automatic resend |
 | `writeback.provider_unavailable` | planned (E6.5.T2) | current target-scoped provider credential or observation is unavailable; sanitized refusal without fallback |
+| `writeback.own_projection` | planned (E6.5.T3) | legacy UUID candidate admission reports exact equivalent own-projection suppression after current authorization; use structured reconciliation to retain an observation in the same transaction; no candidate UUID or synchronization claim |
 | `writeback.applied` | planned (E6.5.T2) | exact prepared target commit and payload observed; no approval, verification or effectivity claim |
 <!-- /registry:cloud-codes -->
 
