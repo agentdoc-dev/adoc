@@ -1,0 +1,34 @@
+{
+  "commit": "e1b74a3f579933e3f8194c6c998f91a24578e9db",
+  "baseline_status": "unpublished pre-E6 graph-v6 implementation; not the v0.3.4 graph-v5 release",
+  "binary_sha256": "9b4ad1331514d79f5c772ad3ba2ad73cbcd2c25bf828afe8fa2f6b71b6476d6f",
+  "provenance": [
+    "docs/pilots/e6-1-t3-bindings.json",
+    "docs/pilots/e6-1-t3-performance.md"
+  ],
+  "build_args": [
+    "build",
+    "docs",
+    "--out",
+    "<empty-output>",
+    "--as-of",
+    "2026-09-07"
+  ],
+  "embedding_provider": "deterministic",
+  "source_sha256": {
+    "01-glossary.adoc": "c1fbd9d2be3e721d1884de07b42638290d735ebd0a4febf833b5392e8d31b26f",
+    "02-policy.adoc": "68527e0ba52600fa099f921b5c77af9726c9d04de3ad97e4fb6c9d997f6cdfb4",
+    "ignore.txt": "2d9c2e0a422ee299eac0c4b78d9719f4ca74703886a3baddc1ec74f0511c3543",
+    "nested/03-ledger.adoc": "d51f781583fe5f078428899d9a9f8c84d6eb101987cbca3103d1fab24d6b3b84"
+  },
+  "artifact_sha256": {
+    "docs.html": "68643b9ee3cad9263dd78acd7a96f303972ebccdf6669330f86e34dd588fbb25",
+    "docs.graph.json": "cd83663141598914df740a8da98591bd79a7787099bda9b42853c173ef25aece",
+    "docs.search.json": "5b025e548ad7956f35c6739600ae751c9a556fe2ba53be3f9746536683ec868e"
+  },
+  "golden_files": {
+    "docs.html": "docs.html",
+    "docs.graph.json": "docs.graph.golden.agent.json",
+    "docs.search.json": "docs.search.golden.agent.json"
+  }
+}

@@ -1,0 +1,262 @@
+{
+  "schema_version": "adoc.graph.v6",
+  "repository_identity": null,
+  "nodes": [
+    {
+      "type": "page",
+      "id": "billing.glossary",
+      "order": 0,
+      "title": "Billing Glossary",
+      "source_path": "01-glossary.adoc"
+    },
+    {
+      "type": "page",
+      "id": "billing.ledger-page",
+      "order": 2,
+      "title": "Billing Ledger",
+      "source_path": "nested/03-ledger.adoc"
+    },
+    {
+      "type": "page",
+      "id": "billing.policy",
+      "order": 1,
+      "title": "Billing Policy",
+      "source_path": "02-policy.adoc"
+    },
+    {
+      "type": "heading",
+      "id": "billing.glossary#block-0000",
+      "page_id": "billing.glossary",
+      "order": 0,
+      "level": 1,
+      "text": "Billing Glossary",
+      "source_span": {
+        "path": "01-glossary.adoc",
+        "line": 1,
+        "column": 1
+      }
+    },
+    {
+      "type": "heading",
+      "id": "billing.ledger-page#block-0000",
+      "page_id": "billing.ledger-page",
+      "order": 0,
+      "level": 1,
+      "text": "Billing Ledger",
+      "source_span": {
+        "path": "nested/03-ledger.adoc",
+        "line": 1,
+        "column": 1
+      }
+    },
+    {
+      "type": "heading",
+      "id": "billing.policy#block-0000",
+      "page_id": "billing.policy",
+      "order": 0,
+      "level": 1,
+      "text": "Billing Policy",
+      "source_span": {
+        "path": "02-policy.adoc",
+        "line": 1,
+        "column": 1
+      }
+    },
+    {
+      "type": "paragraph",
+      "id": "billing.glossary#block-0001",
+      "page_id": "billing.glossary",
+      "order": 1,
+      "text": "Shared terms for the billing workspace.",
+      "source_span": {
+        "path": "01-glossary.adoc",
+        "line": 3,
+        "column": 1
+      }
+    },
+    {
+      "type": "paragraph",
+      "id": "billing.ledger-page#block-0001",
+      "page_id": "billing.ledger-page",
+      "order": 1,
+      "text": "Ledger objects can live in nested source directories.",
+      "source_span": {
+        "path": "nested/03-ledger.adoc",
+        "line": 3,
+        "column": 1
+      }
+    },
+    {
+      "type": "paragraph",
+      "id": "billing.policy#block-0001",
+      "page_id": "billing.policy",
+      "order": 1,
+      "text": "Refund policy references [[billing.credits]] across files.",
+      "source_span": {
+        "path": "02-policy.adoc",
+        "line": 3,
+        "column": 1
+      }
+    },
+    {
+      "type": "knowledge_object",
+      "id": "billing.credits",
+      "kind": "glossary",
+      "content_hash": "sha256:9880726b3128155592cf2096494dc94685ee35d75f584efbd36c6e8d346e2453",
+      "body": "Credits reduce future invoice balances.",
+      "page_id": "billing.glossary",
+      "source_span": {
+        "path": "01-glossary.adoc",
+        "line": 5,
+        "column": 1
+      },
+      "source_binding": {
+        "connector": "local_fs",
+        "source": "billing.glossary",
+        "path": "01-glossary.adoc",
+        "anchor": "billing.credits",
+        "source_revision_digest": "sha256:c1fbd9d2be3e721d1884de07b42638290d735ebd0a4febf833b5392e8d31b26f"
+      },
+      "fields": {},
+      "relations": {
+        "depends_on": [],
+        "supersedes": [],
+        "related_to": []
+      }
+    },
+    {
+      "type": "knowledge_object",
+      "id": "billing.ledger",
+      "kind": "claim",
+      "content_hash": "sha256:7d834d68afd4630f812f11ce48de3f1f92eed0920fbb2416dd82379a8c6f38a7",
+      "status": "verified",
+      "body": "The ledger records every credit and refund balance movement.",
+      "page_id": "billing.ledger-page",
+      "source_span": {
+        "path": "nested/03-ledger.adoc",
+        "line": 5,
+        "column": 1
+      },
+      "source_binding": {
+        "connector": "local_fs",
+        "source": "billing.ledger-page",
+        "path": "nested/03-ledger.adoc",
+        "anchor": "billing.ledger",
+        "source_revision_digest": "sha256:d51f781583fe5f078428899d9a9f8c84d6eb101987cbca3103d1fab24d6b3b84"
+      },
+      "fields": {
+        "owner": "team-billing",
+        "verified_at": "2026-05-06"
+      },
+      "relations": {
+        "depends_on": [],
+        "supersedes": [],
+        "related_to": []
+      },
+      "evidence": [
+        {
+          "kind": "source_code",
+          "value": "ledger reconciliation report"
+        }
+      ],
+      "evidence_quality": "high"
+    },
+    {
+      "type": "knowledge_object",
+      "id": "billing.refunds",
+      "kind": "claim",
+      "content_hash": "sha256:818c8c99b6e5b240bcc22718183d6f9f3541277cbb4dc80e5d34c68b46b878f5",
+      "status": "draft",
+      "body": "Refunds create credit adjustments after ledger persistence succeeds.",
+      "page_id": "billing.policy",
+      "source_span": {
+        "path": "02-policy.adoc",
+        "line": 5,
+        "column": 1
+      },
+      "source_binding": {
+        "connector": "local_fs",
+        "source": "billing.policy",
+        "path": "02-policy.adoc",
+        "anchor": "billing.refunds",
+        "source_revision_digest": "sha256:68527e0ba52600fa099f921b5c77af9726c9d04de3ad97e4fb6c9d997f6cdfb4"
+      },
+      "fields": {},
+      "relations": {
+        "depends_on": [
+          "billing.ledger"
+        ],
+        "supersedes": [],
+        "related_to": []
+      }
+    }
+  ],
+  "edges": [
+    {
+      "kind": "contains",
+      "source": "billing.glossary",
+      "target": "billing.credits",
+      "order": 2
+    },
+    {
+      "kind": "contains",
+      "source": "billing.glossary",
+      "target": "billing.glossary#block-0000",
+      "order": 0
+    },
+    {
+      "kind": "contains",
+      "source": "billing.glossary",
+      "target": "billing.glossary#block-0001",
+      "order": 1
+    },
+    {
+      "kind": "contains",
+      "source": "billing.ledger-page",
+      "target": "billing.ledger",
+      "order": 2
+    },
+    {
+      "kind": "contains",
+      "source": "billing.ledger-page",
+      "target": "billing.ledger-page#block-0000",
+      "order": 0
+    },
+    {
+      "kind": "contains",
+      "source": "billing.ledger-page",
+      "target": "billing.ledger-page#block-0001",
+      "order": 1
+    },
+    {
+      "kind": "contains",
+      "source": "billing.policy",
+      "target": "billing.policy#block-0000",
+      "order": 0
+    },
+    {
+      "kind": "contains",
+      "source": "billing.policy",
+      "target": "billing.policy#block-0001",
+      "order": 1
+    },
+    {
+      "kind": "contains",
+      "source": "billing.policy",
+      "target": "billing.refunds",
+      "order": 2
+    },
+    {
+      "kind": "relation",
+      "source": "billing.refunds",
+      "target": "billing.ledger",
+      "relation": "depends_on"
+    },
+    {
+      "kind": "reference",
+      "source": "billing.policy#block-0001",
+      "target": "billing.credits"
+    }
+  ],
+  "diagnostics": []
+}
