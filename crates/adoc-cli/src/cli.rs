@@ -470,6 +470,9 @@ pub(crate) enum Commands {
         /// Require partial field projection and source access attribution.
         #[arg(long)]
         require_field_projection: bool,
+        /// Refuse older runtimes before sending governed field-lowering metadata.
+        #[arg(long)]
+        require_field_declassification: bool,
         #[arg(long, value_name = "PATH")]
         input: PathBuf,
         /// Create a private contributor manifest for the trusted caller's final authorization check.

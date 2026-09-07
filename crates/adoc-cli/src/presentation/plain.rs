@@ -110,13 +110,15 @@ pub(crate) fn render_record(
         fields_items(output, record);
     }
 
-    output.push('\n');
-    writeln!(
-        output,
-        "Source: {}:{}:{}",
-        record.source.path, record.source.line, record.source.column
-    )
-    .expect("writing to String cannot fail");
+    if !record.source.is_withheld() {
+        output.push('\n');
+        writeln!(
+            output,
+            "Source: {}:{}:{}",
+            record.source.path, record.source.line, record.source.column
+        )
+        .expect("writing to String cannot fail");
+    }
 
     if has_relations(&record.relations) {
         output.push('\n');
@@ -145,13 +147,15 @@ pub(crate) fn render_prose_record(output: &mut String, record: &ProseRecord) {
         output.push('\n');
     }
 
-    output.push('\n');
-    writeln!(
-        output,
-        "Source: {}:{}:{}",
-        record.source.path, record.source.line, record.source.column
-    )
-    .expect("writing to String cannot fail");
+    if !record.source.is_withheld() {
+        output.push('\n');
+        writeln!(
+            output,
+            "Source: {}:{}:{}",
+            record.source.path, record.source.line, record.source.column
+        )
+        .expect("writing to String cannot fail");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -278,6 +282,15 @@ mod tests {
             diagnostics: Vec::new(),
             footer: Some(default_meta()),
         }
+    }
+
+    #[test]
+    fn withheld_source_has_no_source_line_or_fabricated_coordinates() {
+        let mut record = make_record("billing.selected", "claim");
+        record.source = adoc_core::RetrievalSource::withheld();
+        let output = render(&view_for(record));
+        assert!(!output.contains("Source:"));
+        assert!(!output.contains(":0:0"));
     }
 
     #[test]

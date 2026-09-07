@@ -298,6 +298,12 @@ impl PatchValidator<'_> {
             {
                 continue;
             }
+            // Proposer labels are descriptive, not authenticated lowering authority.
+            if lowers_authored_visibility(&object, &key, &value) {
+                self.diagnostics.push(validation_error(target.as_str(),
+                    "classification lowering requires governed declassification; suggest escalation in the proposal reason"));
+                continue;
+            }
             if agent_proposed_or_unattributed && kind == BlockKind::Glossary && key == "status" {
                 self.diagnostics.push(validation_error(
                     target.as_str(),
@@ -802,6 +808,24 @@ fn is_valid_field_key(key: &str) -> bool {
         && chars.all(|character| {
             character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_'
         })
+}
+
+fn lowers_authored_visibility(object: &GraphKnowledgeObjectNode, key: &str, value: &str) -> bool {
+    use crate::domain::value_objects::visibility::{Visibility, parse_field_visibility};
+    let rank = |value: &str| Visibility::try_new(value).unwrap_or(Visibility::Restricted);
+    match key {
+        "visibility" => rank(value) < rank(object.visibility.as_deref().unwrap_or("public")),
+        "field_visibility" => parse_field_visibility(value).is_ok_and(|next| {
+            object
+                .field_visibility
+                .iter()
+                .flat_map(|fields| fields.iter())
+                .any(|(key, prior)| {
+                    rank(next.get(key).map(String::as_str).unwrap_or("public")) < rank(prior)
+                })
+        }),
+        _ => false,
+    }
 }
 
 fn is_update_structural_field(key: &str) -> bool {
@@ -1363,6 +1387,53 @@ mod tests {
     }
 
     // ── V5.8 TB5: evidence_ref resolution in update_fields ───────────────────
+
+    #[test]
+    fn agent_visibility_lowering_is_refused_but_escalation_reason_remains_advisory() {
+        let mut target = object("billing.credits", "draft");
+        target.visibility = Some("restricted".into());
+        target.field_visibility = Some(BTreeMap::from([("owner".into(), "restricted".into())]));
+        let graph = graph(vec![target]);
+        for fields in [
+            BTreeMap::from([("visibility".into(), "public".into())]),
+            BTreeMap::from([("field_visibility".into(), "owner=public".into())]),
+            BTreeMap::from([("field_visibility".into(), "body=internal".into())]),
+        ] {
+            for proposer in [
+                None,
+                Some(PatchProposer {
+                    proposer_type: "agent".into(),
+                    id: "model".into(),
+                }),
+                Some(PatchProposer {
+                    proposer_type: "human".into(),
+                    id: "untrusted-label".into(),
+                }),
+            ] {
+                let mut candidate = patch(PatchIntent::UpdateFields {
+                    base_hash: "sha256:billing.credits".into(),
+                    fields: fields.clone(),
+                });
+                candidate.proposer = proposer;
+                let report = validate_patch(&graph, candidate);
+                assert!(!report.valid, "model lowering was accepted");
+                assert!(
+                    report
+                        .diagnostics
+                        .iter()
+                        .any(|d| d.message.contains("declassification")),
+                    "{:?}",
+                    report.diagnostics
+                );
+            }
+        }
+        let mut suggestion = patch(PatchIntent::UpdateFields {
+            base_hash: "sha256:billing.credits".into(),
+            fields: BTreeMap::from([("owner".into(), "team-billing".into())]),
+        });
+        suggestion.reason="Escalate a proposal to declassify /body to an authorized human; this patch grants no authority.".into();
+        assert!(validate_patch(&graph, suggestion).valid);
+    }
 
     #[test]
     fn update_field_evidence_ref_to_existing_source_is_valid_with_diff() {

@@ -364,12 +364,21 @@ pub(super) fn safe_artifact_diagnostics(
 
 /// Assemble one index only after the shared permission/source projection.
 pub(super) fn retrieval_session_from_document(
-    mut document: GraphArtifactDocument,
+    document: GraphArtifactDocument,
     policy: Option<&RetrievalPolicy>,
 ) -> Result<RetrievalSession, Box<Diagnostic>> {
-    filter_retrieval_document(&mut document, policy)?;
+    retrieval_session_from_managed_projection(document, policy, &BTreeSet::new())
+}
+
+pub(super) fn retrieval_session_from_managed_projection(
+    mut document: GraphArtifactDocument,
+    policy: Option<&RetrievalPolicy>,
+    withheld_sources: &BTreeSet<String>,
+) -> Result<RetrievalSession, Box<Diagnostic>> {
+    filter_retrieval_document_with_sources(&mut document, policy, withheld_sources)?;
     let graph_session = GraphSession::new(
-        GraphIndex::from_document(document).map_err(|_| Box::new(retrieval_artifact_error()))?,
+        GraphIndex::from_managed_projection(document, withheld_sources)
+            .map_err(|_| Box::new(retrieval_artifact_error()))?,
     );
     let lexical_index =
         LexicalIndex::from_corpus(graph_session.objects(), graph_session.prose_blocks());
@@ -393,6 +402,14 @@ pub(super) fn retrieval_artifact_error() -> Diagnostic {
 pub(super) fn filter_retrieval_document(
     document: &mut GraphArtifactDocument,
     policy: Option<&RetrievalPolicy>,
+) -> Result<(), Box<Diagnostic>> {
+    filter_retrieval_document_with_sources(document, policy, &BTreeSet::new())
+}
+
+fn filter_retrieval_document_with_sources(
+    document: &mut GraphArtifactDocument,
+    policy: Option<&RetrievalPolicy>,
+    withheld_sources: &BTreeSet<String>,
 ) -> Result<(), Box<Diagnostic>> {
     // A producer may have dropped invalid classification metadata. Do not
     // interpret that absence as public, even when no other nodes are excluded.
@@ -439,7 +456,7 @@ pub(super) fn filter_retrieval_document(
     }
     // ponytail: one extra clone/index preserves validation before redaction;
     // extract borrowed validation if the E6.1.T3 corpus benchmark requires it.
-    if GraphIndex::from_document(document.clone()).is_err() {
+    if GraphIndex::from_managed_projection(document.clone(), withheld_sources).is_err() {
         return Err(Box::new(retrieval_artifact_error()));
     }
     project_retrieval_document(document, excluded)
@@ -514,6 +531,18 @@ pub(super) fn refresh_retrieval_contradictions(nodes: &mut [GraphNode]) {
         }
     }
     crate::domain::graph::apply_contradiction_effective_status(nodes);
+    for object in nodes.iter_mut().filter_map(|node| {
+        if let GraphNode::KnowledgeObject(object) = node {
+            Some(object)
+        } else {
+            None
+        }
+    }) {
+        if object.source_span.is_withheld() {
+            object.effective_status = None;
+            object.effective_reason = None;
+        }
+    }
 }
 
 pub fn why_object(session: &RetrievalSession, id: &str) -> WhyResult {
@@ -529,7 +558,9 @@ pub fn why_object(session: &RetrievalSession, id: &str) -> WhyResult {
 
     if let Some(object) = session.graph_session.object(&object_id) {
         let mut record = RetrievalRecord::from(object);
-        record.resolved_questions = resolved_questions(session, &object.id);
+        if !object.source_span.is_withheld() {
+            record.resolved_questions = resolved_questions(session, &object.id);
+        }
         return WhyResult {
             records: vec![record],
             diagnostics: Vec::new(),

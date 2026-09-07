@@ -263,6 +263,16 @@ const RESOURCES: &[AgentResource] = &[
         contents: include_str!("../../../docs/agent/v0/schema/retrieval-envelope.json"),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.managed_field_declassification.v0.schema.json",
+        name: "schema-managed-field-declassification-v0-json",
+        title: "Managed Field Declassification JSON Schema",
+        description: "Immutable governed selected-field detail; shape validity grants no authority.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/adoc.managed_field_declassification.v0.schema.json"
+        ),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/adoc.managed_field_provenance.v0.schema.json",
         name: "schema-managed-field-provenance-v0-json",
         title: "Managed Field Provenance JSON Schema",
