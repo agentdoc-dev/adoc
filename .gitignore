@@ -3,3 +3,5 @@
 examples/*/dist/
 .fastembed_cache/
 scripts/validation-runtime/adoc.sha256
+
+.adoc-audit/

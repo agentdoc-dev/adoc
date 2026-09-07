@@ -31,6 +31,7 @@ use serde::{Deserialize, Serialize};
 
 mod envelope;
 mod gateway_audit;
+mod gateway_spool;
 mod prompts;
 mod resources;
 
@@ -45,6 +46,11 @@ pub enum McpAdapterError {
     )]
     AuditSinkUnavailable,
 
+    #[error(
+        "error[retrieval.audit_spool_corrupt] Audit journal integrity failed; operator investigation is required."
+    )]
+    AuditSpoolCorrupt,
+
     #[error(transparent)]
     Local(#[from] adoc_local::LocalError),
 
@@ -56,6 +62,12 @@ pub enum McpAdapterError {
 }
 
 pub type McpAdapterResult<T> = Result<T, McpAdapterError>;
+
+struct PreparedRetrieval {
+    value: serde_json::Value,
+    classification: Option<adoc_core::SensitiveClassification>,
+    delivery: Option<gateway_audit::Delivery>,
+}
 
 #[derive(Debug, Clone)]
 pub struct AgentDocMcpServer {
@@ -97,23 +109,41 @@ impl AgentDocMcpServer {
         Ok(self)
     }
 
+    fn check_integrity(&self) -> McpAdapterResult<()> {
+        if let Some(auditor) = &self.auditor {
+            auditor.check_integrity()?;
+        }
+        Ok(())
+    }
+
     fn release_retrieval(
         &self,
         command: adoc_core::GatewaySensitiveAccessCommand,
         value: serde_json::Value,
         access: &adoc_core::ReadAccess,
-    ) -> McpAdapterResult<(
-        serde_json::Value,
-        Option<adoc_core::SensitiveClassification>,
-    )> {
+    ) -> McpAdapterResult<PreparedRetrieval> {
         let classification = access.max_classification();
-        if classification.is_some() {
-            self.auditor
-                .as_ref()
-                .ok_or(McpAdapterError::AuditSinkUnavailable)?
-                .record(command, access)?;
-        }
-        Ok((value, classification))
+        let delivery = if classification.is_some() {
+            Some(
+                self.auditor
+                    .as_ref()
+                    .ok_or(McpAdapterError::AuditSinkUnavailable)?
+                    .record(command, access)?,
+            )
+        } else {
+            if let Some(auditor) = &self.auditor {
+                match auditor.drain_pending() {
+                    Ok(()) | Err(McpAdapterError::AuditSinkUnavailable) => {}
+                    Err(error) => return Err(error),
+                }
+            }
+            None
+        };
+        Ok(PreparedRetrieval {
+            value,
+            classification,
+            delivery,
+        })
     }
 
     pub fn run_init(&self, params: InitParams) -> McpAdapterResult<serde_json::Value> {
@@ -146,17 +176,11 @@ impl AgentDocMcpServer {
             .map_err(Into::into)
     }
 
-    pub fn run_why(&self, params: WhyParams) -> McpAdapterResult<serde_json::Value> {
-        self.recorded_why(params).map(|(value, _)| value)
+    pub fn run_why(&self, params: WhyParams) -> McpAdapterResult<CallToolResult> {
+        self.recorded_why(params).map(retrieval_result)
     }
 
-    fn recorded_why(
-        &self,
-        params: WhyParams,
-    ) -> McpAdapterResult<(
-        serde_json::Value,
-        Option<adoc_core::SensitiveClassification>,
-    )> {
+    fn recorded_why(&self, params: WhyParams) -> McpAdapterResult<PreparedRetrieval> {
         let context = self.context(params.project_root)?;
         let outcome = context.why(WhyInput {
             object_id: params.object_id,
@@ -178,17 +202,11 @@ impl AgentDocMcpServer {
         )
     }
 
-    pub fn run_graph(&self, params: GraphParams) -> McpAdapterResult<serde_json::Value> {
-        self.recorded_graph(params).map(|(value, _)| value)
+    pub fn run_graph(&self, params: GraphParams) -> McpAdapterResult<CallToolResult> {
+        self.recorded_graph(params).map(retrieval_result)
     }
 
-    fn recorded_graph(
-        &self,
-        params: GraphParams,
-    ) -> McpAdapterResult<(
-        serde_json::Value,
-        Option<adoc_core::SensitiveClassification>,
-    )> {
+    fn recorded_graph(&self, params: GraphParams) -> McpAdapterResult<PreparedRetrieval> {
         let context = self.context(params.project_root)?;
         let outcome = context.graph(GraphInput {
             object_id: params.object_id,
@@ -204,17 +222,11 @@ impl AgentDocMcpServer {
         )
     }
 
-    pub fn run_stale(&self, params: StaleParams) -> McpAdapterResult<serde_json::Value> {
-        self.recorded_stale(params).map(|(value, _)| value)
+    pub fn run_stale(&self, params: StaleParams) -> McpAdapterResult<CallToolResult> {
+        self.recorded_stale(params).map(retrieval_result)
     }
 
-    fn recorded_stale(
-        &self,
-        params: StaleParams,
-    ) -> McpAdapterResult<(
-        serde_json::Value,
-        Option<adoc_core::SensitiveClassification>,
-    )> {
+    fn recorded_stale(&self, params: StaleParams) -> McpAdapterResult<PreparedRetrieval> {
         let context = self.context(params.project_root)?;
         let outcome = context.stale(StaleInput {
             artifact: params.artifact,
@@ -231,17 +243,14 @@ impl AgentDocMcpServer {
     pub fn run_contradictions(
         &self,
         params: ContradictionsParams,
-    ) -> McpAdapterResult<serde_json::Value> {
-        self.recorded_contradictions(params).map(|(value, _)| value)
+    ) -> McpAdapterResult<CallToolResult> {
+        self.recorded_contradictions(params).map(retrieval_result)
     }
 
     fn recorded_contradictions(
         &self,
         params: ContradictionsParams,
-    ) -> McpAdapterResult<(
-        serde_json::Value,
-        Option<adoc_core::SensitiveClassification>,
-    )> {
+    ) -> McpAdapterResult<PreparedRetrieval> {
         let context = self.context(params.project_root)?;
         let outcome = context.contradictions(ContradictionsInput {
             artifact: params.artifact,
@@ -255,17 +264,15 @@ impl AgentDocMcpServer {
         )
     }
 
-    pub fn run_impacted_by(&self, params: ImpactedByParams) -> McpAdapterResult<serde_json::Value> {
-        self.recorded_impacted_by(params).map(|(value, _)| value)
+    pub fn run_impacted_by(&self, params: ImpactedByParams) -> McpAdapterResult<CallToolResult> {
+        self.recorded_impacted_by(params).map(retrieval_result)
     }
 
     fn recorded_impacted_by(
         &self,
         params: ImpactedByParams,
-    ) -> McpAdapterResult<(
-        serde_json::Value,
-        Option<adoc_core::SensitiveClassification>,
-    )> {
+    ) -> McpAdapterResult<PreparedRetrieval> {
+        self.check_integrity()?;
         // Empty `paths` is rejected like "neither", mirroring the CLI where
         // clap treats an empty Vec as "not present" — an empty changed set is
         // a question that was never asked, not an empty answer.
@@ -291,17 +298,12 @@ impl AgentDocMcpServer {
         )
     }
 
-    pub fn run_search(&self, params: SearchParams) -> McpAdapterResult<serde_json::Value> {
-        self.recorded_search(params).map(|(value, _)| value)
+    pub fn run_search(&self, params: SearchParams) -> McpAdapterResult<CallToolResult> {
+        self.recorded_search(params).map(retrieval_result)
     }
 
-    fn recorded_search(
-        &self,
-        params: SearchParams,
-    ) -> McpAdapterResult<(
-        serde_json::Value,
-        Option<adoc_core::SensitiveClassification>,
-    )> {
+    fn recorded_search(&self, params: SearchParams) -> McpAdapterResult<PreparedRetrieval> {
+        self.check_integrity()?;
         let scope = search_record_scope(&params)?;
         let context = self.context(params.project_root)?;
         let top = NonZeroUsize::new(params.top.unwrap_or(10)).ok_or_else(|| {
@@ -435,6 +437,7 @@ impl AgentDocMcpServer {
     }
 
     pub fn read_agent_resource(&self, uri: &str) -> McpAdapterResult<ReadResourceResult> {
+        self.check_integrity()?;
         resources::read(uri).ok_or_else(|| {
             McpAdapterError::InvalidArguments(format!("unknown AgentDoc resource URI {uri:?}"))
         })
@@ -449,6 +452,7 @@ impl AgentDocMcpServer {
         name: &str,
         arguments: Option<JsonObject>,
     ) -> McpAdapterResult<GetPromptResult> {
+        self.check_integrity()?;
         prompts::get(name, arguments).ok_or_else(|| {
             McpAdapterError::InvalidArguments(format!("unknown AgentDoc prompt {name:?}"))
         })
@@ -458,6 +462,7 @@ impl AgentDocMcpServer {
         &self,
         override_root: Option<PathBuf>,
     ) -> McpAdapterResult<LocalContext<ProjectRootPathPolicy>> {
+        self.check_integrity()?;
         let root = override_root.unwrap_or_else(|| self.default_project_root.clone());
         let policy = ProjectRootPathPolicy::new(root)?;
         if let Some(auditor) = &self.auditor
@@ -522,10 +527,9 @@ impl AgentDocMcpServer {
         Parameters(params): Parameters<WhyParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let server = self.clone();
-        tokio::task::spawn_blocking(move || server.recorded_why(params))
+        tokio::task::spawn_blocking(move || server.run_why(params))
             .await
             .map_err(|_| adapter_error(McpAdapterError::AuditSinkUnavailable))?
-            .map(retrieval_result)
             .map_err(adapter_error)
     }
 
@@ -538,10 +542,9 @@ impl AgentDocMcpServer {
         Parameters(params): Parameters<GraphParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let server = self.clone();
-        tokio::task::spawn_blocking(move || server.recorded_graph(params))
+        tokio::task::spawn_blocking(move || server.run_graph(params))
             .await
             .map_err(|_| adapter_error(McpAdapterError::AuditSinkUnavailable))?
-            .map(retrieval_result)
             .map_err(adapter_error)
     }
 
@@ -554,10 +557,9 @@ impl AgentDocMcpServer {
         Parameters(params): Parameters<StaleParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let server = self.clone();
-        tokio::task::spawn_blocking(move || server.recorded_stale(params))
+        tokio::task::spawn_blocking(move || server.run_stale(params))
             .await
             .map_err(|_| adapter_error(McpAdapterError::AuditSinkUnavailable))?
-            .map(retrieval_result)
             .map_err(adapter_error)
     }
 
@@ -570,10 +572,9 @@ impl AgentDocMcpServer {
         Parameters(params): Parameters<ContradictionsParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let server = self.clone();
-        tokio::task::spawn_blocking(move || server.recorded_contradictions(params))
+        tokio::task::spawn_blocking(move || server.run_contradictions(params))
             .await
             .map_err(|_| adapter_error(McpAdapterError::AuditSinkUnavailable))?
-            .map(retrieval_result)
             .map_err(adapter_error)
     }
 
@@ -586,10 +587,9 @@ impl AgentDocMcpServer {
         Parameters(params): Parameters<ImpactedByParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let server = self.clone();
-        tokio::task::spawn_blocking(move || server.recorded_impacted_by(params))
+        tokio::task::spawn_blocking(move || server.run_impacted_by(params))
             .await
             .map_err(|_| adapter_error(McpAdapterError::AuditSinkUnavailable))?
-            .map(retrieval_result)
             .map_err(adapter_error)
     }
 
@@ -602,10 +602,9 @@ impl AgentDocMcpServer {
         Parameters(params): Parameters<SearchParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let server = self.clone();
-        tokio::task::spawn_blocking(move || server.recorded_search(params))
+        tokio::task::spawn_blocking(move || server.run_search(params))
             .await
             .map_err(|_| adapter_error(McpAdapterError::AuditSinkUnavailable))?
-            .map(retrieval_result)
             .map_err(adapter_error)
     }
 
@@ -693,9 +692,11 @@ impl ServerHandler for AgentDocMcpServer {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> impl Future<Output = Result<ListResourcesResult, ErrorData>> + MaybeSendFuture + '_ {
-        std::future::ready(Ok(ListResourcesResult::with_all_items(
-            self.list_agent_resources(),
-        )))
+        std::future::ready(
+            self.check_integrity()
+                .map(|()| ListResourcesResult::with_all_items(self.list_agent_resources()))
+                .map_err(adapter_error),
+        )
     }
 
     fn read_resource(
@@ -714,7 +715,11 @@ impl ServerHandler for AgentDocMcpServer {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> impl Future<Output = Result<ListPromptsResult, ErrorData>> + MaybeSendFuture + '_ {
-        std::future::ready(Ok(prompts::list_result()))
+        std::future::ready(
+            self.check_integrity()
+                .map(|()| prompts::list_result())
+                .map_err(adapter_error),
+        )
     }
 
     fn get_prompt(
@@ -988,29 +993,46 @@ fn parse_project_status_refresh(value: Option<&str>) -> McpAdapterResult<Project
     }
 }
 
-fn retrieval_result(
-    (value, classification): (
-        serde_json::Value,
-        Option<adoc_core::SensitiveClassification>,
-    ),
-) -> CallToolResult {
-    let mut result = CallToolResult::structured(value);
-    if let Some(classification) = classification {
-        let label = match classification {
-            adoc_core::SensitiveClassification::Internal => "Sensitive (internal).",
-            adoc_core::SensitiveClassification::Restricted => "Sensitive (restricted).",
+fn retrieval_result(prepared: PreparedRetrieval) -> CallToolResult {
+    let mut result = CallToolResult::structured(prepared.value);
+    if let Some(classification) = prepared.classification {
+        result.content.push(rmcp::model::ContentBlock::text(format!(
+            "Sensitive ({}).",
+            classification.as_str()
+        )));
+    }
+    if let Some(delivery) = prepared.delivery {
+        let status = match delivery {
+            gateway_audit::Delivery::Recorded { event_id } => {
+                serde_json::json!({"state":"recorded","event_id":event_id})
+            }
+            gateway_audit::Delivery::SpooledPending { event_id } => {
+                result.content.push(rmcp::model::ContentBlock::text("Sensitive access audit is pending recording (retrieval.sensitive_access_unrecorded)."));
+                serde_json::json!({"state":"spooled_pending","event_id":event_id,"code":"retrieval.sensitive_access_unrecorded"})
+            }
         };
-        result.content.push(rmcp::model::ContentBlock::text(label));
+        result.meta = Some(rmcp::model::Meta(
+            [(String::from("adoc.sensitive_access"), status)]
+                .into_iter()
+                .collect(),
+        ));
     }
     result
 }
 
 fn adapter_error(error: McpAdapterError) -> ErrorData {
     match error {
-        McpAdapterError::AuditSinkUnavailable => ErrorData::internal_error(
-            McpAdapterError::AuditSinkUnavailable.to_string(),
-            Some(serde_json::json!({"code": "retrieval.audit_sink_unavailable"})),
-        ),
+        McpAdapterError::AuditSinkUnavailable | McpAdapterError::AuditSpoolCorrupt => {
+            let code = if matches!(error, McpAdapterError::AuditSpoolCorrupt) {
+                "retrieval.audit_spool_corrupt"
+            } else {
+                "retrieval.audit_sink_unavailable"
+            };
+            ErrorData::internal_error(
+                error.to_string(),
+                Some(serde_json::json!({"code":code,"sensitive_access":{"state":"refused"}})),
+            )
+        }
         McpAdapterError::InvalidArguments(message) => ErrorData::invalid_params(message, None),
         McpAdapterError::Local(error) => ErrorData::invalid_params(error.to_string(), None),
         McpAdapterError::Serialize(error) => ErrorData::internal_error(error.to_string(), None),
