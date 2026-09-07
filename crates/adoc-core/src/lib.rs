@@ -1041,6 +1041,13 @@ pub use domain::sensitive_access::{
     SensitiveClassification, validate_sensitive_access,
 };
 
+pub use domain::managed_field_provenance::{
+    MANAGED_FIELD_PROVENANCE_SCHEMA_VERSION, ManagedFieldContribution,
+    ManagedFieldContributionInput, ManagedFieldProvenance, ManagedFieldProvenanceError,
+    ManagedFieldProvenanceInput, build_managed_field_provenance, strictest_contributing_visibility,
+    validate_managed_field_provenance,
+};
+
 #[cfg(test)]
 mod tests {
     use std::cell::Cell;
