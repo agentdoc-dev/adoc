@@ -262,7 +262,8 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                     out,
                     no_embeddings,
                     as_of,
-                } => build(path, out, no_embeddings, as_of),
+                    audience,
+                } => build(path, out, no_embeddings, as_of, audience),
                 Commands::Why {
                     object_id,
                     artifact,

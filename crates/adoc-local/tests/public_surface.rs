@@ -47,6 +47,7 @@ fn local_public_surface_is_method_oriented() {
         semantic_context_expectations: None,
     };
     let _: BuildInput = BuildInput {
+        audience: None,
         path: None,
         out: None,
         no_embeddings: true,

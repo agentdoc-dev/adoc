@@ -34,6 +34,7 @@ fn write_config(root: &Path, body: &str) {
 fn build_with_config(root: &Path) {
     context(root)
         .build(BuildInput {
+            audience: None,
             path: None,
             out: None,
             no_embeddings: true,
@@ -254,6 +255,7 @@ fn build_writes_artifacts_and_reports_written_paths() {
 
     let outcome = context(root)
         .build(BuildInput {
+            audience: None,
             path: Some(root.join("docs")),
             out: Some(root.join("dist")),
             no_embeddings: true,
@@ -302,6 +304,7 @@ fn lexical_search_returns_retrieval_records_and_exit_code() {
     write(&root.join("docs/index.adoc"), &valid_source());
     context(root)
         .build(BuildInput {
+            audience: None,
             path: Some(root.join("docs")),
             out: Some(root.join("dist")),
             no_embeddings: true,
@@ -361,6 +364,7 @@ fn build_uses_configured_exact_paths_and_preserves_prior_search_when_skipped() {
 
     let outcome = context(root)
         .build(BuildInput {
+            audience: None,
             path: None,
             out: None,
             no_embeddings: false,
@@ -397,6 +401,7 @@ fn build_uses_deterministic_embedding_provider_from_config() {
 
     let outcome = context(root)
         .build(BuildInput {
+            audience: None,
             path: None,
             out: None,
             no_embeddings: false,
@@ -426,6 +431,7 @@ fn semantic_search_uses_deterministic_provider_from_config() {
     );
     context(root)
         .build(BuildInput {
+            audience: None,
             path: None,
             out: None,
             no_embeddings: false,
@@ -690,4 +696,101 @@ fn project_status_reports_deterministic_semantic_readiness_with_quality_warning(
                     && diagnostic.severity == adoc_core::Severity::Warning
             })
     );
+}
+
+#[test]
+fn build_honors_configured_rendering_exclusions() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    write(&root.join("docs/index.adoc"), &valid_source());
+    write_config(
+        root,
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nretrieval_policy:\n  audience: restricted\n  allowed_visibilities: [public, internal, restricted]\n  excluded_object_ids: [billing.ready]\n",
+    );
+    build_with_config(root);
+    let html = fs::read_to_string(root.join("dist/docs.html")).expect("HTML");
+    assert!(
+        !html.contains("billing.ready"),
+        "configured exclusion must hide existence"
+    );
+    assert!(!html.contains("Billing docs are ready."));
+}
+
+#[test]
+fn build_trusted_policy_overrides_config_and_caller_audience() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    write(
+        &root.join("docs/index.adoc"),
+        &valid_source().replace("status: verified", "status: verified\nvisibility: internal"),
+    );
+    write_config(
+        root,
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nretrieval_policy:\n  audience: restricted\n  allowed_visibilities: [public, internal, restricted]\n",
+    );
+    let input = BuildInput {
+        audience: Some("restricted".into()),
+        path: None,
+        out: None,
+        no_embeddings: true,
+        as_of: None,
+    };
+    let outcome = context(root).build(input.clone()).expect("local build");
+    assert_eq!(outcome.exit_code, 0);
+    assert!(
+        fs::read_to_string(root.join("dist/docs.html"))
+            .unwrap()
+            .contains("Billing docs are ready.")
+    );
+    let trusted = adoc_core::RetrievalPolicy {
+        audience: "public".into(),
+        allowed_visibilities: ["public".into()].into(),
+        excluded_object_ids: ["billing.ready".into()].into(),
+    };
+    let outcome = context(root)
+        .with_retrieval_policy_override(trusted)
+        .build(input)
+        .expect("gateway build");
+    assert_eq!(outcome.exit_code, 0);
+    let html = fs::read_to_string(root.join("dist/docs.html")).unwrap();
+    assert!(!html.contains("billing.ready"));
+    assert!(!html.contains("Billing docs are ready."));
+}
+
+#[test]
+fn build_invalid_trusted_policy_preserves_existing_outputs() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    write(&root.join("docs/index.adoc"), &valid_source());
+    write(&root.join("dist/docs.html"), "prior HTML");
+    write(&root.join("dist/docs.graph.json"), "prior graph");
+    let outcome = context(root)
+        .with_retrieval_policy_override(adoc_core::RetrievalPolicy {
+            audience: "unknown".into(),
+            allowed_visibilities: ["public".into()].into(),
+            excluded_object_ids: Default::default(),
+        })
+        .build(BuildInput {
+            audience: Some("restricted".into()),
+            path: Some(root.join("docs")),
+            out: Some(root.join("dist")),
+            no_embeddings: false,
+            as_of: None,
+        })
+        .expect("typed refusal");
+    assert_eq!(outcome.exit_code, 1);
+    assert!(outcome.outputs.is_none());
+    assert_eq!(
+        outcome.diagnostics[0].code,
+        adoc_core::DiagnosticCode::RetrievalAudienceUnresolved
+    );
+    assert_eq!(
+        fs::read_to_string(root.join("dist/docs.html")).unwrap(),
+        "prior HTML"
+    );
+    assert_eq!(
+        fs::read_to_string(root.join("dist/docs.graph.json")).unwrap(),
+        "prior graph"
+    );
+    assert!(!root.join("dist/docs.search.json").exists());
 }

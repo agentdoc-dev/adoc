@@ -116,6 +116,8 @@ pub struct MigrateOutcome {
 
 #[derive(Debug, Clone)]
 pub struct BuildInput {
+    /// Explicit local HTML audience; trusted gateway policy takes precedence.
+    pub audience: Option<String>,
     pub path: Option<PathBuf>,
     pub out: Option<PathBuf>,
     pub no_embeddings: bool,
@@ -798,6 +800,26 @@ where
         .map(|path| context.path_policy().resolve_write_path(path))
         .transpose()?;
     let config = discover_project_config_if(true, context.config_start())?;
+    let policy = context.retrieval_policy_override().cloned().or_else(|| {
+        let configured = config
+            .as_ref()
+            .and_then(|config| config.retrieval_policy.clone());
+        match input.audience {
+            Some(audience) => {
+                let mut policy = configured.unwrap_or_else(|| adoc_core::RetrievalPolicy {
+                    audience: audience.clone(),
+                    allowed_visibilities: ["public", "internal", "restricted"]
+                        .map(str::to_string)
+                        .into_iter()
+                        .collect(),
+                    excluded_object_ids: Default::default(),
+                });
+                policy.audience = audience;
+                Some(policy)
+            }
+            None => configured,
+        }
+    });
     let path = resolve_docs_path_with_config(path, config.as_ref())?;
     let path = context.path_policy().resolve_read_path(&path)?;
     let embedding_mode = resolve_embedding_mode(config.as_ref(), input.no_embeddings);
@@ -814,6 +836,7 @@ where
             embedding_provider,
             project,
             evaluation_date,
+            policy,
         ),
         None => {
             let output_paths = resolve_build_output_paths(config.as_ref(), embedding_mode)?;
@@ -825,6 +848,7 @@ where
                 embedding_provider,
                 project,
                 evaluation_date,
+                policy,
             )
         }
     }
@@ -1547,6 +1571,7 @@ where
             let outcome = build_with_context(
                 context,
                 BuildInput {
+                    audience: None,
                     path: None,
                     out: None,
                     no_embeddings: input.no_embeddings,
@@ -1708,8 +1733,10 @@ fn build_to_dir(
     embedding_provider: EmbeddingProviderSelection,
     project: Option<LocalProjectContext>,
     evaluation_date: chrono::NaiveDate,
+    policy: Option<adoc_core::RetrievalPolicy>,
 ) -> Result<BuildOutcome, LocalError> {
     let input = CoreBuildInput {
+        policy,
         root: path,
         embeddings: embedding_mode,
         prior_search_artifact_path: Some(out.join("docs.search.json")),
@@ -1737,8 +1764,10 @@ fn build_to_paths(
     embedding_provider: EmbeddingProviderSelection,
     project: Option<LocalProjectContext>,
     evaluation_date: chrono::NaiveDate,
+    policy: Option<adoc_core::RetrievalPolicy>,
 ) -> Result<BuildOutcome, LocalError> {
     let input = CoreBuildInput {
+        policy,
         root: path,
         embeddings: embedding_mode,
         prior_search_artifact_path: output_paths.search.clone(),
