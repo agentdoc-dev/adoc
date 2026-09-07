@@ -2556,3 +2556,10 @@ const MANAGED_STATE_DIMENSIONS: [&str; 27] = [
     "synchronization.paused",
     "synchronization.not_applicable",
 ];
+
+#[test]
+fn own_projection_diagnostic_is_registered_only_as_cloud_code() {
+    let doc = registry();
+    assert!(anchored_ids(&doc, "registry:cloud-codes").contains("writeback.own_projection"));
+    assert!(!anchored_ids(&doc, "registry:gate-codes").contains("writeback.own_projection"));
+}
