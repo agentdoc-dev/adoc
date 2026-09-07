@@ -346,6 +346,16 @@ impl Spool {
             }
             spool.header = header;
         }
+        // Existing entries may come from a failed initialization. Visibility is
+        // not durability: reestablish every barrier before using the setup ID.
+        for (file, directory) in [
+            (&spool.file, false),
+            (&spool.directory_file, true),
+            (&spool.root_file, true),
+        ] {
+            spool.verify_paths()?;
+            sync_durable(file, directory).map_err(|_| McpAdapterError::AuditSinkUnavailable)?;
+        }
         Ok(spool)
     }
     #[cfg(not(unix))]
@@ -464,6 +474,22 @@ fn same_inode(a: &fs::Metadata, b: &fs::Metadata) -> bool {
 }
 
 fn sync_durable(file: &File, directory: bool) -> std::io::Result<()> {
+    #[cfg(all(test, unix))]
+    if SYNC_FAIL_INODE
+        .with(|target| {
+            let metadata = file.metadata()?;
+            let identity = (metadata.dev(), metadata.ino());
+            if target.get() == Some(identity) {
+                target.set(None);
+                Err(std::io::Error::other("injected inode sync failure"))
+            } else {
+                Ok(())
+            }
+        })
+        .is_err()
+    {
+        return Err(std::io::Error::other("injected inode sync failure"));
+    }
     #[cfg(test)]
     if take_fault(if directory {
         Fault::DirectorySync
@@ -492,11 +518,26 @@ enum Fault {
     PartialWrite,
 }
 #[cfg(test)]
-thread_local! { static IO_FAULT: std::cell::Cell<Option<Fault>> = const { std::cell::Cell::new(None) }; }
+thread_local! {
+    static IO_FAULT: std::cell::Cell<Option<Fault>> = const { std::cell::Cell::new(None) };
+    static IO_FAULT_SKIP: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+#[cfg(all(test, unix))]
+thread_local! { static SYNC_FAIL_INODE: std::cell::Cell<Option<(u64,u64)>> = const { std::cell::Cell::new(None) }; }
 #[cfg(test)]
 fn take_fault(point: Fault) -> bool {
     IO_FAULT.with(|fault| {
         if fault.get() == Some(point) {
+            if IO_FAULT_SKIP.with(|skip| {
+                if skip.get() == 0 {
+                    false
+                } else {
+                    skip.set(skip.get() - 1);
+                    true
+                }
+            }) {
+                return false;
+            }
             fault.set(None);
             true
         } else {
@@ -876,5 +917,85 @@ mod tests {
             spool.read(),
             Err(McpAdapterError::AuditSpoolCorrupt)
         ));
+    }
+    fn fail_sync_on(path: &Path) {
+        let metadata = fs::metadata(path).unwrap();
+        SYNC_FAIL_INODE.with(|target| target.set(Some((metadata.dev(), metadata.ino()))));
+    }
+    fn initialization_retry_reestablishes_barrier(fault: Fault, skip: usize, barrier: &str) {
+        let temp = tempfile::tempdir().unwrap();
+        let h = header(temp.path());
+        IO_FAULT.with(|target| target.set(Some(fault)));
+        IO_FAULT_SKIP.with(|count| count.set(skip));
+        assert!(matches!(
+            Spool::open(h.clone()),
+            Err(McpAdapterError::AuditSinkUnavailable)
+        ));
+        assert!(
+            IO_FAULT.with(|target| target.get().is_none()),
+            "initial failure must be injected"
+        );
+        let journal = temp.path().join(".adoc-audit/spool.log");
+        let original = fs::read(&journal).ok();
+        if barrier != "." {
+            assert!(
+                original
+                    .as_ref()
+                    .is_some_and(|bytes| bytes.ends_with(b"\n")),
+                "complete visible header is the retry case"
+            );
+        }
+        fail_sync_on(&temp.path().join(barrier));
+        let retry = Spool::open(h.clone());
+        assert!(
+            matches!(retry, Err(McpAdapterError::AuditSinkUnavailable)),
+            "retry must establish {barrier} durability before success"
+        );
+        assert!(
+            SYNC_FAIL_INODE.with(|target| target.get().is_none()),
+            "retry must attempt the exact failed inode barrier"
+        );
+        if let Some(original) = original {
+            assert_eq!(fs::read(&journal).unwrap(), original);
+        }
+        let mut recovered = Spool::open(h.clone()).unwrap();
+        assert_eq!(
+            recovered.read().unwrap().header.setup_request_id,
+            h.setup_request_id
+        );
+        let b = binding();
+        recovered.bind(b.clone()).unwrap();
+        recovered.enqueue(&event(&h, &b, 1)).unwrap();
+        let history = fs::read(&journal).unwrap();
+        drop(recovered);
+        for path in [
+            temp.path().to_path_buf(),
+            temp.path().join(".adoc-audit"),
+            journal.clone(),
+        ] {
+            fail_sync_on(&path);
+            assert!(matches!(
+                Spool::open(h.clone()),
+                Err(McpAdapterError::AuditSinkUnavailable)
+            ));
+            assert!(SYNC_FAIL_INODE.with(|target| target.get().is_none()));
+            assert_eq!(fs::read(&journal).unwrap(), history);
+        }
+        let pending = Spool::open(h).unwrap().read().unwrap().pending;
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].event.sequence(), 1);
+        assert_eq!(fs::read(journal).unwrap(), history);
+    }
+    #[test]
+    fn e63t2_01_retry_after_mkdir_root_sync_failure_retries_root_barrier() {
+        initialization_retry_reestablishes_barrier(Fault::DirectorySync, 0, ".");
+    }
+    #[test]
+    fn e63t2_01_retry_after_complete_header_sync_failure_retries_file_barrier() {
+        initialization_retry_reestablishes_barrier(Fault::FileSync, 1, ".adoc-audit/spool.log");
+    }
+    #[test]
+    fn e63t2_01_retry_after_log_entry_sync_failure_retries_directory_barrier() {
+        initialization_retry_reestablishes_barrier(Fault::DirectorySync, 2, ".adoc-audit");
     }
 }
