@@ -242,6 +242,7 @@ mod tests {
 
     fn graph_document(objects: Vec<GraphKnowledgeObjectNode>) -> GraphArtifactDocument {
         GraphArtifactDocument {
+            raw_nonnull_members: Default::default(),
             schema_version: "adoc.graph.v6".to_string(),
             repository_identity: Default::default(),
             nodes: std::iter::once(GraphNode::Page(GraphPageNode {

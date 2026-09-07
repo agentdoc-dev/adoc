@@ -102,7 +102,7 @@ struct DecodedReceipt {
     objects: BTreeMap<String, Value>,
 }
 
-fn unavailable() -> Box<Diagnostic> {
+pub(super) fn unavailable() -> Box<Diagnostic> {
     Box::new(Diagnostic::error(
         DiagnosticCode::RetrievalVisibilityUnavailable,
         "Managed retrieval input could not establish a safe corpus.",
@@ -360,6 +360,7 @@ fn assemble(
     }
 
     let mut graph = GraphArtifactDocument {
+        raw_nonnull_members: Default::default(),
         schema_version: SUPPORTED_GRAPH_SCHEMA_VERSION.into(),
         repository_identity: GraphRepositoryIdentity::standalone(),
         nodes: Vec::new(),

@@ -37,7 +37,7 @@ fn fixture(root: &Path) -> PathBuf {
     let node = |id: &str, visibility: &str| {
         json!({
             "type": "knowledge_object", "id": id, "kind": "claim", "status": "draft",
-            "visibility": visibility, "content_hash": "sha256:fixture", "body": "Billing credits.",
+            "visibility": visibility, "content_hash": format!("sha256:{}", "a".repeat(64)), "body": "Billing credits.",
             "page_id": "billing.page", "source_span": {"path": "docs/billing.adoc", "line": 1, "column": 1},
             "fields": {"expires_at": "2000-01-01"}, "impacts": ["src/billing.rs"],
             "relations": {"depends_on": [], "supersedes": [], "related_to": []},
@@ -175,4 +175,126 @@ fn invalid_trusted_policy_refuses_without_project_policy_fallback() {
             "{name}"
         );
     }
+}
+
+#[test]
+fn read_access_tracks_only_returned_roots_and_copied_contributors() {
+    let workspace = tempfile::tempdir().unwrap();
+    let root = workspace.path();
+    let artifact = fixture(root);
+    write_config(root, &policy(true));
+    let mut document: Value = serde_json::from_slice(&std::fs::read(&artifact).unwrap()).unwrap();
+    document["nodes"][0]["fields"]["owner"] = json!("INTERNAL_OWNER_E63");
+    document["nodes"][0]["field_visibility"] = json!({"owner":"internal"});
+    std::fs::write(&artifact, document.to_string()).unwrap();
+    let context = LocalContext::new(root.into(), UnrestrictedPathPolicy);
+    let why = context
+        .why(WhyInput {
+            object_id: "billing.visible".into(),
+            artifact: Some(artifact.clone()),
+        })
+        .unwrap();
+    assert_eq!(why.exit_code, 0, "{:?}", why.diagnostics);
+    assert_eq!(
+        why.read_access
+            .objects
+            .iter()
+            .map(|o| o.object_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["billing.contradiction", "billing.visible"]
+    );
+    assert_eq!(why.read_access.sensitive_objects().len(), 2);
+    assert_eq!(
+        why.records[0].record.classification,
+        Some(adoc_core::SensitiveClassification::Internal)
+    );
+    let nohit = context
+        .search(SearchInput {
+            query: "notpresentanywhere".into(),
+            artifact: Some(artifact.clone()),
+            search_artifact: None,
+            semantic: false,
+            lexical: true,
+            kind: None,
+            status: None,
+            owner: None,
+            source_path: None,
+            related_to: None,
+            relation: None,
+            direction: None,
+            top: NonZeroUsize::new(10).unwrap(),
+            scope: SearchRecordScope::Blended,
+        })
+        .unwrap();
+    assert_eq!(nohit.exit_code, 0);
+    assert!(nohit.read_access.objects.is_empty());
+    let public = context.with_retrieval_policy_override(policy(false));
+    let why = public
+        .why(WhyInput {
+            object_id: "billing.visible".into(),
+            artifact: Some(artifact),
+        })
+        .unwrap();
+    assert_eq!(why.exit_code, 0, "{:?}", why.diagnostics);
+    assert_eq!(why.read_access.objects.len(), 1);
+    assert!(why.read_access.sensitive_objects().is_empty());
+    assert!(why.records[0].record.owner.is_none());
+}
+
+#[test]
+fn local_projection_removes_hidden_witnesses_and_uses_actual_dedicated_presence() {
+    let workspace = tempfile::tempdir().unwrap();
+    let root = workspace.path();
+    let artifact = fixture(root);
+    write_config(root, &policy(true));
+    let context = LocalContext::new(root.into(), UnrestrictedPathPolicy);
+    let original: Value = serde_json::from_slice(&std::fs::read(&artifact).unwrap()).unwrap();
+    let mut document = original.clone();
+    document["nodes"].as_array_mut().unwrap().truncate(2);
+    document["nodes"][0]["body"] = json!("Private body references billing.hidden.");
+    document["nodes"][0]["fields"]["owner"] = json!("Authorized owner");
+    document["nodes"][0]["field_visibility"] = json!({"body":"restricted","owner":"internal","nonexistent":"restricted","severity":"restricted"});
+    document["edges"] =
+        json!([{"kind":"reference","source":"billing.visible","target":"billing.hidden"}]);
+    let read = |document: &Value| {
+        std::fs::write(&artifact, document.to_string()).unwrap();
+        context
+            .why(WhyInput {
+                object_id: "billing.visible".into(),
+                artifact: Some(artifact.clone()),
+            })
+            .unwrap()
+    };
+    let result = read(&document);
+    assert_eq!(result.exit_code, 0, "{:?}", result.diagnostics);
+    assert_eq!(result.records[0].record.body, "");
+    assert_eq!(
+        result.records[0].record.owner.as_deref(),
+        Some("Authorized owner")
+    );
+    assert_eq!(
+        result
+            .read_access
+            .objects
+            .iter()
+            .map(|o| o.object_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["billing.visible"]
+    );
+    assert_eq!(
+        result.records[0].record.content_hash,
+        original["nodes"][0]["content_hash"]
+    );
+    document["nodes"][0]["field_visibility"]["status"] = json!("restricted");
+    let denied = read(&document);
+    assert!(denied.records.is_empty());
+    assert!(denied.read_access.objects.is_empty());
+    document["nodes"][0]["field_visibility"]
+        .as_object_mut()
+        .unwrap()
+        .remove("status");
+    document["nodes"][0]["source_span"] = json!({"path":"","line":0,"column":0});
+    let malformed = read(&document);
+    assert_eq!(malformed.exit_code, 2);
+    assert!(malformed.records.is_empty());
 }

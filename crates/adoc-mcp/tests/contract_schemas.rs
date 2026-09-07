@@ -1521,6 +1521,10 @@ fn mcp_serves_schema_resources_byte_equal_to_on_disk_files() {
             "adoc.managed_field_provenance.v0.schema.json",
         ),
         (
+            "adoc://agent/v0/schema/adoc.sensitive_access.v1.schema.json",
+            "adoc.sensitive_access.v1.schema.json",
+        ),
+        (
             "adoc://agent/v0/schema/adoc.sensitive_access.v0.schema.json",
             "adoc.sensitive_access.v0.schema.json",
         ),

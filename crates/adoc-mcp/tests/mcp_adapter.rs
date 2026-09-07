@@ -351,6 +351,7 @@ fn lists_and_reads_all_stable_agent_resources() {
         "adoc://agent/v0/schema/retrieval-envelope.json",
         "adoc://agent/v0/schema/adoc.managed_field_declassification.v0.schema.json",
         "adoc://agent/v0/schema/adoc.managed_field_provenance.v0.schema.json",
+        "adoc://agent/v0/schema/adoc.sensitive_access.v1.schema.json",
         "adoc://agent/v0/schema/adoc.sensitive_access.v0.schema.json",
         "adoc://agent/v0/schema/adoc.managed_retrieval_input.v0.schema.json",
         "adoc://agent/v0/schema/retrieval-envelope.v0.json",
@@ -1184,7 +1185,7 @@ fn adoc_search_rejects_conflicting_scope_arguments() {
 }
 
 #[test]
-fn sensitive_classification_matches_local_and_mcp_why() {
+fn sensitive_retrieval_requires_recording_context() {
     for class in ["internal", "restricted"] {
         let workspace = tempfile::tempdir().unwrap();
         write(
@@ -1221,24 +1222,22 @@ fn sensitive_classification_matches_local_and_mcp_why() {
             artifact: Some("dist/docs.graph.json".into()),
         })
         .unwrap();
-        let mcp = server
+        assert_eq!(
+            serde_json::to_value(&local.records[0].record).unwrap()["classification"],
+            class
+        );
+        let error = server
             .run_why(WhyParams {
                 project_root: None,
                 object_id: "billing.credits".into(),
                 artifact: Some("dist/docs.graph.json".into()),
             })
-            .unwrap();
-        assert_eq!(mcp["records"][0]["classification"], class);
-        assert_eq!(
-            mcp["records"][0],
-            serde_json::to_value(adoc_core::RetrievalEntry::KnowledgeObject(
-                local.records[0].record.clone()
-            ))
-            .unwrap()
-        );
+            .expect_err("sensitive MCP output needs trusted recording context");
         assert!(
-            mcp.get("sensitive_access").is_none(),
-            "authenticated MCP audit is E6.3"
+            error
+                .to_string()
+                .contains("retrieval.audit_sink_unavailable")
         );
+        assert!(!error.to_string().contains("Credits apply"));
     }
 }

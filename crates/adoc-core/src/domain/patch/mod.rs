@@ -1036,6 +1036,7 @@ mod tests {
 
     fn graph(objects: Vec<GraphKnowledgeObjectNode>) -> GraphIndex {
         GraphIndex::from_document(GraphArtifactDocument {
+            raw_nonnull_members: Default::default(),
             schema_version: "adoc.graph.v6".to_string(),
             repository_identity: Default::default(),
             nodes: std::iter::once(GraphNode::Page(GraphPageNode {
