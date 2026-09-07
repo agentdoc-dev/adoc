@@ -34,7 +34,7 @@ pub struct CompileInput {
 
 #[derive(Debug, Clone)]
 pub struct BuildInput {
-    /// Explicit HTML rendering authority. Absence uses the public audience.
+    /// Authority for HTML and embedding inputs. Absence uses the public audience.
     pub policy: Option<RetrievalPolicy>,
     /// Input path for compilation: either one `.adoc` file or a directory that
     /// will be scanned recursively for `.adoc` files.
@@ -372,6 +372,9 @@ fn build_artifacts_for_build(
     let prior_search_artifact_path = build_options
         .as_ref()
         .and_then(|options| options.prior_search_artifact_path.clone());
+    let search_policy = build_options
+        .as_ref()
+        .and_then(|options| options.policy.clone());
     let mut artifact_diagnostics = Vec::new();
     let search_json = match build_options
         .as_mut()
@@ -384,6 +387,7 @@ fn build_artifacts_for_build(
                 &graph_json,
                 *provider,
                 prior_search_artifact_path.as_ref(),
+                search_policy.as_ref(),
             ) {
                 Ok(search_build) => {
                     artifact_diagnostics.extend(search_build.diagnostics);
@@ -426,6 +430,7 @@ fn build_artifacts_for_build(
                 &graph_json,
                 provider.as_ref(),
                 prior_search_artifact_path.as_ref(),
+                search_policy.as_ref(),
             ) {
                 Ok(search_build) => {
                     artifact_diagnostics.extend(search_build.diagnostics);
@@ -928,8 +933,219 @@ mod tests {
         }
     }
 
+    const EMBEDDING_BOUNDARIES_SOURCE: &str = r"# Embedding boundaries @doc(embedding.page)
+
+This ordinary orientation has enough words for embedding.
+
+This protected orientation refers to [[embedding.internal]] for details.
+
+::claim embedding.internal
+status: draft
+visibility: internal
+--
+INTERNAL_PASSAGE_CANARY is private context.
+::
+
+::claim embedding.excluded
+status: draft
+visibility: public
+--
+EXCLUDED_PASSAGE_CANARY is explicitly denied.
+::
+
+::claim embedding.partial
+status: draft
+visibility: public
+owner: HIDDEN_OWNER_CANARY
+field_visibility: owner=internal, body=restricted
+--
+HIDDEN_BODY_CANARY must never become public model input.
+::
+
+::claim embedding.safe
+status: draft
+owner: public-team
+--
+PUBLIC_SIBLING_CANARY remains useful and searchable.
+::
+";
+
+    fn embedding_boundary_policy(audience: &str, exclude: bool) -> RetrievalPolicy {
+        RetrievalPolicy {
+            audience: audience.into(),
+            allowed_visibilities: ["public", "internal", "restricted"]
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+            excluded_object_ids: if exclude {
+                ["embedding.excluded".into()].into()
+            } else {
+                Default::default()
+            },
+        }
+    }
+
+    fn build_embedding_boundaries(
+        provider: &RecordingEmbeddingProvider,
+        policy: Option<RetrievalPolicy>,
+        prior: Option<PathBuf>,
+    ) -> BuildArtifacts {
+        let sources = InMemorySourceProvider::new()
+            .with_source(source_file("embedding.adoc", EMBEDDING_BOUNDARIES_SOURCE));
+        let result = build_with_provider_for_date(
+            &sources,
+            BuildOptions {
+                policy,
+                embeddings: BuildEmbeddingBehavior::Enabled { provider },
+                prior_search_artifact_path: prior,
+            },
+            fixed_today(),
+        );
+        assert!(!result.has_errors(), "{:?}", result.diagnostics);
+        result
+            .artifacts
+            .expect("valid embedding boundary artifacts")
+    }
+
     #[test]
-    fn build_rendering_policy_does_not_mutate_graph_or_search_artifacts() {
+    fn embedding_boundaries_project_before_provider_composition() {
+        for audience in [None, Some("public"), Some("internal"), Some("restricted")] {
+            let provider = RecordingEmbeddingProvider::new(4);
+            let artifacts = build_embedding_boundaries(
+                &provider,
+                audience.map(|audience| embedding_boundary_policy(audience, true)),
+                None,
+            );
+            let inputs = provider.recorded_inputs();
+            let joined = inputs.join("\n");
+            let internal = matches!(audience, Some("internal" | "restricted"));
+            let restricted = audience == Some("restricted");
+            assert_eq!(
+                joined.contains("INTERNAL_PASSAGE_CANARY"),
+                internal,
+                "{audience:?}: {inputs:?}"
+            );
+            assert_eq!(
+                joined.contains("protected orientation"),
+                internal,
+                "{audience:?}"
+            );
+            assert_eq!(
+                joined.contains("HIDDEN_OWNER_CANARY"),
+                internal,
+                "{audience:?}"
+            );
+            assert_eq!(
+                joined.contains("HIDDEN_BODY_CANARY"),
+                restricted,
+                "{audience:?}"
+            );
+            assert_eq!(
+                joined.contains("EXCLUDED_PASSAGE_CANARY"),
+                audience.is_none(),
+                "{audience:?}"
+            );
+            assert!(inputs.iter().any(|input| input == "claim: PUBLIC_SIBLING_CANARY remains useful and searchable.\n[id: embedding.safe] [status: draft] [owner: public-team]"));
+            assert!(joined.contains("ordinary orientation"));
+            if !internal {
+                assert!(inputs.iter().any(|input| input
+                    == "claim: \n[id: embedding.partial] [status: draft] [owner: unknown]"));
+            }
+            let search = parse_search_json(artifacts.search_json.as_ref().unwrap());
+            assert_eq!(search.schema_version, SUPPORTED_SEARCH_SCHEMA_VERSION);
+            assert_eq!(
+                search.graph_artifact_hash,
+                crate::domain::hashing::sha256_prefixed(artifacts.graph_json.as_bytes())
+            );
+            assert!(
+                search
+                    .embeddings
+                    .iter()
+                    .any(|entry| entry.id == "embedding.partial")
+            );
+            assert_eq!(
+                search
+                    .embeddings
+                    .iter()
+                    .any(|entry| entry.id == "embedding.internal"),
+                internal
+            );
+            assert_eq!(
+                search
+                    .embeddings
+                    .iter()
+                    .any(|entry| entry.id == "embedding.excluded"),
+                audience.is_none()
+            );
+        }
+    }
+
+    #[test]
+    fn embedding_boundaries_old_wide_cache_cannot_restore_protected_composition() {
+        let wide_provider = RecordingEmbeddingProvider::new(4);
+        let wide = build_embedding_boundaries(
+            &wide_provider,
+            Some(embedding_boundary_policy("restricted", false)),
+            None,
+        );
+        let prior = tempfile::Builder::new()
+            .suffix(".search.json")
+            .tempfile()
+            .unwrap();
+        fs::write(prior.path(), wide.search_json.as_ref().unwrap()).unwrap();
+        let cached_provider = RecordingEmbeddingProvider::new(4);
+        let cached = build_embedding_boundaries(
+            &cached_provider,
+            Some(embedding_boundary_policy("public", true)),
+            Some(prior.path().into()),
+        );
+        assert_eq!(
+            cached_provider.recorded_inputs(),
+            ["claim: \n[id: embedding.partial] [status: draft] [owner: unknown]"]
+        );
+        let fresh_provider = RecordingEmbeddingProvider::new(4);
+        let fresh = build_embedding_boundaries(
+            &fresh_provider,
+            Some(embedding_boundary_policy("public", true)),
+            None,
+        );
+        assert_eq!(
+            fresh_provider.recorded_inputs().len() - cached_provider.recorded_inputs().len(),
+            2,
+            "safe object and prose cache hits are retained"
+        );
+        assert_eq!(
+            cached.search_json, fresh.search_json,
+            "safe cached build must exactly equal independent recomputation"
+        );
+        assert_eq!(
+            cached.graph_json, wide.graph_json,
+            "canonical graph bytes retain authored material"
+        );
+        let wide_search = parse_search_json(wide.search_json.as_ref().unwrap());
+        let narrow_search = parse_search_json(cached.search_json.as_ref().unwrap());
+        for id in ["embedding.safe", "embedding.partial"] {
+            let old = wide_search
+                .embeddings
+                .iter()
+                .find(|entry| entry.id == id)
+                .unwrap();
+            let new = narrow_search
+                .embeddings
+                .iter()
+                .find(|entry| entry.id == id)
+                .unwrap();
+            assert_eq!(old.content_hash == new.content_hash, id == "embedding.safe");
+            assert_eq!(old.vector == new.vector, id == "embedding.safe");
+        }
+        assert!(!narrow_search.embeddings.iter().any(|entry| matches!(
+            entry.id.as_str(),
+            "embedding.internal" | "embedding.excluded"
+        )));
+    }
+
+    #[test]
+    fn build_policy_changes_derived_artifacts_without_mutating_canonical_graph() {
         let source_provider = InMemorySourceProvider::new().with_source(source_file(
             "billing.adoc",
             "# Billing @doc(team.billing)\n\n::claim billing.private\nstatus: draft\nvisibility: internal\n--\nPrivate body.\n::\n",
@@ -959,7 +1175,11 @@ mod tests {
         assert!(!public.html.contains("Private body."));
         assert!(internal.html.contains("Private body."));
         assert_eq!(public.graph_json, internal.graph_json);
-        assert_eq!(public.search_json, internal.search_json);
+        let public_search = parse_search_json(public.search_json.as_ref().unwrap());
+        let internal_search = parse_search_json(internal.search_json.as_ref().unwrap());
+        assert!(public_search.embeddings.is_empty());
+        assert_eq!(internal_search.embeddings.len(), 1);
+        assert_eq!(internal_search.embeddings[0].id, "billing.private");
     }
 
     #[test]
