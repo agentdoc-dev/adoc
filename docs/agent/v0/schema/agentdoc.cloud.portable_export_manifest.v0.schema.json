@@ -195,7 +195,10 @@
             "minLength": 1
           },
           "code": {
-            "const": "privacy.export_digest_mismatch"
+            "enum": [
+              "privacy.export_digest_mismatch",
+              "privacy.export_invalid_envelope"
+            ]
           },
           "claimed_digest": {
             "anyOf": [
@@ -210,14 +213,50 @@
           "observed_digest": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
               },
               {
                 "type": "null"
               }
             ]
           }
-        }
+        },
+        "description": "Authorized corruption only. A digest mismatch requires a successfully computed actual domain digest different from claimed_digest; consumers must enforce that cross-field inequality. An invalid envelope has malformed retained JSON/object structure or an invalid embedded binding: observed_digest is the actual canonical domain digest when computable (which may equal claimed_digest), otherwise null. Never substitute the file checksum for an unavailable domain digest.",
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "code": {
+                  "const": "privacy.export_digest_mismatch"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "observed_digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "observed_digest": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^sha256:[0-9a-f]{64}$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
       }
     },
     "projections": {

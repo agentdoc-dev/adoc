@@ -609,6 +609,7 @@ The pre-release implementation annotations mark only the ten code rows added by 
 | `privacy.export_selection_changed` | planned (E6.6.T5) | frozen export evidence or current access changed; require a fresh request and release no archive bytes; legitimate deletion is not corruption |
 | `privacy.export_limit_exceeded` | planned (E6.6.T5) | synchronous export exceeds the descriptor, decoded-byte, projection or archive bound; refuse explicitly without truncating a successful bundle |
 | `privacy.export_unavailable` | planned (E6.6.T5) | required export storage, locking, transport or auditing is unavailable; release no archive and expose no retained source bytes in diagnostics |
+| `privacy.export_invalid_envelope` | planned (E6.6.T5) | authorized retained JSON/object is malformed or its embedded self-digest binding is invalid; preserve the same omission fields with actual canonical-domain observed_digest when computable (possibly equal to claimed_digest), otherwise null; never substitute file SHA. Existing privacy.export_digest_mismatch continues to mean a computed non-null domain digest different from the claimed digest |
 <!-- /registry:cloud-codes -->
 
 ## Attestation codes — planned, owner `cloud`
