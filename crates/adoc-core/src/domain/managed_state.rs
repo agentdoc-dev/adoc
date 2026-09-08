@@ -22,14 +22,14 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::diagnostic::DiagnosticCode;
 use super::managed::{ManagedVersionId, ManagedWorkspace, WorkspaceCanonicalIdentity};
 use super::reconciliation::PolicyVersion;
 
 /// §K4 governance dimension.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum GovernanceState {
     Proposed,
@@ -39,7 +39,7 @@ pub(crate) enum GovernanceState {
 }
 
 /// §K4 verification dimension.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum VerificationState {
     Unverified,
@@ -49,7 +49,7 @@ pub(crate) enum VerificationState {
 }
 
 /// §K4 effectivity dimension.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum EffectivityState {
     Pending,
@@ -60,7 +60,7 @@ pub(crate) enum EffectivityState {
 }
 
 /// §K4 freshness dimension.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum FreshnessState {
     Current,
@@ -69,7 +69,7 @@ pub(crate) enum FreshnessState {
 }
 
 /// §K4 integrity dimension.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum IntegrityState {
     Clear,
@@ -79,7 +79,7 @@ pub(crate) enum IntegrityState {
 
 /// §K4 synchronization dimension — always per connector, carried with the
 /// connector's `required_before_effective` flag on every sync event.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum SynchronizationState {
     InSync,
@@ -207,7 +207,7 @@ impl SynchronizationState {
 /// tombstone event records the posture it leaves behind — deleting
 /// retained evidence updates the posture by APPENDING, never by
 /// rewriting governance history (K9).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ReplayPosture {
     FullyReplayable,
@@ -497,6 +497,18 @@ pub(crate) struct ManagedVersionState {
 }
 
 impl ManagedVersionState {
+    /// Read-only replay of already validated retained changes. Never appends,
+    /// manufactures subjects, or repairs the retained event chain.
+    pub(crate) fn from_changes<'a>(
+        changes: impl IntoIterator<Item = &'a ManagedStateChange>,
+    ) -> Self {
+        let mut state = Self::all_gaps();
+        for change in changes {
+            state.apply(change);
+        }
+        state
+    }
+
     fn all_gaps() -> Self {
         Self {
             governance: RecordedDimension::Gap,

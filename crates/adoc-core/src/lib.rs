@@ -2,6 +2,10 @@ mod application;
 mod domain;
 mod infrastructure;
 
+pub use application::portable_projection::{
+    MAX_PORTABLE_PROJECTION_BYTES, run_portable_projection,
+};
+
 use std::path::PathBuf;
 
 pub use domain::gateway_sensitive_access::{
