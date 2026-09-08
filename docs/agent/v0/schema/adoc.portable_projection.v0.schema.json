@@ -1,0 +1,273 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.portable_projection.v0.schema.json",
+  "title": "adoc.portable_projection.v0",
+  "description": "Bounded pure Adoc projection. Complete denotes all selected objects projected, not lossless recovery. Documents compile together as one strict workspace. Partial/failed projections preserve exact native records as authoritative. No access or client receipt claim.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "workspace_id",
+    "mapping_version",
+    "projection_version",
+    "outcome",
+    "documents",
+    "objects",
+    "diagnostics"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "adoc.portable_projection.v0"
+    },
+    "workspace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "mapping_version": {
+      "const": "1"
+    },
+    "projection_version": {
+      "const": "1"
+    },
+    "outcome": {
+      "enum": [
+        "complete",
+        "partial",
+        "failed"
+      ]
+    },
+    "documents": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "adoc_source",
+          "object_bindings"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "pattern": "^projections/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.adoc$"
+          },
+          "adoc_source": {
+            "type": "string",
+            "minLength": 1
+          },
+          "object_bindings": {
+            "type": "array",
+            "maxItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "canonical_id",
+                "version_id",
+                "object_id",
+                "original_content_digest"
+              ],
+              "properties": {
+                "canonical_id": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                },
+                "version_id": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                },
+                "object_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "original_content_digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                }
+              }
+            },
+            "minItems": 1
+          }
+        }
+      }
+    },
+    "objects": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "canonical_id",
+          "version_id",
+          "original_content_digest",
+          "lifecycle_projection",
+          "loss_report"
+        ],
+        "properties": {
+          "canonical_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "version_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "original_content_digest": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "lifecycle_projection": {
+            "$ref": "#/$defs/projectionOutput"
+          },
+          "loss_report": {
+            "type": "array",
+            "maxItems": 1000000,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "category",
+                "detail"
+              ],
+              "properties": {
+                "category": {
+                  "enum": [
+                    "identity",
+                    "placement",
+                    "history",
+                    "provenance",
+                    "multi_source",
+                    "synchronization_configuration",
+                    "derived",
+                    "replay",
+                    "unsupported_carrier",
+                    "authored_carrier",
+                    "withheld_reference",
+                    "evidence"
+                  ]
+                },
+                "detail": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "canonical_id",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "canonical_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "projectionOutput": {
+      "description": "One export projection application: the flat word (null for statusless kinds) plus the loss report naming every recorded dimension the word cannot carry back through this contract's import mapping.",
+      "type": "object",
+      "required": [
+        "projection_version",
+        "mapping_version",
+        "kind",
+        "status",
+        "loss_report"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "projection_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mapping_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "loss_report": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dimensionLoss"
+          }
+        }
+      }
+    },
+    "dimensionLoss": {
+      "type": "object",
+      "required": [
+        "dimension",
+        "recorded",
+        "recovered"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "dimension": {
+          "enum": [
+            "governance",
+            "verification",
+            "effectivity",
+            "freshness",
+            "integrity",
+            "synchronization"
+          ]
+        },
+        "connector": {
+          "description": "Present only for the per-connector synchronization dimension.",
+          "type": "string",
+          "minLength": 1
+        },
+        "recorded": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recovered": {
+          "description": "What re-importing the projected word recovers; null when nothing is recovered \u2014 either the dimension has no flat carriage at all, or (verification) import never lands the dimension.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/agentdoc.cloud.portable_export_receipt.v0.schema.json",
+  "title": "agentdoc.cloud.portable_export_receipt.v0",
+  "description": "Immutable native audit receipt for one current authorization of frozen export membership. Prepared receipts precede every native byte release including replay. Release-authorized receipts bind the exact caller-declared manifest with native records independently verified, and never assert a client download or acknowledgment.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "receipt_id",
+    "workspace_id",
+    "export_id",
+    "principal_id",
+    "auth_session_id",
+    "phase",
+    "scope",
+    "selection_digest",
+    "evaluation_time",
+    "authorization",
+    "authorized_file_count",
+    "authorized_corruption_count",
+    "manifest_sha256",
+    "manifest_basis"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "agentdoc.cloud.portable_export_receipt.v0"
+    },
+    "receipt_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "workspace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "export_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "principal_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "auth_session_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "phase": {
+      "enum": [
+        "prepared",
+        "release_authorized"
+      ]
+    },
+    "scope": {
+      "$ref": "adoc://agent/v0/schema/adoc.authorization_decision.v0.schema.json#/$defs/scope"
+    },
+    "selection_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "evaluation_time": {
+      "type": "string",
+      "minLength": 1
+    },
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "permission",
+        "result",
+        "policy_version",
+        "basis"
+      ],
+      "properties": {
+        "permission": {
+          "const": "audit.export"
+        },
+        "result": {
+          "const": "allow"
+        },
+        "policy_version": {
+          "const": "authz-policy-v1"
+        },
+        "basis": {
+          "$ref": "adoc://agent/v0/schema/adoc.authorization_decision.v0.schema.json#/$defs/allowBasis"
+        }
+      }
+    },
+    "authorized_file_count": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$"
+    },
+    "authorized_corruption_count": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$"
+    },
+    "manifest_sha256": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "manifest_basis": {
+      "anyOf": [
+        {
+          "const": "caller_declared_with_native_records_verified"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "phase": {
+            "const": "prepared"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "manifest_sha256": {
+            "type": "null"
+          },
+          "manifest_basis": {
+            "type": "null"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "manifest_sha256": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "manifest_basis": {
+            "const": "caller_declared_with_native_records_verified"
+          }
+        }
+      }
+    }
+  ]
+}

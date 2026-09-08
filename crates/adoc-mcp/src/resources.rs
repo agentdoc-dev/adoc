@@ -303,6 +303,76 @@ const RESOURCES: &[AgentResource] = &[
         ),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.portable_projection_input.v0.schema.json",
+        name: "schema-adoc-portable_projection_input-v0-json",
+        title: "Portable Export Contract JSON Schema",
+        description: "Closed portable export transport; schema validity does not establish release authority or historical authenticity.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/adoc.portable_projection_input.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.portable_projection.v0.schema.json",
+        name: "schema-adoc-portable_projection-v0-json",
+        title: "Portable Export Contract JSON Schema",
+        description: "Closed portable export transport; schema validity does not establish release authority or historical authenticity.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/adoc.portable_projection.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.portable_export_preparation.v0.schema.json",
+        name: "schema-agentdoc-cloud-portable_export_preparation-v0-json",
+        title: "Portable Export Contract JSON Schema",
+        description: "Closed portable export transport; schema validity does not establish release authority or historical authenticity.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.portable_export_preparation.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.portable_export_manifest.v0.schema.json",
+        name: "schema-agentdoc-cloud-portable_export_manifest-v0-json",
+        title: "Portable Export Contract JSON Schema",
+        description: "Closed portable export transport; schema validity does not establish release authority or historical authenticity.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.portable_export_manifest.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.portable_export_finalization.v0.schema.json",
+        name: "schema-agentdoc-cloud-portable_export_finalization-v0-json",
+        title: "Portable Export Contract JSON Schema",
+        description: "Closed portable export transport; schema validity does not establish release authority or historical authenticity.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.portable_export_finalization.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.export_native_fact.v0.schema.json",
+        name: "schema-agentdoc-cloud-export_native_fact-v0-json",
+        title: "Portable Export Native Contract JSON Schema",
+        description: "Closed native evidence and authorization receipt; schema validity does not authorize release or attest a client download.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.export_native_fact.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.portable_export_receipt.v0.schema.json",
+        name: "schema-agentdoc-cloud-portable_export_receipt-v0-json",
+        title: "Portable Export Native Contract JSON Schema",
+        description: "Closed native evidence and authorization receipt; schema validity does not authorize release or attest a client download.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.portable_export_receipt.v0.schema.json"
+        ),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/adoc.managed_retrieval_input.v0.schema.json",
         name: "schema-managed-retrieval-input-v0-json",
         title: "Managed Retrieval Input JSON Schema",

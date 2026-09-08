@@ -9,6 +9,7 @@ pub(crate) mod graph;
 pub(crate) mod managed_retrieval;
 pub(crate) mod migrate;
 pub(crate) mod patch;
+pub(crate) mod portable_projection;
 pub(crate) mod proposal;
 pub(crate) mod resolve_knowledge_objects;
 pub(crate) mod resolve_object_references;
