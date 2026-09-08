@@ -193,3 +193,36 @@ fn migration_prepare_disables_hooks_and_refuses_symlinks_and_info_attributes() {
     assert!(String::from_utf8_lossy(&out.stderr).contains("migration.unsafe_source"));
     assert!(!marker.exists());
 }
+
+#[test]
+fn migration_prepare_invalid_utf8_receipt_is_identical_across_snapshots() {
+    let (dir, mut request) = repo();
+    fs::write(dir.root.join("docs/two.adoc"), [0xff, 0xfe]).unwrap();
+    git(&dir.root, &["add", "."]);
+    git(&dir.root, &["commit", "-qm", "invalid UTF-8"]);
+    request["revision"]["value"] = json!(git(&dir.root, &["rev-parse", "HEAD"]));
+    let first = run(&dir.root, &request);
+    let second = run(&dir.root, &request);
+    assert_eq!(first.status.code(), Some(1));
+    assert_eq!(second.status.code(), Some(1));
+    assert_eq!(first.stdout, second.stdout);
+    let receipt: Value = serde_json::from_slice(&first.stdout).unwrap();
+    assert_eq!(receipt["validation_receipt"]["result"], "fail");
+    let diagnostic = receipt["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|diagnostic| diagnostic["code"] == "io.unreadable_file")
+        .unwrap();
+    assert!(
+        diagnostic["message"]
+            .as_str()
+            .unwrap()
+            .contains("docs/two.adoc")
+    );
+    assert!(
+        !String::from_utf8(first.stdout)
+            .unwrap()
+            .contains("adoc-worktree-")
+    );
+}
