@@ -1,0 +1,291 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/agentdoc.cloud.portable_export_manifest.v0.schema.json",
+  "title": "agentdoc.cloud.portable_export_manifest.v0",
+  "description": "Exact UTF-8 archive manifest. Native finalization checks the frozen raw descriptor/omission set and binds these exact manifest bytes; Adoc and tar execution remain caller-declared. SHA256SUMS includes the manifest and every archive member. The final release receipt stays outside the archive.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "workspace_id",
+    "export_id",
+    "scope",
+    "selection_digest",
+    "coverage",
+    "integrity",
+    "records",
+    "omissions",
+    "projections",
+    "preparation_receipt"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "agentdoc.cloud.portable_export_manifest.v0"
+    },
+    "workspace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "export_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "scope": {
+      "$ref": "adoc://agent/v0/schema/adoc.authorization_decision.v0.schema.json#/$defs/scope"
+    },
+    "selection_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "coverage": {
+      "const": "authorized_scope"
+    },
+    "integrity": {
+      "enum": [
+        "verified",
+        "partial_corruption"
+      ]
+    },
+    "records": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "record_key",
+          "kind",
+          "part",
+          "contract",
+          "representation",
+          "path",
+          "repository_ids",
+          "recorded_at",
+          "byte_length",
+          "file_sha256",
+          "domain_digest"
+        ],
+        "properties": {
+          "record_key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "minLength": 1
+          },
+          "part": {
+            "type": "string",
+            "minLength": 1
+          },
+          "contract": {
+            "type": "string",
+            "minLength": 1
+          },
+          "representation": {
+            "enum": [
+              "exact_utf8",
+              "exact_binary",
+              "native_json"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "pattern": "^records/[0-9a-f]{64}\\.bin$"
+          },
+          "repository_ids": {
+            "type": "array",
+            "maxItems": 4096,
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          },
+          "recorded_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "byte_length": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$"
+          },
+          "file_sha256": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "domain_digest": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "algorithm",
+                  "value",
+                  "previous"
+                ],
+                "properties": {
+                  "algorithm": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "value": {
+                    "type": "string",
+                    "pattern": "^sha256:[0-9a-f]{64}$"
+                  },
+                  "previous": {
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^sha256:[0-9a-f]{64}$"
+                          },
+                          {
+                            "const": ""
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "omissions": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "record_key",
+          "kind",
+          "part",
+          "code",
+          "claimed_digest",
+          "observed_digest"
+        ],
+        "properties": {
+          "record_key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "minLength": 1
+          },
+          "part": {
+            "type": "string",
+            "minLength": 1
+          },
+          "code": {
+            "const": "privacy.export_digest_mismatch"
+          },
+          "claimed_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "observed_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "projections": {
+      "type": "array",
+      "maxItems": 4097,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "sha256",
+          "byte_length",
+          "source_record_keys",
+          "runtime_sha256",
+          "loss_report_path",
+          "loss_report_sha256"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "pattern": "^projections/(loss-report\\.json|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.adoc)$"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "byte_length": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$"
+          },
+          "source_record_keys": {
+            "type": "array",
+            "maxItems": 4096,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "runtime_sha256": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "loss_report_path": {
+            "const": "projections/loss-report.json"
+          },
+          "loss_report_sha256": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          }
+        }
+      }
+    },
+    "preparation_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "const": "audit/preparation.json"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    }
+  }
+}

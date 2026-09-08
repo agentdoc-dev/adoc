@@ -462,6 +462,8 @@ pub(crate) struct Cli {
 
 #[derive(Subcommand)]
 pub(crate) enum Commands {
+    /// Project an authorized retained corpus; bounded JSON on stdin and stdout.
+    PortableProject,
     /// Runtime port for an explicitly authorized managed corpus; always emits retrieval JSON.
     ManagedRetrieve {
         /// Require this runtime to label every returned internal/restricted Knowledge Object.

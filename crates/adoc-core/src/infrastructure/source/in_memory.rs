@@ -1,9 +1,11 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(test)]
+use std::path::PathBuf;
 
 use crate::domain::ports::source_provider::{SourceLoadError, SourceProvider};
 use crate::domain::source::SourceFile;
 
-/// In-memory adapter for unit tests. Yields the supplied results verbatim.
+/// In-memory adapter for retained projections and unit tests. Yields the supplied results verbatim.
 #[derive(Debug, Default, Clone)]
 pub(crate) struct InMemorySourceProvider {
     results: Vec<Result<SourceFile, SourceLoadError>>,
@@ -19,6 +21,7 @@ impl InMemorySourceProvider {
         self
     }
 
+    #[cfg(test)]
     pub(crate) fn with_error(mut self, path: PathBuf, message: impl Into<String>) -> Self {
         self.results
             .push(Err(SourceLoadError::unreadable(path, message)));

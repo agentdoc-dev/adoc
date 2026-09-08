@@ -1,0 +1,360 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/agentdoc.cloud.portable_export_preparation.v0.schema.json",
+  "title": "agentdoc.cloud.portable_export_preparation.v0",
+  "description": "Audited native preparation. Fixed authorized descriptor membership is frozen without retaining duplicate payloads. Current authority and exact bytes are rechecked on replay and finalization; schema preflight never authorizes release. Descriptor contract adoc.graph.v6 on a content part denotes an exact Knowledge Object node fragment, not a standalone graph envelope; retained_bytes denotes opaque retained bytes without inventing a wire schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "export_id",
+    "workspace_id",
+    "scope",
+    "cutoff",
+    "coverage",
+    "integrity",
+    "rows",
+    "omissions",
+    "projection_subjects",
+    "audit"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "agentdoc.cloud.portable_export_preparation.v0"
+    },
+    "export_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "workspace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "scope": {
+      "$ref": "adoc://agent/v0/schema/adoc.authorization_decision.v0.schema.json#/$defs/scope"
+    },
+    "cutoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "captured_at",
+        "selection_digest"
+      ],
+      "properties": {
+        "captured_at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selection_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "coverage": {
+      "const": "authorized_scope"
+    },
+    "integrity": {
+      "enum": [
+        "verified",
+        "partial_corruption"
+      ]
+    },
+    "rows": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "record_key",
+          "kind",
+          "part",
+          "contract",
+          "representation",
+          "path",
+          "repository_ids",
+          "recorded_at",
+          "byte_length",
+          "file_sha256",
+          "domain_digest",
+          "bytes_base64"
+        ],
+        "properties": {
+          "record_key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "minLength": 1
+          },
+          "part": {
+            "type": "string",
+            "minLength": 1
+          },
+          "contract": {
+            "type": "string",
+            "minLength": 1
+          },
+          "representation": {
+            "enum": [
+              "exact_utf8",
+              "exact_binary",
+              "native_json"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "pattern": "^records/[0-9a-f]{64}\\.bin$"
+          },
+          "repository_ids": {
+            "type": "array",
+            "maxItems": 4096,
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          },
+          "recorded_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "byte_length": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$"
+          },
+          "file_sha256": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "domain_digest": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "algorithm",
+                  "value",
+                  "previous"
+                ],
+                "properties": {
+                  "algorithm": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "value": {
+                    "type": "string",
+                    "pattern": "^sha256:[0-9a-f]{64}$"
+                  },
+                  "previous": {
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^sha256:[0-9a-f]{64}$"
+                          },
+                          {
+                            "const": ""
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bytes_base64": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "omissions": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "record_key",
+          "kind",
+          "part",
+          "code",
+          "claimed_digest",
+          "observed_digest"
+        ],
+        "properties": {
+          "record_key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "minLength": 1
+          },
+          "part": {
+            "type": "string",
+            "minLength": 1
+          },
+          "code": {
+            "const": "privacy.export_digest_mismatch"
+          },
+          "claimed_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "observed_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "projection_subjects": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "canonical_id",
+          "version_id",
+          "object_id",
+          "content_record_key",
+          "state_history_complete",
+          "state_events",
+          "provenance_record_keys",
+          "replay_postures"
+        ],
+        "properties": {
+          "canonical_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "version_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "object_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "content_record_key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "state_history_complete": {
+            "type": "boolean"
+          },
+          "state_events": {
+            "type": "array",
+            "maxItems": 4096,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "record_key",
+                "ordinal"
+              ],
+              "properties": {
+                "record_key": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "ordinal": {
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]*)$"
+                }
+              }
+            }
+          },
+          "provenance_record_keys": {
+            "type": "array",
+            "maxItems": 4096,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "replay_postures": {
+            "type": "array",
+            "maxItems": 4096,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "record_key",
+                "posture"
+              ],
+              "properties": {
+                "record_key": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "posture": {
+                  "enum": [
+                    "fully_replayable",
+                    "source_access_required",
+                    "intentionally_non_replayable",
+                    "no_longer_replayable_after_deletion"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "receipt_id",
+        "receipt_bytes_base64",
+        "receipt_sha256"
+      ],
+      "properties": {
+        "receipt_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "receipt_bytes_base64": {
+          "type": "string",
+          "minLength": 1
+        },
+        "receipt_sha256": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    }
+  }
+}

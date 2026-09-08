@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.portable_projection_input.v0.schema.json",
+  "title": "adoc.portable_projection_input.v0",
+  "description": "Private bounded retained-byte input. Native admission alone determines authorization and history completeness. Exact UTF-8 node bytes bind both node_digest and original_content_digest. Event digests hash previous digest UTF-8 followed by exact event_bytes; original workspace ordinals are canonical decimal strings. Schema validation is transport preflight; Adoc validates retained subjects, constructors, bytes, lifecycle projection and strict source compilation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "workspace_id",
+    "projection_version",
+    "evaluation_date",
+    "objects"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "adoc.portable_projection_input.v0"
+    },
+    "workspace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "projection_version": {
+      "const": "1"
+    },
+    "evaluation_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "objects": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "canonical",
+          "version_id",
+          "object_id",
+          "original_content_digest",
+          "node_bytes",
+          "node_digest",
+          "state_history_complete",
+          "state_events",
+          "preservation"
+        ],
+        "properties": {
+          "canonical": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "workspace_id",
+              "canonical_id"
+            ],
+            "properties": {
+              "workspace_id": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "canonical_id": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              }
+            }
+          },
+          "version_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "object_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "original_content_digest": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "node_bytes": {
+            "type": "string",
+            "minLength": 1
+          },
+          "node_digest": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "state_history_complete": {
+            "type": "boolean"
+          },
+          "state_events": {
+            "type": "array",
+            "maxItems": 1000000,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "ordinal",
+                "prev_digest",
+                "record_digest",
+                "event_bytes"
+              ],
+              "properties": {
+                "ordinal": {
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]*)$"
+                },
+                "prev_digest": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^sha256:[0-9a-f]{64}$"
+                    },
+                    {
+                      "const": ""
+                    }
+                  ]
+                },
+                "record_digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "event_bytes": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          },
+          "preservation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "content_record_key",
+              "provenance_record_keys",
+              "replay_postures"
+            ],
+            "properties": {
+              "content_record_key": {
+                "type": "string",
+                "minLength": 1
+              },
+              "provenance_record_keys": {
+                "type": "array",
+                "maxItems": 4096,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "replay_postures": {
+                "type": "array",
+                "maxItems": 4096,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "record_key",
+                    "posture"
+                  ],
+                  "properties": {
+                    "record_key": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "posture": {
+                      "enum": [
+                        "fully_replayable",
+                        "source_access_required",
+                        "intentionally_non_replayable",
+                        "no_longer_replayable_after_deletion"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
