@@ -1529,6 +1529,34 @@ fn mcp_serves_schema_resources_byte_equal_to_on_disk_files() {
 
     for (uri, file) in [
         (
+            "adoc://agent/v0/schema/adoc.portable_projection_input.v0.schema.json",
+            "adoc.portable_projection_input.v0.schema.json",
+        ),
+        (
+            "adoc://agent/v0/schema/adoc.portable_projection.v0.schema.json",
+            "adoc.portable_projection.v0.schema.json",
+        ),
+        (
+            "adoc://agent/v0/schema/agentdoc.cloud.portable_export_preparation.v0.schema.json",
+            "agentdoc.cloud.portable_export_preparation.v0.schema.json",
+        ),
+        (
+            "adoc://agent/v0/schema/agentdoc.cloud.portable_export_manifest.v0.schema.json",
+            "agentdoc.cloud.portable_export_manifest.v0.schema.json",
+        ),
+        (
+            "adoc://agent/v0/schema/agentdoc.cloud.portable_export_finalization.v0.schema.json",
+            "agentdoc.cloud.portable_export_finalization.v0.schema.json",
+        ),
+        (
+            "adoc://agent/v0/schema/agentdoc.cloud.export_native_fact.v0.schema.json",
+            "agentdoc.cloud.export_native_fact.v0.schema.json",
+        ),
+        (
+            "adoc://agent/v0/schema/agentdoc.cloud.portable_export_receipt.v0.schema.json",
+            "agentdoc.cloud.portable_export_receipt.v0.schema.json",
+        ),
+        (
             "adoc://agent/v0/schema/adoc.managed_field_declassification.v0.schema.json",
             "adoc.managed_field_declassification.v0.schema.json",
         ),

@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/agentdoc.cloud.portable_export_finalization.v0.schema.json",
+  "title": "agentdoc.cloud.portable_export_finalization.v0",
+  "description": "Closed final native response. Selection changes require a fresh request and release no archive. A release-authorized receipt records authorization, never a client download or receipt acknowledgment.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "export_id",
+    "disposition",
+    "code",
+    "audit"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "agentdoc.cloud.portable_export_finalization.v0"
+    },
+    "export_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "disposition": {
+      "enum": [
+        "release_authorized",
+        "selection_changed"
+      ]
+    },
+    "code": {
+      "anyOf": [
+        {
+          "const": "privacy.export_selection_changed"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "audit": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "receipt_id",
+            "receipt_bytes_base64",
+            "receipt_sha256"
+          ],
+          "properties": {
+            "receipt_id": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "receipt_bytes_base64": {
+              "type": "string",
+              "minLength": 1
+            },
+            "receipt_sha256": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "disposition": {
+            "const": "release_authorized"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "code": {
+            "type": "null"
+          },
+          "audit": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "receipt_id",
+              "receipt_bytes_base64",
+              "receipt_sha256"
+            ],
+            "properties": {
+              "receipt_id": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "receipt_bytes_base64": {
+                "type": "string",
+                "minLength": 1
+              },
+              "receipt_sha256": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "code": {
+            "const": "privacy.export_selection_changed"
+          },
+          "audit": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -2,5 +2,4 @@
 pub(crate) mod evidence_fs;
 pub(crate) mod fs;
 pub(crate) mod fs_writer;
-#[cfg(test)]
 pub(crate) mod in_memory;

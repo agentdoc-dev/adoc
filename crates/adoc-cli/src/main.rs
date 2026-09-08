@@ -68,6 +68,7 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                 return 2;
             }
             match cli.command {
+                Commands::PortableProject => commands::portable_project(),
                 Commands::ManagedRetrieve {
                     require_sensitive_classification: _,
                     require_field_projection: _,

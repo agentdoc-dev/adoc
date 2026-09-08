@@ -115,6 +115,10 @@ diagnostic_codes! {
         "Update `expires_at` or remove it if this Knowledge Object is still valid.";
     LifecycleInvalidExpiresAt = "lifecycle.invalid_expires_at" =>
         "Use `YYYY-MM-DD` for `expires_at`, or remove the field.";
+    PortableProjectionUnavailable = "projection.unavailable" =>
+        "Consult the preserved native records and projection loss report; regenerate after resolving unavailable source or history.";
+    PrivacyExportDigestMismatch = "privacy.export_digest_mismatch" =>
+        "Preserve the authorized corruption finding; never repair a retained digest during export.";
     IdDuplicate = "id.duplicate" =>
         "Give each object a unique ID across the compiled workspace.";
     IdInvalid = "id.invalid" =>
