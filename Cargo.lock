@@ -72,11 +72,13 @@ version = "0.1.0"
 dependencies = [
  "adoc-core",
  "adoc-local",
+ "base64 0.22.1",
  "jsonschema",
  "rmcp",
  "schemars",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "thiserror",
  "tokio",
