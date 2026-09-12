@@ -192,6 +192,11 @@ The 13 `agentdoc.cloud.*` rows below whose owning slice is E5 also inventory imp
 | `agentdoc.cloud.migration_transition_request.v0` | cloud | E7.2.T1 | closed expected-head command and evidence union; native admission owns adjacency and authorization; schema and MCP published |
 | `agentdoc.cloud.migration_transition_receipt.v0` | cloud | E7.2.T1 | exact append-only migration lifecycle receipt with frozen scope/revision, predecessor, native actor and evidence; no cutover or rollback by label alone; schema and MCP published |
 | `agentdoc.cloud.migration_transition_result.v0` | cloud | E7.2.T1 | closed exact receipt-byte base64 and SHA256 response; no parsed authoritative duplicate; schema and MCP published |
+| `agentdoc.cloud.migration_source_target_request.v0` | cloud | E7.2.T2 | explicit authorized source-scope to native repository/ref declaration; schema and MCP published |
+| `agentdoc.cloud.migration_source_target_receipt.v0` | cloud | E7.2.T2 | immutable native mapping, source scope and configuration authority; no private endpoint or credentials; schema and MCP published |
+| `agentdoc.cloud.migration_source_checkpoint_request.v0` | cloud | E7.2.T2 | closed worker observation bound to exact intended operation and lifecycle predecessor; schema and MCP published |
+| `agentdoc.cloud.migration_source_checkpoint_receipt.v0` | cloud | E7.2.T2 | native comparison and immutable negative-stop evidence; match alone grants no progress, approval or cutover; schema and MCP published |
+| `agentdoc.cloud.migration_source_result.v0` | cloud | E7.2.T2 | shared exact canonical receipt-byte base64 and SHA256 response for target and checkpoint ports; schema and MCP published |
 <!-- /registry:envelopes-planned -->
 
 ## Diagnostic Codes — shipped, owner `adoc`
@@ -633,6 +638,8 @@ The pre-release implementation annotations mark only the ten code rows added by 
 | `privacy.export_unavailable` | planned (E6.6.T5) | required export storage, locking, transport or auditing is unavailable; release no archive and expose no retained source bytes in diagnostics |
 | `privacy.export_invalid_envelope` | planned (E6.6.T5) | authorized retained JSON/object is malformed or its embedded self-digest binding is invalid; preserve the same omission fields with actual canonical-domain observed_digest when computable (possibly equal to claimed_digest), otherwise null; never substitute file SHA. Existing privacy.export_digest_mismatch continues to mean a computed non-null domain digest different from the claimed digest |
 | `migration.illegal_transition` | planned (E7.2.T1) | syntactically valid but unavailable/illegal migration state edge or unmet native evidence precondition; no state or authority advance |
+| `migration.source_checkpoint_required` | planned (E7.2.T2) | enrolled migration lacks an exact matching source checkpoint for this intended operation and lifecycle predecessor; no progress or initialization |
+| `migration.source_checkpoint_stopped` | planned (E7.2.T2) | retained drift or unavailable source observation permanently stops new successful work for this enrolled job; later match does not clear it |
 <!-- /registry:cloud-codes -->
 
 ## Attestation codes — planned, owner `cloud`

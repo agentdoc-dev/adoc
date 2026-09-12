@@ -11242,6 +11242,328 @@
           ]
         }
       }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "record"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "agentdoc.cloud.export_native_fact.v0"
+        },
+        "kind": {
+          "const": "migration_source_target"
+        },
+        "record": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "workspace_id",
+            "migration_id",
+            "command_digest",
+            "repository_id",
+            "provider",
+            "external_repository_id",
+            "owner",
+            "name",
+            "ref",
+            "deployment_mode",
+            "deployment_binding_digest",
+            "helper_digest",
+            "auth_session_id",
+            "authorization_decision_id",
+            "recorded_at",
+            "principal",
+            "target_digest"
+          ],
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "migration_id": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "command_digest": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "repository_id": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "provider": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024,
+              "pattern": "^\\S(?:[^\\u0000-\\u001f\\u007f-\\u009f]*\\S)?$"
+            },
+            "external_repository_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024,
+              "pattern": "^\\S(?:[^\\u0000-\\u001f\\u007f-\\u009f]*\\S)?$"
+            },
+            "owner": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024,
+              "pattern": "^\\S(?:[^\\u0000-\\u001f\\u007f-\\u009f]*\\S)?$"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024,
+              "pattern": "^\\S(?:[^\\u0000-\\u001f\\u007f-\\u009f]*\\S)?$"
+            },
+            "ref": {
+              "type": "string",
+              "minLength": 12,
+              "maxLength": 211,
+              "pattern": "^refs/heads/[A-Za-z0-9][A-Za-z0-9_-]*(?:/[A-Za-z0-9][A-Za-z0-9_-]*)*$"
+            },
+            "deployment_mode": {
+              "enum": [
+                "github_https",
+                "local_bare"
+              ]
+            },
+            "deployment_binding_digest": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "helper_digest": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "auth_session_id": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "authorization_decision_id": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "recorded_at": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$",
+              "minLength": 20,
+              "maxLength": 40
+            },
+            "principal": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "target_digest": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "deployment_mode": {
+                    "const": "github_https"
+                  }
+                },
+                "required": [
+                  "deployment_mode"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "provider": {
+                    "const": "github"
+                  },
+                  "owner": {
+                    "pattern": "^[A-Za-z0-9_-]+$"
+                  },
+                  "name": {
+                    "pattern": "^[A-Za-z0-9_.-]+$",
+                    "not": {
+                      "enum": [
+                        ".",
+                        ".."
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "record"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "agentdoc.cloud.export_native_fact.v0"
+        },
+        "kind": {
+          "const": "migration_source_checkpoint"
+        },
+        "record": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "workspace_id",
+            "migration_id",
+            "observation_id",
+            "target_digest",
+            "command_digest",
+            "compared_revision",
+            "observed_oid",
+            "observed_at",
+            "helper_digest",
+            "outcome",
+            "authorization_decision_id",
+            "recorded_at",
+            "operation_kind",
+            "operation_id",
+            "operation_digest",
+            "expected_ordinal",
+            "expected_receipt_digest",
+            "principal",
+            "receipt_digest"
+          ],
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "migration_id": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "observation_id": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "target_digest": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "command_digest": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "compared_revision": {
+              "$ref": "adoc://agent/v0/schema/adoc.migration_request.v0.schema.json#/properties/revision/properties/value"
+            },
+            "observed_oid": {
+              "anyOf": [
+                {
+                  "$ref": "adoc://agent/v0/schema/adoc.migration_request.v0.schema.json#/properties/revision/properties/value"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "observed_at": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$",
+              "minLength": 20,
+              "maxLength": 40
+            },
+            "helper_digest": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "outcome": {
+              "enum": [
+                "match",
+                "drift",
+                "unavailable"
+              ]
+            },
+            "authorization_decision_id": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "recorded_at": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$",
+              "minLength": 20,
+              "maxLength": 40
+            },
+            "operation_kind": {
+              "enum": [
+                "advance",
+                "initialize"
+              ]
+            },
+            "operation_id": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "operation_digest": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "expected_ordinal": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            },
+            "expected_receipt_digest": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "principal": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "receipt_digest": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "outcome": {
+                    "const": "unavailable"
+                  }
+                },
+                "required": [
+                  "outcome"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "observed_oid": {
+                    "type": "null"
+                  }
+                }
+              },
+              "else": {
+                "properties": {
+                  "observed_oid": {
+                    "$ref": "adoc://agent/v0/schema/adoc.migration_request.v0.schema.json#/properties/revision/properties/value"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
     }
   ]
 }
