@@ -24,6 +24,11 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUSTDOCFLAGS: -D warnings
+  # Incremental artifacts are never reused across runners; locally they are 13 GB
+  # of `target/debug/incremental`. Caching them is pure cost.
+  CARGO_INCREMENTAL: "0"
+  CARGO_NET_RETRY: "10"
+  RUSTUP_MAX_RETRIES: "10"
 
 jobs:
   rust:
