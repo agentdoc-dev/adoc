@@ -11,7 +11,11 @@ concurrency:
 jobs:
   claude-review:
     name: claude-review (claude-opus-5)
+    # Bot pull requests run without access to Actions secrets, so the review can
+    # only fail there. Skip them instead of reporting a red check.
+    if: ${{ !endsWith(github.event.pull_request.user.login, '[bot]') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
       pull-requests: read
@@ -27,12 +31,22 @@ jobs:
 
       - name: Run Claude Code Review
         id: claude-review
-        uses: anthropics/claude-code-action@19dda84776b3518d98b8798e591daee763049ed3 # v1.0.220
+        uses: anthropics/claude-code-action@56cf60fde42f7b19c3abfd5c9c48b69a1288461f # v1.0.222
+        env:
+          # Shared Mem0 memory. The repo-scoped pool is keyed off the git remote,
+          # so CI lands in the same namespace as local sessions. Without the
+          # secret the plugin's hooks no-op and the review still runs.
+          MEM0_API_KEY: ${{ secrets.MEM0_API_KEY }}
+          MEM0_USER_ID: agentdoc-ci
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
-          plugin_marketplaces: "https://github.com/anthropics/claude-code.git"
-          plugins: "code-review@claude-code-plugins"
+          plugin_marketplaces: |
+            https://github.com/anthropics/claude-code.git
+            https://github.com/mem0ai/mem0.git
+          plugins: |
+            code-review@claude-code-plugins
+            mem0@mem0-plugins
           prompt: |
             /code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}
 
@@ -51,4 +65,4 @@ jobs:
 
           claude_args: |
             --model claude-opus-5
-            --allowed-tools "mcp__github_inline_comment__create_inline_comment,Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"
+            --allowed-tools "mcp__mem0__search_memories,mcp__plugin_mem0_mem0__search_memories,mcp__github_inline_comment__create_inline_comment,Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"
