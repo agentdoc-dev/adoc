@@ -1,0 +1,53 @@
+# cargo-deny: supply-chain gate for the 470+ transitive dependencies.
+#
+# CI runs `cargo deny check licenses bans sources` — deliberately NOT
+# `advisories`. An advisory check turns red on a day nobody pushed anything,
+# which trains people to merge through a red gate. Advisory monitoring is
+# Dependabot alerts + automated security fixes (enabled at the repo level)
+# instead: those open a PR against this same gate rather than blocking one.
+
+[graph]
+all-features = true
+
+[licenses]
+# Every current dependency is permissive. This is an allow-list rather than a
+# deny-list so a new copyleft dependency fails the gate instead of arriving
+# unnoticed.
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "MPL-2.0",
+    "NCSA",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+confidence-threshold = 0.9
+
+[bans]
+# The workspace legitimately carries duplicate major versions of small crates
+# (r-efi 5 and 6, for instance) via independent transitive paths. Warn so the
+# drift is visible in the log; do not fail a build over something no first-party
+# change can fix.
+multiple-versions = "warn"
+wildcards = "deny"
+# Every wildcard flagged is an intra-workspace `{ path = ... }` dep, which is
+# not the risk this check exists for. The crates are publish = false, so
+# cargo-deny treats them as private and exempts their path deps.
+allow-wildcard-paths = true
+
+[sources]
+# Everything must come from crates.io. An unvetted git or alternate-registry
+# dependency is the supply-chain hole this file exists to close.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

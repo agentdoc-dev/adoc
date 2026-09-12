@@ -179,6 +179,27 @@ jobs:
       - name: Run retrieval pilot with FastEmbed
         run: cargo test -p adoc-cli --test retrieval_pilot --features fastembed-it --locked
 
+  deny:
+    name: Supply chain
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # A prebuilt binary, not a build. No Rust toolchain and no cache needed:
+      # cargo-deny reads Cargo.lock and the manifests, it does not compile.
+      - uses: taiki-e/install-action@9534c84618278caac52cb373bb164ed464dbd8af # v2.87.11
+        with:
+          tool: cargo-deny
+
+      # `advisories` is deliberately absent — see the comment in deny.toml.
+      # These three checks only change when a dependency changes, so this gate
+      # cannot turn red on a day nobody pushed.
+      - name: Check licenses, bans and sources
+        run: cargo deny check licenses bans sources
+
   # The one required status check. Required checks are matched by context name
   # and GitHub waits indefinitely for a context that never reports, so gating
   # on the individual lanes would mean re-editing branch protection every time
@@ -189,6 +210,7 @@ jobs:
       - fmt
       - test
       - check
+      - deny
     # NOT `always()`: that also fires when the RUN is cancelled, and
     # cancel-in-progress above makes cancellation the normal end of any
     # superseded PR push. The gate would then read `cancelled` from its
