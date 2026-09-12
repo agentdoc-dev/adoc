@@ -6762,3 +6762,354 @@ fn migration_lifecycle_actual_native_outputs_match_closed_contracts() {
         assert_eq!(record["evidence"], receipts[i]["evidence"]);
     }
 }
+
+#[test]
+fn migration_source_contracts_are_closed_bound_and_conservative() {
+    let id = "00000000-0000-4000-8000-000000000001";
+    let digest = format!("sha256:{}", "a".repeat(64));
+    let revision = "a".repeat(40);
+    let timestamp = "2026-09-09T00:00:00Z";
+    let target = json!({"schema_version":"agentdoc.cloud.migration_source_target_request.v0",
+        "migration_id":id,"repository_id":id,"ref":"refs/heads/explicit-source",
+        "deployment_mode":"local_bare","deployment_binding_digest":digest,"helper_digest":digest});
+    let checkpoint = json!({"schema_version":"agentdoc.cloud.migration_source_checkpoint_request.v0",
+        "migration_id":id,"observation_id":id,"target_digest":digest,
+        "expected":{"ordinal":"2","receipt_digest":digest},
+        "operation":{"kind":"advance","id":id,"command_digest":digest},
+        "helper_digest":digest,"observed_at":timestamp,
+        "observation":{"outcome":"observed","observed_oid":revision}});
+    let mut target_receipt = target.clone();
+    target_receipt.as_object_mut().unwrap().extend(json!({
+        "schema_version":"agentdoc.cloud.migration_source_target_receipt.v0","workspace_id":id,
+        "provider":"github","external_repository_id":"provider-42","owner":"fixture-owner","name":"fixture.repo",
+        "connector_id":id,"scope":{"workspace_id":id,"connector_id":id,"source_container_id":"source-1",
+        "resource":{"kind":"repository","id":"repository-1"}},"source_request_id":"request-1",
+        "request_digest":digest,"job_digest":digest,"initial_revision":revision,"command_digest":digest,
+        "principal_id":id,"auth_session_id":id,"authorization_decision_id":id,"recorded_at":timestamp
+    }).as_object().unwrap().clone());
+    let receipt = json!({"schema_version":"agentdoc.cloud.migration_source_checkpoint_receipt.v0",
+        "workspace_id":id,"migration_id":id,"observation_id":id,"target_digest":digest,"command_digest":digest,
+        "operation":checkpoint["operation"],"expected":checkpoint["expected"],"compared_revision":revision,
+        "observed_oid":revision,"observed_at":timestamp,"helper_digest":digest,"outcome":"match",
+        "principal_id":id,"authorization_decision_id":id,"recorded_at":timestamp});
+    let result = json!({"schema_version":"agentdoc.cloud.migration_source_result.v0",
+        "receipt_bytes_base64":"e30K","receipt_digest":digest});
+    for value in [&target, &checkpoint, &target_receipt, &receipt, &result] {
+        let name = format!("{}.schema.json", value["schema_version"].as_str().unwrap());
+        assert_valid(&name, value);
+        let validator = validator_for(&schema(&name));
+        for key in value.as_object().unwrap().keys() {
+            let mut missing = value.clone();
+            missing.as_object_mut().unwrap().remove(key);
+            assert!(!validator.is_valid(&missing), "{name} requires {key}");
+        }
+        let mut extended = value.clone();
+        extended["unknown"] = json!(true);
+        assert!(!validator.is_valid(&extended), "{name} is closed");
+        extended = value.clone();
+        extended["schema_version"] = json!(
+            value["schema_version"]
+                .as_str()
+                .unwrap()
+                .replace(".v0", ".v999")
+        );
+        assert!(!validator.is_valid(&extended));
+    }
+    let target_name = "agentdoc.cloud.migration_source_target_request.v0.schema.json";
+    for invalid_ref in [
+        "HEAD",
+        "main",
+        "refs/tags/main",
+        "refs/heads/../main",
+        "refs/heads/main.lock",
+        "refs/heads/has space",
+    ] {
+        let mut invalid = target.clone();
+        invalid["ref"] = json!(invalid_ref);
+        assert!(!schema_accepts(target_name, &invalid), "{invalid_ref}");
+    }
+    let target_receipt_name = "agentdoc.cloud.migration_source_target_receipt.v0.schema.json";
+    let mut generic = target_receipt.clone();
+    generic["provider"] = json!("private-git");
+    generic["owner"] = json!("opaque owner");
+    assert_valid(target_receipt_name, &generic);
+    generic["deployment_mode"] = json!("github_https");
+    assert!(!schema_accepts(target_receipt_name, &generic));
+    generic = target_receipt.clone();
+    generic["deployment_mode"] = json!("github_https");
+    assert_valid(target_receipt_name, &generic);
+    generic["name"] = json!("..");
+    assert!(!schema_accepts(target_receipt_name, &generic));
+    let name = "agentdoc.cloud.migration_source_checkpoint_request.v0.schema.json";
+    for (pointer, invalid_value) in [
+        ("/observation/observed_oid", json!("0".repeat(40))),
+        ("/observation/observed_oid", json!(null)),
+        ("/observation/outcome", json!("match")),
+        ("/operation/kind", json!("cutover")),
+        ("/operation/command_digest", json!("bad")),
+        ("/expected/ordinal", json!(2)),
+        ("/observed_at", json!("not a timestamp")),
+        (
+            "/observed_at",
+            json!(format!("2026-09-09T00:00:00.{}Z", "1".repeat(100))),
+        ),
+    ] {
+        let mut invalid = checkpoint.clone();
+        *invalid.pointer_mut(pointer).unwrap() = invalid_value;
+        assert!(!schema_accepts(name, &invalid), "{pointer}");
+    }
+    let mut unavailable = checkpoint.clone();
+    unavailable["observation"] = json!({"outcome":"unavailable","observed_oid":null});
+    assert_valid(name, &unavailable);
+    unavailable["observation"]["observed_oid"] = json!(revision);
+    assert!(!schema_accepts(name, &unavailable));
+    for container in ["expected", "operation", "observation"] {
+        let mut invalid = checkpoint.clone();
+        invalid[container]["extra"] = json!(true);
+        assert!(!schema_accepts(name, &invalid));
+    }
+    let name = "agentdoc.cloud.migration_source_checkpoint_receipt.v0.schema.json";
+    let mut negative = receipt.clone();
+    negative["outcome"] = json!("drift");
+    negative["observed_oid"] = json!("b".repeat(40));
+    assert_valid(name, &negative);
+    negative["outcome"] = json!("unavailable");
+    assert!(!schema_accepts(name, &negative));
+    negative["observed_oid"] = json!(null);
+    assert_valid(name, &negative);
+    negative["outcome"] = json!("match");
+    assert!(!schema_accepts(name, &negative));
+    let mut target_fact = target_receipt.clone();
+    for key in [
+        "schema_version",
+        "connector_id",
+        "scope",
+        "source_request_id",
+        "request_digest",
+        "job_digest",
+        "initial_revision",
+        "principal_id",
+    ] {
+        target_fact.as_object_mut().unwrap().remove(key);
+    }
+    target_fact["principal"] = json!(id);
+    target_fact["target_digest"] = json!(digest);
+    let checkpoint_fact = json!({"workspace_id":id,"migration_id":id,"observation_id":id,
+        "target_digest":digest,"command_digest":digest,"operation_kind":"advance","operation_id":id,
+        "operation_digest":digest,"expected_ordinal":"2","expected_receipt_digest":digest,
+        "compared_revision":revision,"observed_oid":revision,"observed_at":timestamp,
+        "helper_digest":digest,"outcome":"match","principal":id,"authorization_decision_id":id,
+        "receipt_digest":digest,"recorded_at":timestamp});
+    let name = "agentdoc.cloud.export_native_fact.v0.schema.json";
+    let mut target_native_fact = json!({"schema_version":"agentdoc.cloud.export_native_fact.v0",
+        "kind":"migration_source_target","record":target_fact.clone()});
+    target_native_fact["record"]["deployment_mode"] = json!("github_https");
+    assert_valid(name, &target_native_fact);
+    for (field, invalid_value) in [
+        ("provider", json!("gitlab")),
+        ("owner", json!("unsafe owner")),
+        ("name", json!("unsafe/name")),
+    ] {
+        let mut invalid = target_native_fact.clone();
+        invalid["record"][field] = invalid_value;
+        assert!(!schema_accepts(name, &invalid), "github_https {field}");
+    }
+    let mut checkpoint_native_fact = json!({"schema_version":"agentdoc.cloud.export_native_fact.v0",
+        "kind":"migration_source_checkpoint","record":checkpoint_fact.clone()});
+    for (kind, record) in [
+        ("migration_source_target", target_fact),
+        ("migration_source_checkpoint", checkpoint_fact),
+    ] {
+        let fact = json!({"schema_version":"agentdoc.cloud.export_native_fact.v0","kind":kind,"record":record});
+        assert_valid(name, &fact);
+        for key in record.as_object().unwrap().keys() {
+            let mut invalid = fact.clone();
+            invalid["record"].as_object_mut().unwrap().remove(key);
+            assert!(!schema_accepts(name, &invalid), "{kind} requires {key}");
+        }
+        for key in [
+            "command_bytes",
+            "receipt_bytes",
+            "remote",
+            "credential",
+            "extra",
+        ] {
+            let mut invalid = fact.clone();
+            invalid["record"][key] = json!("forbidden");
+            assert!(!schema_accepts(name, &invalid), "{kind} forbids {key}");
+        }
+    }
+    checkpoint_native_fact["record"]["outcome"] = json!("drift");
+    checkpoint_native_fact["record"]["observed_oid"] = json!("b".repeat(40));
+    assert_valid(name, &checkpoint_native_fact);
+    checkpoint_native_fact["record"]["outcome"] = json!("unavailable");
+    assert!(!schema_accepts(name, &checkpoint_native_fact));
+    checkpoint_native_fact["record"]["observed_oid"] = json!(null);
+    assert_valid(name, &checkpoint_native_fact);
+    for outcome in ["match", "drift"] {
+        checkpoint_native_fact["record"]["outcome"] = json!(outcome);
+        assert!(!schema_accepts(name, &checkpoint_native_fact));
+    }
+}
+
+#[test]
+fn migration_source_actual_native_outputs_match_closed_contracts() {
+    use std::fmt::Write;
+
+    use base64::Engine;
+    use sha2::Digest;
+
+    // Unmodified capture from the actual pinned Action/Adoc/native integration:
+    // unchanged source, concurrent source writer, receiver deletion and tamper refusal.
+    let records: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("fixtures/migration-source-native.json")).unwrap();
+    assert_eq!(records.len(), 64);
+    for record in &records {
+        assert_valid(
+            &format!("{}.schema.json", record["schema_version"].as_str().unwrap()),
+            record,
+        );
+    }
+    let mut retained = std::collections::BTreeMap::new();
+    for (index, result) in records.iter().enumerate().filter(|(_, record)| {
+        record["schema_version"] == "agentdoc.cloud.migration_source_result.v0"
+    }) {
+        let encoded = result["receipt_bytes_base64"].as_str().unwrap();
+        let raw = base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .unwrap();
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD.encode(&raw),
+            encoded
+        );
+        let mut digest = String::from("sha256:");
+        for byte in sha2::Sha256::digest(&raw) {
+            write!(digest, "{byte:02x}").unwrap();
+        }
+        assert_eq!(result["receipt_digest"], digest);
+        let receipt: serde_json::Value = serde_json::from_slice(&raw).unwrap();
+        assert_eq!(receipt, records[index + 1]);
+        let mut canonical = serde_json::to_vec(&receipt).unwrap();
+        canonical.push(b'\n');
+        assert_eq!(
+            raw, canonical,
+            "native canonical receipt bytes include exactly one LF"
+        );
+        assert!(retained.insert(digest, receipt).is_none());
+    }
+    let select = |suffix: &str| {
+        records
+            .iter()
+            .filter(|record| record["schema_version"].as_str().unwrap().ends_with(suffix))
+            .collect::<Vec<_>>()
+    };
+    let targets = select("migration_source_target_receipt.v0");
+    let checkpoints = select("migration_source_checkpoint_receipt.v0");
+    assert_eq!(targets.len(), 4);
+    assert_eq!(checkpoints.len(), 15);
+    assert_eq!(select("migration_source_result.v0").len(), 19);
+    assert_eq!(select("migration_source_target_request.v0").len(), 4);
+    assert_eq!(select("migration_source_checkpoint_request.v0").len(), 15);
+    let outcomes = checkpoints
+        .iter()
+        .map(|receipt| receipt["outcome"].as_str().unwrap())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(outcomes, BTreeSet::from(["match", "drift", "unavailable"]));
+    for receipt in checkpoints {
+        let target = targets
+            .iter()
+            .find(|target| target["migration_id"] == receipt["migration_id"])
+            .unwrap();
+        for key in ["workspace_id", "helper_digest"] {
+            assert_eq!(receipt[key], target[key]);
+        }
+        assert_eq!(receipt["compared_revision"], target["initial_revision"]);
+        assert_eq!(
+            retained.get(receipt["target_digest"].as_str().unwrap()),
+            Some(*target)
+        );
+        let request = records
+            .iter()
+            .find(|record| {
+                record["schema_version"] == "agentdoc.cloud.migration_source_checkpoint_request.v0"
+                    && record["observation_id"] == receipt["observation_id"]
+            })
+            .unwrap();
+        for key in [
+            "migration_id",
+            "observation_id",
+            "target_digest",
+            "operation",
+            "expected",
+            "helper_digest",
+        ] {
+            assert_eq!(receipt[key], request[key]);
+        }
+        assert_eq!(
+            receipt["observed_oid"],
+            request["observation"]["observed_oid"]
+        );
+        match receipt["outcome"].as_str().unwrap() {
+            "match" => assert_eq!(receipt["observed_oid"], receipt["compared_revision"]),
+            "drift" => assert_ne!(receipt["observed_oid"], receipt["compared_revision"]),
+            "unavailable" => assert!(receipt["observed_oid"].is_null()),
+            _ => unreachable!(),
+        }
+    }
+    let facts = select("export_native_fact.v0");
+    assert_eq!(facts.len(), 7);
+    assert_eq!(
+        facts
+            .iter()
+            .map(|fact| fact["kind"].as_str().unwrap())
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["migration_source_target", "migration_source_checkpoint"])
+    );
+    for fact in facts {
+        let native = &fact["record"];
+        let receipt = records
+            .iter()
+            .find(|record| {
+                record["schema_version"].as_str().unwrap().ends_with(
+                    if fact["kind"] == "migration_source_target" {
+                        "migration_source_target_receipt.v0"
+                    } else {
+                        "migration_source_checkpoint_receipt.v0"
+                    },
+                ) && record["migration_id"] == native["migration_id"]
+                    && record["observation_id"] == native["observation_id"]
+            })
+            .unwrap();
+        for key in [
+            "workspace_id",
+            "migration_id",
+            "command_digest",
+            "helper_digest",
+            "recorded_at",
+        ] {
+            assert_eq!(native[key], receipt[key]);
+        }
+        assert_eq!(native["principal"], receipt["principal_id"]);
+        let digest_field = if fact["kind"] == "migration_source_target" {
+            "target_digest"
+        } else {
+            "receipt_digest"
+        };
+        assert_eq!(
+            retained.get(native[digest_field].as_str().unwrap()),
+            Some(receipt)
+        );
+        if fact["kind"] == "migration_source_checkpoint" {
+            for (field, pointer) in [
+                ("expected_ordinal", "/expected/ordinal"),
+                ("expected_receipt_digest", "/expected/receipt_digest"),
+                ("operation_id", "/operation/id"),
+                ("operation_kind", "/operation/kind"),
+                ("operation_digest", "/operation/command_digest"),
+            ] {
+                assert_eq!(&native[field], receipt.pointer(pointer).unwrap());
+            }
+            assert_eq!(native["outcome"], receipt["outcome"]);
+        }
+    }
+}

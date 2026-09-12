@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/agentdoc.cloud.migration_source_target_request.v0.schema.json",
+  "title": "agentdoc.cloud.migration_source_target_request.v0",
+  "description": "Explicit human-authorized declaration mapping opaque migration source scope to one native repository and explicit ref. No endpoint, credential or revision override; native configuration authority and workspace joins remain required.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "migration_id",
+    "repository_id",
+    "ref",
+    "deployment_mode",
+    "deployment_binding_digest",
+    "helper_digest"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "agentdoc.cloud.migration_source_target_request.v0"
+    },
+    "migration_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "repository_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "ref": {
+      "description": "Restricted branch-ref grammar for this contract; it does not claim to accept every valid Git ref.",
+      "type": "string",
+      "minLength": 12,
+      "maxLength": 211,
+      "pattern": "^refs/heads/[A-Za-z0-9][A-Za-z0-9_-]*(?:/[A-Za-z0-9][A-Za-z0-9_-]*)*$"
+    },
+    "deployment_mode": {
+      "enum": [
+        "github_https",
+        "local_bare"
+      ]
+    },
+    "deployment_binding_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "helper_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}

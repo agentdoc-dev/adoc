@@ -783,6 +783,56 @@ const RESOURCES: &[AgentResource] = &[
         ),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_source_target_request.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-source-target-request-v0-json",
+        title: "Migration Source Target Request JSON Schema",
+        description: "Closed source observation contract; native authority and exact intended-operation bindings remain required.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_source_target_request.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_source_target_receipt.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-source-target-receipt-v0-json",
+        title: "Migration Source Target Receipt JSON Schema",
+        description: "Closed source observation contract; native authority and exact intended-operation bindings remain required.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_source_target_receipt.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_source_checkpoint_request.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-source-checkpoint-request-v0-json",
+        title: "Migration Source Checkpoint Request JSON Schema",
+        description: "Closed source observation contract; native authority and exact intended-operation bindings remain required.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_source_checkpoint_request.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_source_checkpoint_receipt.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-source-checkpoint-receipt-v0-json",
+        title: "Migration Source Checkpoint Receipt JSON Schema",
+        description: "Closed source observation contract; native authority and exact intended-operation bindings remain required.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_source_checkpoint_receipt.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_source_result.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-source-result-v0-json",
+        title: "Migration Source Result JSON Schema",
+        description: "Closed source observation contract; native authority and exact intended-operation bindings remain required.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_source_result.v0.schema.json"
+        ),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/adoc.migration_qualification.v0.schema.json",
         name: "schema-adoc-migration_qualification-v0-json",
         title: "Migration Qualification Contract JSON Schema",

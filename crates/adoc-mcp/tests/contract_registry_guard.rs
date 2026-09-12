@@ -2596,3 +2596,46 @@ fn migration_lifecycle_vocabulary_and_cloud_refusal_are_registered() {
         !anchored_ids(&doc, "registry:diagnostic-codes").contains("migration.illegal_transition")
     );
 }
+
+#[test]
+fn migration_source_contracts_and_native_stop_codes_are_registered() {
+    let doc = registry();
+    let planned = anchored_ids(&doc, "registry:envelopes-planned");
+    for suffix in [
+        "target_request",
+        "target_receipt",
+        "checkpoint_request",
+        "checkpoint_receipt",
+        "result",
+    ] {
+        let id = format!("agentdoc.cloud.migration_source_{suffix}.v0");
+        assert!(planned.contains(&id), "{id}");
+        let schema: serde_json::Value = serde_json::from_str(&read_repo_doc(&format!(
+            "docs/agent/v0/schema/{id}.schema.json"
+        )))
+        .unwrap();
+        assert_eq!(schema["properties"]["schema_version"]["const"], id);
+    }
+    for code in [
+        "migration.source_checkpoint_required",
+        "migration.source_checkpoint_stopped",
+    ] {
+        assert!(anchored_ids(&doc, "registry:cloud-codes").contains(code));
+        assert!(!anchored_ids(&doc, "registry:diagnostic-codes").contains(code));
+    }
+    let facts: serde_json::Value = serde_json::from_str(&read_repo_doc(
+        "docs/agent/v0/schema/agentdoc.cloud.export_native_fact.v0.schema.json",
+    ))
+    .unwrap();
+    for kind in ["migration_source_target", "migration_source_checkpoint"] {
+        assert_eq!(
+            facts["oneOf"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|arm| arm["properties"]["kind"]["const"] == kind)
+                .count(),
+            1
+        );
+    }
+}
