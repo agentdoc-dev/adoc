@@ -4,6 +4,11 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+# Deny by default. The job below re-grants exactly what the action needs;
+# without this block every unlisted scope defaults to the repository's
+# setting rather than to nothing.
+permissions: {}
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -28,6 +33,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
+          # This job hands the checkout to an agent that executes
+          # third-party plugin code; do not leave a usable token behind
+          # in .git/config for it.
+          persist-credentials: false
 
       - name: Run Claude Code Review
         id: claude-review
