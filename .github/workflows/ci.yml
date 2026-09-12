@@ -45,18 +45,17 @@ jobs:
       - name: Install Rust toolchain
         run: rustup toolchain install --no-self-update
 
+      # `actions/cache` over `target/` ratcheted: `restore-keys` pulled a stale
+      # tree forward, cargo never pruned it, and the job saved the union — 20.4 GB
+      # of entries against a 10 GB repo limit, so restore+save was 72% of the run.
+      # rust-cache prunes to dependency artifacts and derives its own key from the
+      # rustc version, host triple and Cargo.lock, so there is no ratchet.
+      # save-if: PRs restore main's cache read-only and skip the save step entirely.
       - name: Cache Cargo data
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('rust-toolchain.toml', '**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+          shared-key: test
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Check formatting
         run: cargo fmt --all --check
@@ -107,19 +106,8 @@ jobs:
       - name: Install Rust toolchain
         run: rustup toolchain install --no-self-update
 
-      - name: Cache Cargo data
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-fastembed-${{ hashFiles('rust-toolchain.toml', '**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-fastembed-
-            ${{ runner.os }}-cargo-
+      # No cache: this lane is workflow_dispatch-only, so any entry it saved would
+      # be LRU-evicted long before the next run while still consuming the budget.
 
       - name: Run retrieval pilot with FastEmbed
         run: cargo test -p adoc-cli --test retrieval_pilot --features fastembed-it --locked
