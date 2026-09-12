@@ -19,9 +19,10 @@ use rmcp::{
     ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{
-        CallToolResult, ErrorData, GetPromptRequestParams, GetPromptResult, JsonObject,
-        ListPromptsResult, ListResourcesResult, PaginatedRequestParams, Prompt,
-        ReadResourceRequestParams, ReadResourceResult, Resource, ServerCapabilities, ServerInfo,
+        CallToolResult, ErrorData, GetPromptRequestParams, GetPromptResponse, GetPromptResult,
+        JsonObject, ListPromptsResult, ListResourcesResult, MetaObject, PaginatedRequestParams,
+        Prompt, ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult, Resource,
+        ServerCapabilities, ServerInfo,
     },
     service::{MaybeSendFuture, RequestContext, RoleServer},
     tool, tool_handler, tool_router,
@@ -703,9 +704,10 @@ impl ServerHandler for AgentDocMcpServer {
         &self,
         request: ReadResourceRequestParams,
         _context: RequestContext<RoleServer>,
-    ) -> impl Future<Output = Result<ReadResourceResult, ErrorData>> + MaybeSendFuture + '_ {
+    ) -> impl Future<Output = Result<ReadResourceResponse, ErrorData>> + MaybeSendFuture + '_ {
         std::future::ready(
             self.read_agent_resource(&request.uri)
+                .map(ReadResourceResponse::Complete)
                 .map_err(adapter_error),
         )
     }
@@ -726,9 +728,10 @@ impl ServerHandler for AgentDocMcpServer {
         &self,
         request: GetPromptRequestParams,
         _context: RequestContext<RoleServer>,
-    ) -> impl Future<Output = Result<GetPromptResult, ErrorData>> + MaybeSendFuture + '_ {
+    ) -> impl Future<Output = Result<GetPromptResponse, ErrorData>> + MaybeSendFuture + '_ {
         std::future::ready(
             self.get_agent_prompt(&request.name, request.arguments)
+                .map(GetPromptResponse::Complete)
                 .map_err(adapter_error),
         )
     }
@@ -1011,7 +1014,7 @@ fn retrieval_result(prepared: PreparedRetrieval) -> CallToolResult {
                 serde_json::json!({"state":"spooled_pending","event_id":event_id,"code":"retrieval.sensitive_access_unrecorded"})
             }
         };
-        result.meta = Some(rmcp::model::Meta(
+        result.meta = Some(MetaObject(
             [(String::from("adoc.sensitive_access"), status)]
                 .into_iter()
                 .collect(),
