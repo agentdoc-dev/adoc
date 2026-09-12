@@ -18,17 +18,17 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 adoc-core = { path = "../adoc-core" }
 adoc-local = { path = "../adoc-local" }
-rmcp = { version = "2.2.0", features = ["server", "macros", "transport-io"] }
+rmcp = { version = "3.2.0", features = ["server", "macros", "transport-io"] }
 schemars = { version = "1.0.4", features = ["derive"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 thiserror = "2.0.17"
 tokio = { version = "1.48.0", features = ["macros", "rt-multi-thread", "io-std"] }
 
-ureq = "=3.3.0"
+ureq = "=3.4.0"
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 adoc-core = { path = "../adoc-core", features = ["test-embedding-provider"] }
-jsonschema = "0.49.4"
+jsonschema = "0.53.0"
 tempfile = "3.23.0"
