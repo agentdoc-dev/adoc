@@ -11,3 +11,10 @@ resolver = "3"
 edition = "2024"
 license = "MIT"
 rust-version = "1.95"
+
+# `debug = "full"` (the dev/test default) is the bulk of a 30 GB `target/debug`
+# and of the CI cache. line-tables-only keeps file:line in panic backtraces,
+# which the ~150 assert_cmd subprocess tests rely on, at a fraction of the size.
+# [profile.test] inherits from [profile.dev].
+[profile.dev]
+debug = "line-tables-only"
