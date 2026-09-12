@@ -1,0 +1,48 @@
+name: Rust setup
+description: Pinned toolchain + a pruning Cargo cache, identical in every job.
+
+# Every fanned-out job repeats this. Kept as a composite so the toolchain
+# install and the cache strategy have one home: a job that drifted to a
+# different setup would still go green, just against a different compiler
+# than the one the rest of CI proves.
+#
+# Checkout is NOT part of this action. A local `./` action cannot be resolved
+# until the repository is on disk, so each job must check out first.
+#
+# The toolchain version is not an input either — rust-toolchain.toml pins
+# 1.95.0 exactly, so `rustup toolchain install` resolves the same version
+# everywhere and every job is already the MSRV job.
+
+inputs:
+  cache-key:
+    description: >-
+      rust-cache shared-key. Cargo does not reuse clippy/check metadata
+      fingerprints for a subsequent `cargo build`, so lanes doing different
+      work must not share one entry — each would evict the other's artifacts
+      every run.
+    required: true
+  save:
+    description: Whether this job may write the cache. Only main should.
+    required: false
+    default: ${{ github.ref == 'refs/heads/main' }}
+
+runs:
+  using: composite
+  steps:
+    - run: rustup toolchain install --no-self-update
+      shell: bash
+
+    # `actions/cache` over `target/` ratcheted: `restore-keys` pulled a stale
+    # tree forward, cargo never pruned it, and the job saved the union — 20.4 GB
+    # of entries against a 10 GB repo limit, so restore+save was 72% of the run
+    # and a cold miss finished six minutes FASTER than a "hit". rust-cache prunes
+    # to dependency artifacts and derives its key from the rustc version, host
+    # triple and Cargo.lock, so there is no ratchet.
+    #
+    # save-if: PRs restore main's cache read-only and skip the save step
+    # entirely — that alone removes a 199-249s post-step from every PR, and
+    # stops PR branches opening their own scopes against the 10 GB budget.
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      with:
+        shared-key: ${{ inputs.cache-key }}
+        save-if: ${{ inputs.save }}
