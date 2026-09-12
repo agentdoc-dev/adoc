@@ -19,7 +19,14 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # PRs only. A superseded PR push is worth cancelling; a main run is not —
+  # main's green evidence is the scarce artifact, and blanket cancellation
+  # destroyed two main runs before this was scoped.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
 
 env:
   CARGO_TERM_COLOR: always
@@ -30,42 +37,96 @@ env:
   CARGO_NET_RETRY: "10"
   RUSTUP_MAX_RETRIES: "10"
 
+# Three working lanes, no `needs` between them: everything starts at t=0 and
+# the `ci` gate below collects the verdicts.
+#
+# Deliberately NOT here, so nobody re-derives them:
+#
+#   * A `changes`/paths-filter lane. crates/adoc-mcp/tests/docs_manifest_guard.rs
+#     and roadmap_sync_guard.rs are ADR-0041 docs-truth guards that read
+#     README.md and docs/roadmap/v10/*.md, and examples/markdown-pilot/**/*.md
+#     are test inputs. A `!**/*.md` filter would report green on exactly the
+#     PRs those guards exist to catch. Markdown is source in this repo.
+#
+#   * cargo-nextest. Test EXECUTION is 37s of a 329s cold run; the other 292s
+#     is compilation. A perfect 2x on execution saves ~18s, and the separate
+#     `cargo test --doc` lane nextest forces (it runs no doctests) costs more
+#     than that. Revisit if execution crosses ~90s.
+#
+#   * nextest --partition sharding. It multiplies a ~120s compile across N
+#     jobs to divide a 37s run. Strictly slower here.
+#
+#   * Gating the lanes on `fmt`. This repo is public, so Actions minutes are
+#     free; gating cheapest-first (as the billed sibling repo does) would add
+#     20s to the critical path to save nothing.
 jobs:
-  rust:
-    name: Rust
+  fmt:
+    name: Format
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
+    timeout-minutes: 5
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Install Rust toolchain
-        run: rustup toolchain install --no-self-update
+      - run: rustup toolchain install --no-self-update
 
-      # `actions/cache` over `target/` ratcheted: `restore-keys` pulled a stale
-      # tree forward, cargo never pruned it, and the job saved the union — 20.4 GB
-      # of entries against a 10 GB repo limit, so restore+save was 72% of the run.
-      # rust-cache prunes to dependency artifacts and derives its own key from the
-      # rustc version, host triple and Cargo.lock, so there is no ratchet.
-      # save-if: PRs restore main's cache read-only and skip the save step entirely.
-      - name: Cache Cargo data
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          shared-key: test
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
+      # No cache and no compilation — rustfmt parses, it does not build. This
+      # lane exists so the formatting verdict lands in ~20s instead of behind
+      # a full test compile.
       - name: Check formatting
         run: cargo fmt --all --check
 
-      - name: Lint
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/rust-setup
+        with:
+          cache-key: test
+
+      # Every compile estimate behind this pipeline assumes a 4 vCPU runner.
+      - run: nproc
 
       - name: Test
         run: cargo test --workspace --locked
 
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/rust-setup
+        with:
+          cache-key: check
+
+      # Cheapest verdict first: this lane is fail-fast within itself.
+      - name: Lint
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      # Coverage, not speed. `--all-targets` unifies dev-dependency features,
+      # so every other invocation in this file compiles with `embeddings` ON
+      # and the #[cfg(not(feature = "embeddings"))] arms in adoc-core — including
+      # the user-facing "rebuild with the embeddings feature" error — are never
+      # compiled at all. `-p adoc-core` alone selects no sibling crate, so
+      # nothing unifies the feature back on.
+      - name: Lint without default features
+        run: cargo clippy -p adoc-core --no-default-features --all-targets --locked -- -D warnings
+
+      # NOT redundant with the test lane. crates/adoc-cli dev-depends on
+      # adoc-core with features = ["test-embedding-provider"], so the binary
+      # `cargo test` produces honours ADOC_TEST_EMBEDDING_PROVIDER and swaps in
+      # a fake embedder. This is the only step that compiles and links what
+      # actually ships.
       - name: Build
         run: cargo build --workspace --locked
 
@@ -78,6 +139,14 @@ jobs:
       # verify-before-invoke and byte-identical receipts — not that the
       # binary matches externally recorded provenance; release-time
       # pinning owns that (see the ponytail note in run.sh).
+      #
+      # It lives HERE, after `cargo build`, and must keep using the default
+      # ADOC_BIN=target/debug/adoc. Handing it the test lane's binary as an
+      # artifact is the obvious-looking way to parallelise this and it is
+      # wrong: that binary has the fake-embedder backdoor compiled in, so
+      # pinning it would gut the guarantee the harness exists to provide.
+      # target/release/adoc is also wrong — the golden receipt is a byte
+      # comparison that has never been proven profile-invariant.
       - name: Validation runtime harness parity
         run: |
           scripts/validation-runtime/run.sh pin
@@ -98,16 +167,53 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Install Rust toolchain
-        run: rustup toolchain install --no-self-update
+      - run: rustup toolchain install --no-self-update
 
-      # No cache: this lane is workflow_dispatch-only, so any entry it saved would
-      # be LRU-evicted long before the next run while still consuming the budget.
-
+      # No cache: this lane is workflow_dispatch-only, so any entry it saved
+      # would be LRU-evicted long before the next run while still consuming
+      # the repo's 10 GB budget.
       - name: Run retrieval pilot with FastEmbed
         run: cargo test -p adoc-cli --test retrieval_pilot --features fastembed-it --locked
+
+  # The one required status check. Required checks are matched by context name
+  # and GitHub waits indefinitely for a context that never reports, so gating
+  # on the individual lanes would mean re-editing branch protection every time
+  # this file gains or loses a job. This aggregates them instead.
+  ci:
+    name: ci
+    needs:
+      - fmt
+      - test
+      - check
+    # NOT `always()`: that also fires when the RUN is cancelled, and
+    # cancel-in-progress above makes cancellation the normal end of any
+    # superseded PR push. The gate would then read `cancelled` from its
+    # upstreams, find it outside ("success", "skipped") and report the
+    # superseded commit RED instead of grey. `!cancelled()` keeps everything
+    # the script below relies on — a skipped dependency still passes, a
+    # failed one still reds.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every gate to have passed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          needs = json.loads(os.environ["NEEDS"])
+          # `skipped` passes: a job that did not need to run is not a failure,
+          # and a job skipped because its dependency failed is caught by that
+          # dependency's own entry here.
+          bad = {name: job["result"] for name, job in sorted(needs.items())
+                 if job["result"] not in ("success", "skipped")}
+          for name, result in bad.items():
+              print(f"{name}: {result}")
+          print(f"{len(needs) - len(bad)}/{len(needs)} gates passed")
+          sys.exit(1 if bad else 0)
+          PY
