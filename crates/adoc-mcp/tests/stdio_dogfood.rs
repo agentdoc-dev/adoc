@@ -117,6 +117,7 @@ fn stdio_server_runs_documented_mcp_agent_gateway_quickstart() {
     }));
     let init = server.receive();
     assert_eq!(init["id"], 1);
+    assert_eq!(init["result"]["protocolVersion"], "2025-06-18");
     assert!(init["result"]["capabilities"]["tools"].is_object());
     assert!(init["result"]["capabilities"]["resources"].is_object());
     assert!(init["result"]["capabilities"]["prompts"].is_object());
@@ -172,6 +173,11 @@ fn stdio_server_runs_documented_mcp_agent_gateway_quickstart() {
     assert_eq!(
         structured_content(&initial_status)["schema_version"],
         "adoc.project.status.v0"
+    );
+    // rmcp 3 adds `resultType` (SEP-2322) only for 2026-07-28 peers; legacy peers must not see it.
+    assert!(
+        initial_status["result"].get("resultType").is_none(),
+        "resultType must not leak to a 2025-06-18 client"
     );
 
     server.send(serde_json::json!({
