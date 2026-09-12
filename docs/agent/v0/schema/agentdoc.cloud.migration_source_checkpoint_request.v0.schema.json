@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/agentdoc.cloud.migration_source_checkpoint_request.v0.schema.json",
+  "title": "agentdoc.cloud.migration_source_checkpoint_request.v0",
+  "description": "Trusted pinned worker observation for one exact intended operation and lifecycle predecessor. Native admission derives the compared revision and outcome; submitted observations do not grant progress, human approval or cutover authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "migration_id",
+    "observation_id",
+    "target_digest",
+    "expected",
+    "operation",
+    "helper_digest",
+    "observed_at",
+    "observation"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "agentdoc.cloud.migration_source_checkpoint_request.v0"
+    },
+    "migration_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "observation_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "target_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "expected": {
+      "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_transition_request.v0.schema.json#/properties/expected"
+    },
+    "operation": {
+      "description": "Exact intended lifecycle operation; its command_digest identifies that operation command, not this observation request.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "command_digest"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "advance",
+            "initialize"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "command_digest": {
+          "description": "Digest of the intended operation command.",
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "helper_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "observed_at": {
+      "description": "Observation time. Compare RFC3339 instants, not lexical timestamp strings; zone and trailing-fraction normalization are allowed.",
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$",
+      "minLength": 20,
+      "maxLength": 40
+    },
+    "observation": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "outcome",
+            "observed_oid"
+          ],
+          "properties": {
+            "outcome": {
+              "const": "observed"
+            },
+            "observed_oid": {
+              "$ref": "adoc://agent/v0/schema/adoc.migration_request.v0.schema.json#/properties/revision/properties/value"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "outcome",
+            "observed_oid"
+          ],
+          "properties": {
+            "outcome": {
+              "const": "unavailable"
+            },
+            "observed_oid": {
+              "type": "null"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
