@@ -1,14 +1,34 @@
 version: 2
 
 updates:
+  # Grouped into one PR per ecosystem per week. Ungrouped, each of five weekly
+  # cargo PRs changed Cargo.lock independently, and Cargo.lock is part of the
+  # cache key — so every one of them was a full cold build. Grouping also means
+  # one CI run and one review instead of five.
   - package-ecosystem: cargo
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    # Let a release sit for a week before proposing it. Catches the yanked-
+    # within-days case without anyone having to notice.
+    cooldown:
+      default-days: 7
+    groups:
+      cargo:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: build(deps)
+    open-pull-requests-limit: 3
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: build(deps)
+    open-pull-requests-limit: 3
