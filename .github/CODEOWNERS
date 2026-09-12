@@ -1,0 +1,3 @@
+# Review is not required to merge (see the `main` ruleset) — this exists so
+# every PR gets a reviewer requested automatically, not to gate anything.
+* @alex-bako
