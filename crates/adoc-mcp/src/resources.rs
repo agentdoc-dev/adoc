@@ -783,6 +783,116 @@ const RESOURCES: &[AgentResource] = &[
         ),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_configuration_request.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-cutover-configuration-request-v0-json",
+        title: "Migration Cutover Configuration Request JSON Schema",
+        description: "Closed cutover configuration command; native authority remains required.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_cutover_configuration_request.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_configuration_receipt.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-cutover-configuration-receipt-v0-json",
+        title: "Migration Cutover Configuration Receipt JSON Schema",
+        description: "Closed immutable native configuration receipt.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_cutover_configuration_receipt.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_source_fence_evidence.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-source-fence-evidence-v0-json",
+        title: "Migration Source Fence Evidence JSON Schema",
+        description: "Closed trusted-controller fence observation.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_source_fence_evidence.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_source_fence_receipt.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-source-fence-receipt-v0-json",
+        title: "Migration Source Fence Receipt JSON Schema",
+        description: "Closed immutable positive fence receipt.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_source_fence_receipt.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_admission.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-cutover-admission-v0-json",
+        title: "Migration Cutover Admission JSON Schema",
+        description: "Closed trusted-server admission assertion.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_cutover_admission.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_admission_receipt.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-cutover-admission-receipt-v0-json",
+        title: "Migration Cutover Admission Receipt JSON Schema",
+        description: "Closed immutable native admission receipt.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_cutover_admission_receipt.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_receipt.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-cutover-receipt-v0-json",
+        title: "Migration Cutover Receipt JSON Schema",
+        description: "Closed immutable final cutover receipt.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_cutover_receipt.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_result.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-cutover-result-v0-json",
+        title: "Migration Cutover Result JSON Schema",
+        description: "Closed exact receipt-byte result.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_cutover_result.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_transition_request.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-cutover-transition-request-v0-json",
+        title: "Migration Cutover Transition Request JSON Schema",
+        description: "Closed T3 lifecycle command.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_cutover_transition_request.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_transition_receipt.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-cutover-transition-receipt-v0-json",
+        title: "Migration Cutover Transition Receipt JSON Schema",
+        description: "Closed immutable T3 lifecycle receipt.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_cutover_transition_receipt.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_context.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-cutover-context-v0-json",
+        title: "Migration Cutover Context JSON Schema",
+        description: "Closed transient authenticated inspection context.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_cutover_context.v0.schema.json"
+        ),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_source_target_request.v0.schema.json",
         name: "schema-agentdoc-cloud-migration-source-target-request-v0-json",
         title: "Migration Source Target Request JSON Schema",

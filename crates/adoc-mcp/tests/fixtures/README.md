@@ -27,3 +27,24 @@ strings unchanged and check the captured ordering and references. The Cloud
 suite independently tests native authorization, concurrency and causal
 admission. No handmade output or reconstructed original prepare receipt is
 included; `preparation_validation` is native metadata projection only.
+
+## Migration cutover fixture
+
+`migration-cutover-native.json` contains records from the actual signed-in local
+Supabase/PostgREST T3 integration on 2026-09-13, using the freshly built paired
+Adoc CLI for preparation and qualification. The capture was normalized into
+28 typed values in `records` and two original policy export descriptors in
+`retained_policy_parts`; record values and receipt bytes were preserved.
+Separate native transactions committed readiness and final cutover, replayed both
+receipts, and exported five new native record kinds. Existing policy export parts
+retain exact bytes, actual policy scope, `policy.read` permission and opaque
+`retained_bytes` representation; cutover digest links reuse them. Its SHA256 is
+`9784636ff7ca7408e5460e747dc33ef5e2ecd2a956430ea4e85b59eea66b4d63`.
+
+The test creates a real local authenticated user/session and consumes actual
+pinned-runtime outputs, but deliberately supplies synthetic GitHub admission and
+source observations to exercise the trusted native receiver. It proves native
+behavior, real HTTP authorization and wire shape; it is not real GitHub deployment
+admission, controller credential-isolation proof or provider/native race acceptance.
+Those remain separate required T3 checks. No production identity, credential or
+repository content is retained here.

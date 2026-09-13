@@ -1,0 +1,726 @@
+{
+  "records": [
+    {
+      "expected": {
+        "ordinal": "6",
+        "receipt_digest": "sha256:9eef80140bc1e4dd990505294ebc565bbbbb8533acf9810d1f7e4617f3666c59"
+      },
+      "migration_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+      "principal_id": "9f28c8f9-7fd8-44e3-a8c1-12c50a4aeb49",
+      "workspace_id": "e76e060b-5e4e-4d29-8044-c1d04e517e47",
+      "schema_version": "agentdoc.cloud.migration_cutover_context.v0",
+      "auth_session_id": "c120639b-d783-4112-bdec-5f08819a3560",
+      "managed_frontier": [
+        {
+          "object_id": "test.one",
+          "canonical_id": "34ad78e9-60bf-4f8e-b0f2-e8e90087d910",
+          "content_hash": "sha256:18221099c9914b1e1d58858263f96ebf862969e3e04e5cf33e9995a05643521a",
+          "content_digest": "sha256:1c28acde5ac3d4dc4878f5f6f8e7bc29debd44c234867ef9cce8c29f2c9dcbf7",
+          "active_version_id": "846c8342-fc3b-4a94-aa32-f9ef8ca76b67",
+          "active_promotion_seq": "65",
+          "latest_promotion_seq": "65",
+          "initialized_version_id": "846c8342-fc3b-4a94-aa32-f9ef8ca76b67",
+          "latest_state_event_seq": "182",
+          "latest_state_event_digest": "sha256:0296cc8e4f004b16c16057fb5c647f8afed4bad86e2770d479ad7436b9cff402",
+          "latest_effectivity_policy_seq": null
+        }
+      ],
+      "initialization_id": "176a651f-2668-44c7-815b-ce76302b961b",
+      "fence_receipt_digest": "sha256:f9cab75c3083b12fb0bb0ca149cc75ad4576116917cb84985b743caefc01e233",
+      "managed_frontier_digest": "sha256:ea0a8084c8fe3f16b5c6dc42c85ddd0beeac1ad56ec6e6090a9d032f74f159f0",
+      "configuration_receipt_digest": "sha256:b63c87cb5e5619dd91eb5bbc352b2ee32481c2d6f764b07bd99dd94d0d5fe6dd",
+      "initialization_attestation_digest": "sha256:0541b28e56893ca74c023f9f3000332d3e7ee651b5e9ba80253a52ad4a7d13c3",
+      "effective_prior_policy_receipt_digest": "sha256:2fbe8972dec47a33070d8847269fc6fd4eb4ad19f04784df25ca908c4925cc65",
+      "prior_exact_scope_policy_receipt_digest": "sha256:2fbe8972dec47a33070d8847269fc6fd4eb4ad19f04784df25ca908c4925cc65"
+    },
+    {
+      "receipt_digest": "sha256:e2a635fd72de9178101038478769058d634c7b581648d283ac51b1b91073c8d2",
+      "schema_version": "agentdoc.cloud.migration_cutover_result.v0",
+      "receipt_bytes_base64": "eyJhZG1pc3Npb25fZGlnZXN0Ijoic2hhMjU2OjRhNzU4OTU3MzBjZDFlY2Y4OWZjNzJjYjg2YzA4NmMxMWNhNDA2ZDA1ZmUwYmMxZjMxNjQ3NmE2OTk2NmVjYzgiLCJhZG1pc3Npb25faWQiOiJjZmI4MDEyMC1lNmJlLTQ0YzAtOTg5Ni01ZTA0YjFhZDg2MjMiLCJhdXRoX3Nlc3Npb25faWQiOiJjMTIwNjM5Yi1kNzgzLTQxMTItYmRlYy01ZjA4ODE5YTM1NjAiLCJhdXRob3JpemF0aW9uX2RlY2lzaW9uX2lkIjoiMGE4NjVlN2UtMTQzOS00MTIxLWE2YTMtZGUwM2MxMmJkZTc1IiwiY29udHJvbF9wb2xpY3kiOnsibW9kZSI6ImNvbnRyb2xsZXJfcHJvdG9jb2xfb25seSIsInF1YWxpZmljYXRpb25fZXZpZGVuY2VfZGlnZXN0Ijoic2hhMjU2OmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmYiLCJzb3VyY2Vfd29ya2VycyI6WyJ1c2VyOjIiXSwidHJ1c3RlZF9lZGl0b3JzIjpbInVzZXI6MSJdfSwiY29udHJvbGxlcl9iaW5kaW5nX2RpZ2VzdCI6InNoYTI1NjpkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkIiwiZXh0ZXJuYWxfcmVwb3NpdG9yeV9pZCI6IjQyIiwiaW52ZW50b3J5Ijp7ImNvbGxhYm9yYXRvcnMiOlt7ImlkIjoiMSIsInJvbGUiOiJhZG1pbiJ9LHsiaWQiOiIyIiwicm9sZSI6IndyaXRlIn1dLCJkZXBsb3lfa2V5cyI6W10sImRlcGxveV9rZXlzX3BvbGljeSI6ImRpc2FibGVkIiwiaW5zdGFsbGF0aW9ucyI6W119LCJpbnZlbnRvcnlfZGlnZXN0Ijoic2hhMjU2OjZhZTliMDQ1OGE5Yjg0NGVkNGU2YjQ3ZDM0MDE1ODljYmE2MjNiZjBmZjhhYTYzMjU4YzMzNTUzNGFkODk0MzciLCJtaWdyYXRpb25faWQiOiJjZmI4MDEyMC1lNmJlLTQ0YzAtOTg5Ni01ZTA0YjFhZDg2MjMiLCJvYnNlcnZlZF9hdCI6IjIwMjYtMDktMTNUMDA6MDA6MDBaIiwicHJpbmNpcGFsX2lkIjoiOWYyOGM4ZjktN2ZkOC00NGUzLWE4YzEtMTJjNTBhNGFlYjQ5IiwicHJvdmlkZXIiOiJnaXRodWIiLCJyZWNvcmRlZF9hdCI6IjIwMjYtMDktMTNUMDI6MDc6MzguMzk3ODA3KzAwOjAwIiwic2NoZW1hX3ZlcnNpb24iOiJhZ2VudGRvYy5jbG91ZC5taWdyYXRpb25fY3V0b3Zlcl9hZG1pc3Npb25fcmVjZWlwdC52MCIsInNvdXJjZV90YXJnZXRfZGlnZXN0Ijoic2hhMjU2OjdlNDMyOTRlNDIxMGQ1YzQ4MTI2ZDRmN2JhMTg4OGY1NWUxMjQ1NDNkM2E4NWFkOWFjZGQyMTU0MzhjMTQyYTUiLCJ3b3Jrc3BhY2VfaWQiOiJlNzZlMDYwYi01ZTRlLTRkMjktODA0NC1jMWQwNGU1MTdlNDciLCJ3cml0ZXJfcXVhbGlmaWNhdGlvbiI6W3siYmFzZWxpbmUiOiJhbGxvd2VkIiwiY3JlYXRpb24iOiJHSDAxMyIsImNyZWRlbnRpYWxfY2xhc3MiOiJodW1hbl9naXQiLCJkZWxldGlvbiI6IkdIMDEzIiwiZXZpZGVuY2VfZGlnZXN0Ijoic2hhMjU2OmVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWUiLCJmb3JjZV91cGRhdGUiOiJHSDAxMyIsInVwZGF0ZSI6IkdIMDEzIn1dfQo="
+    },
+    {
+      "admission_digest": "sha256:4a75895730cd1ecf89fc72cb86c086c11ca406d05fe0bc1f316476a69966ecc8",
+      "admission_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+      "auth_session_id": "c120639b-d783-4112-bdec-5f08819a3560",
+      "authorization_decision_id": "0a865e7e-1439-4121-a6a3-de03c12bde75",
+      "control_policy": {
+        "mode": "controller_protocol_only",
+        "qualification_evidence_digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "source_workers": [
+          "user:2"
+        ],
+        "trusted_editors": [
+          "user:1"
+        ]
+      },
+      "controller_binding_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "external_repository_id": "42",
+      "inventory": {
+        "collaborators": [
+          {
+            "id": "1",
+            "role": "admin"
+          },
+          {
+            "id": "2",
+            "role": "write"
+          }
+        ],
+        "deploy_keys": [],
+        "deploy_keys_policy": "disabled",
+        "installations": []
+      },
+      "inventory_digest": "sha256:6ae9b0458a9b844ed4e6b47d3401589cba623bf0ff8aa63258c335534ad89437",
+      "migration_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+      "observed_at": "2026-09-13T00:00:00Z",
+      "principal_id": "9f28c8f9-7fd8-44e3-a8c1-12c50a4aeb49",
+      "provider": "github",
+      "recorded_at": "2026-09-13T02:07:38.397807+00:00",
+      "schema_version": "agentdoc.cloud.migration_cutover_admission_receipt.v0",
+      "source_target_digest": "sha256:7e43294e4210d5c48126d4f7ba1888f55e124543d3a85ad9acdd215438c142a5",
+      "workspace_id": "e76e060b-5e4e-4d29-8044-c1d04e517e47",
+      "writer_qualification": [
+        {
+          "baseline": "allowed",
+          "creation": "GH013",
+          "credential_class": "human_git",
+          "deletion": "GH013",
+          "evidence_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "force_update": "GH013",
+          "update": "GH013"
+        }
+      ]
+    },
+    {
+      "receipt_digest": "sha256:b63c87cb5e5619dd91eb5bbc352b2ee32481c2d6f764b07bd99dd94d0d5fe6dd",
+      "schema_version": "agentdoc.cloud.migration_cutover_result.v0",
+      "receipt_bytes_base64": "eyJhZG1pc3Npb25fZXZpZGVuY2VfZGlnZXN0Ijoic2hhMjU2OmUyYTYzNWZkNzJkZTkxNzgxMDEwMzg0Nzg3NjkwNThkNjM0YzdiNTgxNjQ4ZDI4M2FjNTFiMWI5MTA3M2M4ZDIiLCJhdXRoX3Nlc3Npb25faWQiOiJjMTIwNjM5Yi1kNzgzLTQxMTItYmRlYy01ZjA4ODE5YTM1NjAiLCJhdXRob3JpemF0aW9uX2RlY2lzaW9uX2lkIjoiMGE4NjVlN2UtMTQzOS00MTIxLWE2YTMtZGUwM2MxMmJkZTc1IiwiY29tbWFuZF9kaWdlc3QiOiJzaGEyNTY6NmE0ZjU2ZGVjMjg0Nzg0ZmI4Yjc2MWZkMjY5ZDcxMzcxMjNmN2FlYTBkOTViNzdlMjAwMTY3ZGU3NWYyMTY0YiIsImNvbnRyb2xsZXJfYmluZGluZ19kaWdlc3QiOiJzaGEyNTY6ZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZCIsIm1pZ3JhdGlvbl9pZCI6ImNmYjgwMTIwLWU2YmUtNDRjMC05ODk2LTVlMDRiMWFkODYyMyIsInByaW5jaXBhbF9pZCI6IjlmMjhjOGY5LTdmZDgtNDRlMy1hOGMxLTEyYzUwYTRhZWI0OSIsInJlY29yZGVkX2F0IjoiMjAyNi0wOS0xM1QwMjowNzozOC40MDg2MzUrMDA6MDAiLCJzY2hlbWFfdmVyc2lvbiI6ImFnZW50ZG9jLmNsb3VkLm1pZ3JhdGlvbl9jdXRvdmVyX2NvbmZpZ3VyYXRpb25fcmVjZWlwdC52MCIsInNvdXJjZV90YXJnZXRfZGlnZXN0Ijoic2hhMjU2OjdlNDMyOTRlNDIxMGQ1YzQ4MTI2ZDRmN2JhMTg4OGY1NWUxMjQ1NDNkM2E4NWFkOWFjZGQyMTU0MzhjMTQyYTUiLCJ3b3Jrc3BhY2VfaWQiOiJlNzZlMDYwYi01ZTRlLTRkMjktODA0NC1jMWQwNGU1MTdlNDcifQo="
+    },
+    {
+      "admission_evidence_digest": "sha256:e2a635fd72de9178101038478769058d634c7b581648d283ac51b1b91073c8d2",
+      "auth_session_id": "c120639b-d783-4112-bdec-5f08819a3560",
+      "authorization_decision_id": "0a865e7e-1439-4121-a6a3-de03c12bde75",
+      "command_digest": "sha256:6a4f56dec284784fb8b761fd269d7137123f7aea0d95b77e200167de75f2164b",
+      "controller_binding_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "migration_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+      "principal_id": "9f28c8f9-7fd8-44e3-a8c1-12c50a4aeb49",
+      "recorded_at": "2026-09-13T02:07:38.408635+00:00",
+      "schema_version": "agentdoc.cloud.migration_cutover_configuration_receipt.v0",
+      "source_target_digest": "sha256:7e43294e4210d5c48126d4f7ba1888f55e124543d3a85ad9acdd215438c142a5",
+      "workspace_id": "e76e060b-5e4e-4d29-8044-c1d04e517e47"
+    },
+    {
+      "receipt_digest": "sha256:f9cab75c3083b12fb0bb0ca149cc75ad4576116917cb84985b743caefc01e233",
+      "schema_version": "agentdoc.cloud.migration_cutover_result.v0",
+      "receipt_bytes_base64": "eyJhZG1pc3Npb25fZXZpZGVuY2VfZGlnZXN0Ijoic2hhMjU2OmUyYTYzNWZkNzJkZTkxNzgxMDEwMzg0Nzg3NjkwNThkNjM0YzdiNTgxNjQ4ZDI4M2FjNTFiMWI5MTA3M2M4ZDIiLCJhdXRoX3Nlc3Npb25faWQiOiJjMTIwNjM5Yi1kNzgzLTQxMTItYmRlYy01ZjA4ODE5YTM1NjAiLCJhdXRob3JpemF0aW9uX2RlY2lzaW9uX2lkIjoiMGE4NjVlN2UtMTQzOS00MTIxLWE2YTMtZGUwM2MxMmJkZTc1IiwiYnlwYXNzIjoiZW1wdHkiLCJjb25maWd1cmF0aW9uX3JlY2VpcHRfZGlnZXN0Ijoic2hhMjU2OmI2M2M4N2NiNWU1NjE5ZGQ5MWViNWJiYzM1MmIyZWUzMjQ4MWMyZDZmNzY0YjA3YmQ5OWRkOTRkMGQ1ZmU2ZGQiLCJjb250cm9sbGVyX2JpbmRpbmdfZGlnZXN0Ijoic2hhMjU2OmRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGQiLCJjb250cm9sbGVyX29ic2VydmVkX2F0IjoiMjAyNi0wOS0xM1QwMDowMDowMFoiLCJldmlkZW5jZV9kaWdlc3QiOiJzaGEyNTY6NGJmNTAzMDcwNjVhNmU2M2NiMjhlNTk1MzhkZjdhZDU5YjY1ZmNkOGI4NjU1N2JjMTY5ZmQyOGMwN2QzMjA3MCIsImV2aWRlbmNlX2lkIjoiY2ZiODAxMjAtZTZiZS00NGMwLTk4OTYtNWUwNGIxYWQ4NjIzIiwiZXh0ZXJuYWxfcmVwb3NpdG9yeV9pZCI6IjQyIiwiaW52ZW50b3J5X2RpZ2VzdCI6InNoYTI1Njo2YWU5YjA0NThhOWI4NDRlZDRlNmI0N2QzNDAxNTg5Y2JhNjIzYmYwZmY4YWE2MzI1OGMzMzU1MzRhZDg5NDM3IiwibWlncmF0aW9uX2lkIjoiY2ZiODAxMjAtZTZiZS00NGMwLTk4OTYtNWUwNGIxYWQ4NjIzIiwib2JzZXJ2ZWRfYXQiOiIyMDI2LTA5LTEzVDAwOjAwOjAwWiIsIm9ic2VydmVkX29pZCI6IjlkOTI5MTlhNWVmMGFmYTc2ODExY2VkODMxOTEwMTBjNzBmMWM1ZWQiLCJwcmluY2lwYWxfaWQiOiI5ZjI4YzhmOS03ZmQ4LTQ0ZTMtYThjMS0xMmM1MGE0YWViNDkiLCJwcm92aWRlciI6ImdpdGh1YiIsInJlY29yZGVkX2F0IjoiMjAyNi0wOS0xM1QwMjowNzozOC40MTk4NTUrMDA6MDAiLCJyZWYiOiJyZWZzL2hlYWRzL21haW4iLCJyZXBvc2l0b3J5X2lkIjoiYjA0N2MxYjQtMmNjNC00Y2EwLWE4YzctZDc2NDc0NWVkMjA3IiwicmVzdHJpY3Rpb24iOiJjcmVhdGlvbl91cGRhdGVfZGVsZXRpb24iLCJyZXRlbnRpb24iOiJ1bnRpbF9hdXRob3JpemVkX3JlY29uY2lsaWF0aW9uIiwicnVsZXNldF9kaWdlc3QiOiJzaGEyNTY6YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYSIsInJ1bGVzZXRfaWQiOiIxIiwic2NoZW1hX3ZlcnNpb24iOiJhZ2VudGRvYy5jbG91ZC5taWdyYXRpb25fc291cmNlX2ZlbmNlX3JlY2VpcHQudjAiLCJzb3VyY2VfdGFyZ2V0X2RpZ2VzdCI6InNoYTI1Njo3ZTQzMjk0ZTQyMTBkNWM0ODEyNmQ0ZjdiYTE4ODhmNTVlMTI0NTQzZDNhODVhZDlhY2RkMjE1NDM4YzE0MmE1Iiwid29ya3NwYWNlX2lkIjoiZTc2ZTA2MGItNWU0ZS00ZDI5LTgwNDQtYzFkMDRlNTE3ZTQ3In0K"
+    },
+    {
+      "admission_evidence_digest": "sha256:e2a635fd72de9178101038478769058d634c7b581648d283ac51b1b91073c8d2",
+      "auth_session_id": "c120639b-d783-4112-bdec-5f08819a3560",
+      "authorization_decision_id": "0a865e7e-1439-4121-a6a3-de03c12bde75",
+      "bypass": "empty",
+      "configuration_receipt_digest": "sha256:b63c87cb5e5619dd91eb5bbc352b2ee32481c2d6f764b07bd99dd94d0d5fe6dd",
+      "controller_binding_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "controller_observed_at": "2026-09-13T00:00:00Z",
+      "evidence_digest": "sha256:4bf50307065a6e63cb28e59538df7ad59b65fcd8b86557bc169fd28c07d32070",
+      "evidence_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+      "external_repository_id": "42",
+      "inventory_digest": "sha256:6ae9b0458a9b844ed4e6b47d3401589cba623bf0ff8aa63258c335534ad89437",
+      "migration_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+      "observed_at": "2026-09-13T00:00:00Z",
+      "observed_oid": "9d92919a5ef0afa76811ced83191010c70f1c5ed",
+      "principal_id": "9f28c8f9-7fd8-44e3-a8c1-12c50a4aeb49",
+      "provider": "github",
+      "recorded_at": "2026-09-13T02:07:38.419855+00:00",
+      "ref": "refs/heads/main",
+      "repository_id": "b047c1b4-2cc4-4ca0-a8c7-d764745ed207",
+      "restriction": "creation_update_deletion",
+      "retention": "until_authorized_reconciliation",
+      "ruleset_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ruleset_id": "1",
+      "schema_version": "agentdoc.cloud.migration_source_fence_receipt.v0",
+      "source_target_digest": "sha256:7e43294e4210d5c48126d4f7ba1888f55e124543d3a85ad9acdd215438c142a5",
+      "workspace_id": "e76e060b-5e4e-4d29-8044-c1d04e517e47"
+    },
+    {
+      "receipt_digest": "sha256:a8e36ced62475d5256895bed92d1655504d5249e0e55837f055f3d06802eb1b7",
+      "schema_version": "agentdoc.cloud.migration_cutover_result.v0",
+      "receipt_bytes_base64": "eyJhdXRoX3Nlc3Npb25faWQiOiJjMTIwNjM5Yi1kNzgzLTQxMTItYmRlYy01ZjA4ODE5YTM1NjAiLCJjb21tYW5kX2RpZ2VzdCI6InNoYTI1NjphZjZlNTNlYmI0MzliNTllNDY3ZTI0NTJkM2M4OTMxOWJlZmIzNTZiOGU1MDUyZWY2NDBjM2M4NzgwMWZmOTE1IiwiY29ubmVjdG9yX2F1dGhvcml6YXRpb25fZGVjaXNpb25faWQiOiIwYTg2NWU3ZS0xNDM5LTQxMjEtYTZhMy1kZTAzYzEyYmRlNzUiLCJldmlkZW5jZSI6eyJleHBlY3RlZF9hdXRob3JpdHlfcG9saWN5X3JlY2VpcHRfZGlnZXN0Ijoic2hhMjU2OjJmYmU4OTcyZGVjNDdhMzMwNzBkODg0NzI2OWZjNmZkNGViNGFkMTlmMDQ3ODRkZjI1Y2E5MDhjNDkyNWNjNjUiLCJleHBlY3RlZF9tYW5hZ2VkX2Zyb250aWVyX2RpZ2VzdCI6InNoYTI1NjplYTBhODA4NGM4ZmUzZjE2YjVjNmRjNDJjODVkZGQwYmVlYWMxYWQ1NmVjNmU2MDkwYTlkMDMyZjc0ZjE1OWYwIiwiZmVuY2VfcmVjZWlwdF9kaWdlc3QiOiJzaGEyNTY6ZjljYWI3NWMzMDgzYjEyZmIwYmIwY2ExNDljYzc1YWQ0NTc2MTE2OTE3Y2I4NDk4NWI3NDNjYWVmYzAxZTIzMyIsImtpbmQiOiJjdXRvdmVyX3JlYWRpbmVzcyJ9LCJmcm9tX3N0YXRlIjoiY2F0Y2hpbmdfdXAiLCJpbml0aWFsX3JldmlzaW9uIjoiOWQ5MjkxOWE1ZWYwYWZhNzY4MTFjZWQ4MzE5MTAxMGM3MGYxYzVlZCIsImpvYl9kaWdlc3QiOiJzaGEyNTY6MTZmNjBmYjY1MjM3MmJkNmE3MTU4N2NlZDZkNzdhOTVkYjAwYWQ0NThiYjA1M2QxMWE3YTBiOGNlZGIyYzc0NyIsIm1pZ3JhdGlvbl9hdXRob3JpemF0aW9uX2RlY2lzaW9uX2lkIjoiNjA0Y2UwYmUtY2U4YS00ZWNjLTg1YWItMmIzNmU3Y2EzOTM5IiwibWlncmF0aW9uX2lkIjoiY2ZiODAxMjAtZTZiZS00NGMwLTk4OTYtNWUwNGIxYWQ4NjIzIiwib3JkaW5hbCI6IjciLCJwcmVwYXJhdGlvbl9yZWNlaXB0X2RpZ2VzdCI6InNoYTI1Njo4M2FkMmIzMWFiYjE4OTg1MzViZGNlNTMxNTlhZDEzN2ViNmQxMWUzNGNkMGQwNjFkZGYxZjAwODY1MTUxNjY5IiwicHJldmlvdXNfcmVjZWlwdF9kaWdlc3QiOiJzaGEyNTY6OWVlZjgwMTQwYmMxZTRkZDk5MDUwNTI5NGViYzU2NWJiYmJiODUzM2FjZjk4MTBkMWY3ZTQ2MTdmMzY2NmM1OSIsInByaW5jaXBhbF9pZCI6IjlmMjhjOGY5LTdmZDgtNDRlMy1hOGMxLTEyYzUwYTRhZWI0OSIsInJlY29yZGVkX2F0IjoiMjAyNi0wOS0xM1QwMjowNzozOC41NTUwNzQrMDA6MDAiLCJyZXF1ZXN0X2RpZ2VzdCI6InNoYTI1NjpkYmYzNTY4YWMxODFkNjU0NWE3ZWZjNzE0MGJjZGIwZjgwZTBlMGJlODY2YmQ3NWU4ODczMGQyOWU5ZDFmYjE3Iiwic2NoZW1hX3ZlcnNpb24iOiJhZ2VudGRvYy5jbG91ZC5taWdyYXRpb25fY3V0b3Zlcl90cmFuc2l0aW9uX3JlY2VpcHQudjAiLCJzY29wZSI6eyJjb25uZWN0b3JfaWQiOiI0NTdkOTQ3ZC1hYThmLTRjZGEtYTUxYS0xMjMyNjJlMmI2YTUiLCJyZXNvdXJjZSI6eyJpZCI6InJlcG9zaXRvcnktMSIsImtpbmQiOiJyZXBvc2l0b3J5In0sInNvdXJjZV9jb250YWluZXJfaWQiOiJzb3VyY2UtMSIsIndvcmtzcGFjZV9pZCI6ImU3NmUwNjBiLTVlNGUtNGQyOS04MDQ0LWMxZDA0ZTUxN2U0NyJ9LCJ0b19zdGF0ZSI6InJlYWR5X3RvX2N1dG92ZXIiLCJ0cmFuc2l0aW9uX2lkIjoiOTFiZmFjY2YtNDlmMy00ZjkwLWI0ODEtNGE3M2I0ZmI4YmM0IiwidHJhbnNpdGlvbl9wb2xpY3lfdmVyc2lvbiI6IjEiLCJ3b3Jrc3BhY2VfaWQiOiJlNzZlMDYwYi01ZTRlLTRkMjktODA0NC1jMWQwNGU1MTdlNDcifQo="
+    },
+    {
+      "auth_session_id": "c120639b-d783-4112-bdec-5f08819a3560",
+      "command_digest": "sha256:af6e53ebb439b59e467e2452d3c89319befb356b8e5052ef640c3c87801ff915",
+      "connector_authorization_decision_id": "0a865e7e-1439-4121-a6a3-de03c12bde75",
+      "evidence": {
+        "expected_authority_policy_receipt_digest": "sha256:2fbe8972dec47a33070d8847269fc6fd4eb4ad19f04784df25ca908c4925cc65",
+        "expected_managed_frontier_digest": "sha256:ea0a8084c8fe3f16b5c6dc42c85ddd0beeac1ad56ec6e6090a9d032f74f159f0",
+        "fence_receipt_digest": "sha256:f9cab75c3083b12fb0bb0ca149cc75ad4576116917cb84985b743caefc01e233",
+        "kind": "cutover_readiness"
+      },
+      "from_state": "catching_up",
+      "initial_revision": "9d92919a5ef0afa76811ced83191010c70f1c5ed",
+      "job_digest": "sha256:16f60fb652372bd6a71587ced6d77a95db00ad458bb053d11a7a0b8cedb2c747",
+      "migration_authorization_decision_id": "604ce0be-ce8a-4ecc-85ab-2b36e7ca3939",
+      "migration_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+      "ordinal": "7",
+      "preparation_receipt_digest": "sha256:83ad2b31abb1898535bdce53159ad137eb6d11e34cd0d061ddf1f00865151669",
+      "previous_receipt_digest": "sha256:9eef80140bc1e4dd990505294ebc565bbbbb8533acf9810d1f7e4617f3666c59",
+      "principal_id": "9f28c8f9-7fd8-44e3-a8c1-12c50a4aeb49",
+      "recorded_at": "2026-09-13T02:07:38.555074+00:00",
+      "request_digest": "sha256:dbf3568ac181d6545a7efc7140bcdb0f80e0e0be866bd75e88730d29e9d1fb17",
+      "schema_version": "agentdoc.cloud.migration_cutover_transition_receipt.v0",
+      "scope": {
+        "connector_id": "457d947d-aa8f-4cda-a51a-123262e2b6a5",
+        "resource": {
+          "id": "repository-1",
+          "kind": "repository"
+        },
+        "source_container_id": "source-1",
+        "workspace_id": "e76e060b-5e4e-4d29-8044-c1d04e517e47"
+      },
+      "to_state": "ready_to_cutover",
+      "transition_id": "91bfaccf-49f3-4f90-b481-4a73b4fb8bc4",
+      "transition_policy_version": "1",
+      "workspace_id": "e76e060b-5e4e-4d29-8044-c1d04e517e47"
+    },
+    {
+      "receipt_digest": "sha256:436bc2f31bde93354e806732a38a776d87bb8281c60ca77a559fd68eaf3d78ea",
+      "schema_version": "agentdoc.cloud.migration_cutover_result.v0",
+      "receipt_bytes_base64": "eyJhdXRoX3Nlc3Npb25faWQiOiJjMTIwNjM5Yi1kNzgzLTQxMTItYmRlYy01ZjA4ODE5YTM1NjAiLCJjb21tYW5kX2RpZ2VzdCI6InNoYTI1NjoyNWNmMjVjYmUzNzNiMzEyY2ZiNWU2MWZjZGNlMDgzNjVlZTBkMDU3YmQxZjQzMGU3MmFlYjMzYzUyYmZhMmRhIiwiY29ubmVjdG9yX2F1dGhvcml6YXRpb25fZGVjaXNpb25faWQiOiIwYTg2NWU3ZS0xNDM5LTQxMjEtYTZhMy1kZTAzYzEyYmRlNzUiLCJldmlkZW5jZSI6eyJjdXRvdmVyX3JlY2VpcHRfZGlnZXN0Ijoic2hhMjU2OjIxMjZmNjZiODlmM2ZlZTNhZDIyOWYzYWQ3NDdjMTZmZDRhMWY0ZjA5OWUxOTRkMmEyM2Q1MWU4OWRmN2JkODUiLCJleHBlY3RlZF9hdXRob3JpdHlfcG9saWN5X3JlY2VpcHRfZGlnZXN0Ijoic2hhMjU2OjJmYmU4OTcyZGVjNDdhMzMwNzBkODg0NzI2OWZjNmZkNGViNGFkMTlmMDQ3ODRkZjI1Y2E5MDhjNDkyNWNjNjUiLCJleHBlY3RlZF9tYW5hZ2VkX2Zyb250aWVyX2RpZ2VzdCI6InNoYTI1NjplYTBhODA4NGM4ZmUzZjE2YjVjNmRjNDJjODVkZGQwYmVlYWMxYWQ1NmVjNmU2MDkwYTlkMDMyZjc0ZjE1OWYwIiwiZmVuY2VfcmVjZWlwdF9kaWdlc3QiOiJzaGEyNTY6ZjljYWI3NWMzMDgzYjEyZmIwYmIwY2ExNDljYzc1YWQ0NTc2MTE2OTE3Y2I4NDk4NWI3NDNjYWVmYzAxZTIzMyIsImtpbmQiOiJjdXRvdmVyX2NvbW1pdCJ9LCJmcm9tX3N0YXRlIjoicmVhZHlfdG9fY3V0b3ZlciIsImluaXRpYWxfcmV2aXNpb24iOiI5ZDkyOTE5YTVlZjBhZmE3NjgxMWNlZDgzMTkxMDEwYzcwZjFjNWVkIiwiam9iX2RpZ2VzdCI6InNoYTI1NjoxNmY2MGZiNjUyMzcyYmQ2YTcxNTg3Y2VkNmQ3N2E5NWRiMDBhZDQ1OGJiMDUzZDExYTdhMGI4Y2VkYjJjNzQ3IiwibWlncmF0aW9uX2F1dGhvcml6YXRpb25fZGVjaXNpb25faWQiOiI2MDRjZTBiZS1jZThhLTRlY2MtODVhYi0yYjM2ZTdjYTM5MzkiLCJtaWdyYXRpb25faWQiOiJjZmI4MDEyMC1lNmJlLTQ0YzAtOTg5Ni01ZTA0YjFhZDg2MjMiLCJvcmRpbmFsIjoiOCIsInByZXBhcmF0aW9uX3JlY2VpcHRfZGlnZXN0Ijoic2hhMjU2OjgzYWQyYjMxYWJiMTg5ODUzNWJkY2U1MzE1OWFkMTM3ZWI2ZDExZTM0Y2QwZDA2MWRkZjFmMDA4NjUxNTE2NjkiLCJwcmV2aW91c19yZWNlaXB0X2RpZ2VzdCI6InNoYTI1NjphOGUzNmNlZDYyNDc1ZDUyNTY4OTViZWQ5MmQxNjU1NTA0ZDUyNDllMGU1NTgzN2YwNTVmM2QwNjgwMmViMWI3IiwicHJpbmNpcGFsX2lkIjoiOWYyOGM4ZjktN2ZkOC00NGUzLWE4YzEtMTJjNTBhNGFlYjQ5IiwicmVjb3JkZWRfYXQiOiIyMDI2LTA5LTEzVDAyOjA3OjM4LjY3ODE5MyswMDowMCIsInJlcXVlc3RfZGlnZXN0Ijoic2hhMjU2OmRiZjM1NjhhYzE4MWQ2NTQ1YTdlZmM3MTQwYmNkYjBmODBlMGUwYmU4NjZiZDc1ZTg4NzMwZDI5ZTlkMWZiMTciLCJzY2hlbWFfdmVyc2lvbiI6ImFnZW50ZG9jLmNsb3VkLm1pZ3JhdGlvbl9jdXRvdmVyX3RyYW5zaXRpb25fcmVjZWlwdC52MCIsInNjb3BlIjp7ImNvbm5lY3Rvcl9pZCI6IjQ1N2Q5NDdkLWFhOGYtNGNkYS1hNTFhLTEyMzI2MmUyYjZhNSIsInJlc291cmNlIjp7ImlkIjoicmVwb3NpdG9yeS0xIiwia2luZCI6InJlcG9zaXRvcnkifSwic291cmNlX2NvbnRhaW5lcl9pZCI6InNvdXJjZS0xIiwid29ya3NwYWNlX2lkIjoiZTc2ZTA2MGItNWU0ZS00ZDI5LTgwNDQtYzFkMDRlNTE3ZTQ3In0sInRvX3N0YXRlIjoiY3V0b3Zlcl9jb21taXR0ZWQiLCJ0cmFuc2l0aW9uX2lkIjoiODk0YzkyNDMtMDVkYS00ZWE0LTk3ZmYtMmQyMTgyODk1YzBjIiwidHJhbnNpdGlvbl9wb2xpY3lfdmVyc2lvbiI6IjEiLCJ3b3Jrc3BhY2VfaWQiOiJlNzZlMDYwYi01ZTRlLTRkMjktODA0NC1jMWQwNGU1MTdlNDcifQo="
+    },
+    {
+      "auth_session_id": "c120639b-d783-4112-bdec-5f08819a3560",
+      "command_digest": "sha256:25cf25cbe373b312cfb5e61fcdce08365ee0d057bd1f430e72aeb33c52bfa2da",
+      "connector_authorization_decision_id": "0a865e7e-1439-4121-a6a3-de03c12bde75",
+      "evidence": {
+        "cutover_receipt_digest": "sha256:2126f66b89f3fee3ad229f3ad747c16fd4a1f4f099e194d2a23d51e89df7bd85",
+        "expected_authority_policy_receipt_digest": "sha256:2fbe8972dec47a33070d8847269fc6fd4eb4ad19f04784df25ca908c4925cc65",
+        "expected_managed_frontier_digest": "sha256:ea0a8084c8fe3f16b5c6dc42c85ddd0beeac1ad56ec6e6090a9d032f74f159f0",
+        "fence_receipt_digest": "sha256:f9cab75c3083b12fb0bb0ca149cc75ad4576116917cb84985b743caefc01e233",
+        "kind": "cutover_commit"
+      },
+      "from_state": "ready_to_cutover",
+      "initial_revision": "9d92919a5ef0afa76811ced83191010c70f1c5ed",
+      "job_digest": "sha256:16f60fb652372bd6a71587ced6d77a95db00ad458bb053d11a7a0b8cedb2c747",
+      "migration_authorization_decision_id": "604ce0be-ce8a-4ecc-85ab-2b36e7ca3939",
+      "migration_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+      "ordinal": "8",
+      "preparation_receipt_digest": "sha256:83ad2b31abb1898535bdce53159ad137eb6d11e34cd0d061ddf1f00865151669",
+      "previous_receipt_digest": "sha256:a8e36ced62475d5256895bed92d1655504d5249e0e55837f055f3d06802eb1b7",
+      "principal_id": "9f28c8f9-7fd8-44e3-a8c1-12c50a4aeb49",
+      "recorded_at": "2026-09-13T02:07:38.678193+00:00",
+      "request_digest": "sha256:dbf3568ac181d6545a7efc7140bcdb0f80e0e0be866bd75e88730d29e9d1fb17",
+      "schema_version": "agentdoc.cloud.migration_cutover_transition_receipt.v0",
+      "scope": {
+        "connector_id": "457d947d-aa8f-4cda-a51a-123262e2b6a5",
+        "resource": {
+          "id": "repository-1",
+          "kind": "repository"
+        },
+        "source_container_id": "source-1",
+        "workspace_id": "e76e060b-5e4e-4d29-8044-c1d04e517e47"
+      },
+      "to_state": "cutover_committed",
+      "transition_id": "894c9243-05da-4ea4-97ff-2d2182895c0c",
+      "transition_policy_version": "1",
+      "workspace_id": "e76e060b-5e4e-4d29-8044-c1d04e517e47"
+    },
+    {
+      "kind": "migration_cutover_admission",
+      "record": {
+        "admission_digest": "sha256:4a75895730cd1ecf89fc72cb86c086c11ca406d05fe0bc1f316476a69966ecc8",
+        "admission_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+        "auth_session_id": "c120639b-d783-4112-bdec-5f08819a3560",
+        "authorization_decision_id": "0a865e7e-1439-4121-a6a3-de03c12bde75",
+        "controller_binding_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "inventory_digest": "sha256:6ae9b0458a9b844ed4e6b47d3401589cba623bf0ff8aa63258c335534ad89437",
+        "migration_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+        "principal": "9f28c8f9-7fd8-44e3-a8c1-12c50a4aeb49",
+        "receipt_digest": "sha256:e2a635fd72de9178101038478769058d634c7b581648d283ac51b1b91073c8d2",
+        "recorded_at": "2026-09-13T02:07:38.397807+00:00",
+        "source_target_digest": "sha256:7e43294e4210d5c48126d4f7ba1888f55e124543d3a85ad9acdd215438c142a5",
+        "workspace_id": "e76e060b-5e4e-4d29-8044-c1d04e517e47"
+      },
+      "schema_version": "agentdoc.cloud.export_native_fact.v0"
+    },
+    {
+      "admission_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+      "control_policy": {
+        "mode": "controller_protocol_only",
+        "qualification_evidence_digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "source_workers": [
+          "user:2"
+        ],
+        "trusted_editors": [
+          "user:1"
+        ]
+      },
+      "controller_binding_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "external_repository_id": "42",
+      "inventory": {
+        "collaborators": [
+          {
+            "id": "1",
+            "role": "admin"
+          },
+          {
+            "id": "2",
+            "role": "write"
+          }
+        ],
+        "deploy_keys": [],
+        "deploy_keys_policy": "disabled",
+        "installations": []
+      },
+      "inventory_digest": "sha256:6ae9b0458a9b844ed4e6b47d3401589cba623bf0ff8aa63258c335534ad89437",
+      "migration_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+      "observed_at": "2026-09-13T00:00:00Z",
+      "provider": "github",
+      "schema_version": "agentdoc.cloud.migration_cutover_admission.v0",
+      "source_target_digest": "sha256:7e43294e4210d5c48126d4f7ba1888f55e124543d3a85ad9acdd215438c142a5",
+      "writer_qualification": [
+        {
+          "baseline": "allowed",
+          "creation": "GH013",
+          "credential_class": "human_git",
+          "deletion": "GH013",
+          "evidence_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "force_update": "GH013",
+          "update": "GH013"
+        }
+      ]
+    },
+    {
+      "admission_digest": "sha256:4a75895730cd1ecf89fc72cb86c086c11ca406d05fe0bc1f316476a69966ecc8",
+      "admission_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+      "auth_session_id": "c120639b-d783-4112-bdec-5f08819a3560",
+      "authorization_decision_id": "0a865e7e-1439-4121-a6a3-de03c12bde75",
+      "control_policy": {
+        "mode": "controller_protocol_only",
+        "qualification_evidence_digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "source_workers": [
+          "user:2"
+        ],
+        "trusted_editors": [
+          "user:1"
+        ]
+      },
+      "controller_binding_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "external_repository_id": "42",
+      "inventory": {
+        "collaborators": [
+          {
+            "id": "1",
+            "role": "admin"
+          },
+          {
+            "id": "2",
+            "role": "write"
+          }
+        ],
+        "deploy_keys": [],
+        "deploy_keys_policy": "disabled",
+        "installations": []
+      },
+      "inventory_digest": "sha256:6ae9b0458a9b844ed4e6b47d3401589cba623bf0ff8aa63258c335534ad89437",
+      "migration_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+      "observed_at": "2026-09-13T00:00:00Z",
+      "principal_id": "9f28c8f9-7fd8-44e3-a8c1-12c50a4aeb49",
+      "provider": "github",
+      "recorded_at": "2026-09-13T02:07:38.397807+00:00",
+      "schema_version": "agentdoc.cloud.migration_cutover_admission_receipt.v0",
+      "source_target_digest": "sha256:7e43294e4210d5c48126d4f7ba1888f55e124543d3a85ad9acdd215438c142a5",
+      "workspace_id": "e76e060b-5e4e-4d29-8044-c1d04e517e47",
+      "writer_qualification": [
+        {
+          "baseline": "allowed",
+          "creation": "GH013",
+          "credential_class": "human_git",
+          "deletion": "GH013",
+          "evidence_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "force_update": "GH013",
+          "update": "GH013"
+        }
+      ]
+    },
+    {
+      "kind": "migration_cutover_configuration",
+      "record": {
+        "admission_receipt_digest": "sha256:e2a635fd72de9178101038478769058d634c7b581648d283ac51b1b91073c8d2",
+        "auth_session_id": "c120639b-d783-4112-bdec-5f08819a3560",
+        "authorization_decision_id": "0a865e7e-1439-4121-a6a3-de03c12bde75",
+        "command_digest": "sha256:6a4f56dec284784fb8b761fd269d7137123f7aea0d95b77e200167de75f2164b",
+        "migration_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+        "principal": "9f28c8f9-7fd8-44e3-a8c1-12c50a4aeb49",
+        "receipt_digest": "sha256:b63c87cb5e5619dd91eb5bbc352b2ee32481c2d6f764b07bd99dd94d0d5fe6dd",
+        "recorded_at": "2026-09-13T02:07:38.408635+00:00",
+        "workspace_id": "e76e060b-5e4e-4d29-8044-c1d04e517e47"
+      },
+      "schema_version": "agentdoc.cloud.export_native_fact.v0"
+    },
+    {
+      "admission_evidence_digest": "sha256:e2a635fd72de9178101038478769058d634c7b581648d283ac51b1b91073c8d2",
+      "controller_binding_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "migration_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+      "schema_version": "agentdoc.cloud.migration_cutover_configuration_request.v0",
+      "source_target_digest": "sha256:7e43294e4210d5c48126d4f7ba1888f55e124543d3a85ad9acdd215438c142a5"
+    },
+    {
+      "admission_evidence_digest": "sha256:e2a635fd72de9178101038478769058d634c7b581648d283ac51b1b91073c8d2",
+      "auth_session_id": "c120639b-d783-4112-bdec-5f08819a3560",
+      "authorization_decision_id": "0a865e7e-1439-4121-a6a3-de03c12bde75",
+      "command_digest": "sha256:6a4f56dec284784fb8b761fd269d7137123f7aea0d95b77e200167de75f2164b",
+      "controller_binding_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "migration_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+      "principal_id": "9f28c8f9-7fd8-44e3-a8c1-12c50a4aeb49",
+      "recorded_at": "2026-09-13T02:07:38.408635+00:00",
+      "schema_version": "agentdoc.cloud.migration_cutover_configuration_receipt.v0",
+      "source_target_digest": "sha256:7e43294e4210d5c48126d4f7ba1888f55e124543d3a85ad9acdd215438c142a5",
+      "workspace_id": "e76e060b-5e4e-4d29-8044-c1d04e517e47"
+    },
+    {
+      "kind": "migration_source_fence",
+      "record": {
+        "auth_session_id": "c120639b-d783-4112-bdec-5f08819a3560",
+        "authorization_decision_id": "0a865e7e-1439-4121-a6a3-de03c12bde75",
+        "configuration_receipt_digest": "sha256:b63c87cb5e5619dd91eb5bbc352b2ee32481c2d6f764b07bd99dd94d0d5fe6dd",
+        "evidence_digest": "sha256:4bf50307065a6e63cb28e59538df7ad59b65fcd8b86557bc169fd28c07d32070",
+        "evidence_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+        "migration_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+        "principal": "9f28c8f9-7fd8-44e3-a8c1-12c50a4aeb49",
+        "receipt_digest": "sha256:f9cab75c3083b12fb0bb0ca149cc75ad4576116917cb84985b743caefc01e233",
+        "recorded_at": "2026-09-13T02:07:38.419855+00:00",
+        "workspace_id": "e76e060b-5e4e-4d29-8044-c1d04e517e47"
+      },
+      "schema_version": "agentdoc.cloud.export_native_fact.v0"
+    },
+    {
+      "admission_evidence_digest": "sha256:e2a635fd72de9178101038478769058d634c7b581648d283ac51b1b91073c8d2",
+      "bypass": "empty",
+      "configuration_receipt_digest": "sha256:b63c87cb5e5619dd91eb5bbc352b2ee32481c2d6f764b07bd99dd94d0d5fe6dd",
+      "controller_binding_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "controller_observed_at": "2026-09-13T00:00:00Z",
+      "evidence_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+      "external_repository_id": "42",
+      "inventory_digest": "sha256:6ae9b0458a9b844ed4e6b47d3401589cba623bf0ff8aa63258c335534ad89437",
+      "migration_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+      "observed_at": "2026-09-13T00:00:00Z",
+      "observed_oid": "9d92919a5ef0afa76811ced83191010c70f1c5ed",
+      "provider": "github",
+      "ref": "refs/heads/main",
+      "repository_id": "b047c1b4-2cc4-4ca0-a8c7-d764745ed207",
+      "restriction": "creation_update_deletion",
+      "retention": "until_authorized_reconciliation",
+      "ruleset_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ruleset_id": "1",
+      "schema_version": "agentdoc.cloud.migration_source_fence_evidence.v0",
+      "source_target_digest": "sha256:7e43294e4210d5c48126d4f7ba1888f55e124543d3a85ad9acdd215438c142a5"
+    },
+    {
+      "admission_evidence_digest": "sha256:e2a635fd72de9178101038478769058d634c7b581648d283ac51b1b91073c8d2",
+      "auth_session_id": "c120639b-d783-4112-bdec-5f08819a3560",
+      "authorization_decision_id": "0a865e7e-1439-4121-a6a3-de03c12bde75",
+      "bypass": "empty",
+      "configuration_receipt_digest": "sha256:b63c87cb5e5619dd91eb5bbc352b2ee32481c2d6f764b07bd99dd94d0d5fe6dd",
+      "controller_binding_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "controller_observed_at": "2026-09-13T00:00:00Z",
+      "evidence_digest": "sha256:4bf50307065a6e63cb28e59538df7ad59b65fcd8b86557bc169fd28c07d32070",
+      "evidence_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+      "external_repository_id": "42",
+      "inventory_digest": "sha256:6ae9b0458a9b844ed4e6b47d3401589cba623bf0ff8aa63258c335534ad89437",
+      "migration_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+      "observed_at": "2026-09-13T00:00:00Z",
+      "observed_oid": "9d92919a5ef0afa76811ced83191010c70f1c5ed",
+      "principal_id": "9f28c8f9-7fd8-44e3-a8c1-12c50a4aeb49",
+      "provider": "github",
+      "recorded_at": "2026-09-13T02:07:38.419855+00:00",
+      "ref": "refs/heads/main",
+      "repository_id": "b047c1b4-2cc4-4ca0-a8c7-d764745ed207",
+      "restriction": "creation_update_deletion",
+      "retention": "until_authorized_reconciliation",
+      "ruleset_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ruleset_id": "1",
+      "schema_version": "agentdoc.cloud.migration_source_fence_receipt.v0",
+      "source_target_digest": "sha256:7e43294e4210d5c48126d4f7ba1888f55e124543d3a85ad9acdd215438c142a5",
+      "workspace_id": "e76e060b-5e4e-4d29-8044-c1d04e517e47"
+    },
+    {
+      "kind": "migration_cutover_receipt",
+      "record": {
+        "committed_policy_digest": "sha256:3017446b923253b1ef8434d928df59df4512ab4c2b31039803b234f1ae9b98ee",
+        "committed_policy_id": "fb6fe1cf-e835-4a46-87ff-ab1cabec5121",
+        "effective_prior_policy_digest": "sha256:2fbe8972dec47a33070d8847269fc6fd4eb4ad19f04784df25ca908c4925cc65",
+        "initialization_id": "176a651f-2668-44c7-815b-ce76302b961b",
+        "migration_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+        "prior_exact_scope_policy_digest": "sha256:2fbe8972dec47a33070d8847269fc6fd4eb4ad19f04784df25ca908c4925cc65",
+        "receipt_digest": "sha256:2126f66b89f3fee3ad229f3ad747c16fd4a1f4f099e194d2a23d51e89df7bd85",
+        "recorded_xid": "7604",
+        "transition_id": "894c9243-05da-4ea4-97ff-2d2182895c0c",
+        "workspace_id": "e76e060b-5e4e-4d29-8044-c1d04e517e47"
+      },
+      "schema_version": "agentdoc.cloud.export_native_fact.v0"
+    },
+    {
+      "auth_session_id": "c120639b-d783-4112-bdec-5f08819a3560",
+      "command_digest": "sha256:25cf25cbe373b312cfb5e61fcdce08365ee0d057bd1f430e72aeb33c52bfa2da",
+      "committed_policy_receipt_digest": "sha256:3017446b923253b1ef8434d928df59df4512ab4c2b31039803b234f1ae9b98ee",
+      "connector_authorization_decision_id": "0a865e7e-1439-4121-a6a3-de03c12bde75",
+      "effective_prior_policy_receipt_digest": "sha256:2fbe8972dec47a33070d8847269fc6fd4eb4ad19f04784df25ca908c4925cc65",
+      "fence_receipt_digest": "sha256:f9cab75c3083b12fb0bb0ca149cc75ad4576116917cb84985b743caefc01e233",
+      "initial_revision": "9d92919a5ef0afa76811ced83191010c70f1c5ed",
+      "initialization_attestation_digest": "sha256:0541b28e56893ca74c023f9f3000332d3e7ee651b5e9ba80253a52ad4a7d13c3",
+      "initialization_id": "176a651f-2668-44c7-815b-ce76302b961b",
+      "managed_frontier": [
+        {
+          "active_promotion_seq": "65",
+          "active_version_id": "846c8342-fc3b-4a94-aa32-f9ef8ca76b67",
+          "canonical_id": "34ad78e9-60bf-4f8e-b0f2-e8e90087d910",
+          "content_digest": "sha256:1c28acde5ac3d4dc4878f5f6f8e7bc29debd44c234867ef9cce8c29f2c9dcbf7",
+          "content_hash": "sha256:18221099c9914b1e1d58858263f96ebf862969e3e04e5cf33e9995a05643521a",
+          "initialized_version_id": "846c8342-fc3b-4a94-aa32-f9ef8ca76b67",
+          "latest_effectivity_policy_seq": null,
+          "latest_promotion_seq": "65",
+          "latest_state_event_digest": "sha256:0296cc8e4f004b16c16057fb5c647f8afed4bad86e2770d479ad7436b9cff402",
+          "latest_state_event_seq": "182",
+          "object_id": "test.one"
+        }
+      ],
+      "managed_frontier_digest": "sha256:ea0a8084c8fe3f16b5c6dc42c85ddd0beeac1ad56ec6e6090a9d032f74f159f0",
+      "migration_authorization_decision_id": "604ce0be-ce8a-4ecc-85ab-2b36e7ca3939",
+      "migration_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+      "principal_id": "9f28c8f9-7fd8-44e3-a8c1-12c50a4aeb49",
+      "prior_exact_scope_policy_receipt_digest": "sha256:2fbe8972dec47a33070d8847269fc6fd4eb4ad19f04784df25ca908c4925cc65",
+      "readiness_receipt_digest": "sha256:a8e36ced62475d5256895bed92d1655504d5249e0e55837f055f3d06802eb1b7",
+      "recorded_at": "2026-09-13T02:07:38.678193+00:00",
+      "schema_version": "agentdoc.cloud.migration_cutover_receipt.v0",
+      "scope": {
+        "connector_id": "457d947d-aa8f-4cda-a51a-123262e2b6a5",
+        "resource": {
+          "id": "repository-1",
+          "kind": "repository"
+        },
+        "source_container_id": "source-1",
+        "workspace_id": "e76e060b-5e4e-4d29-8044-c1d04e517e47"
+      },
+      "source_target_digest": "sha256:7e43294e4210d5c48126d4f7ba1888f55e124543d3a85ad9acdd215438c142a5",
+      "transition_id": "894c9243-05da-4ea4-97ff-2d2182895c0c",
+      "workspace_id": "e76e060b-5e4e-4d29-8044-c1d04e517e47"
+    },
+    {
+      "kind": "migration_cutover_transition",
+      "record": {
+        "authorization_decision_id": "604ce0be-ce8a-4ecc-85ab-2b36e7ca3939",
+        "command_digest": "sha256:25cf25cbe373b312cfb5e61fcdce08365ee0d057bd1f430e72aeb33c52bfa2da",
+        "evidence": {
+          "cutover_receipt_digest": "sha256:2126f66b89f3fee3ad229f3ad747c16fd4a1f4f099e194d2a23d51e89df7bd85",
+          "expected_authority_policy_receipt_digest": "sha256:2fbe8972dec47a33070d8847269fc6fd4eb4ad19f04784df25ca908c4925cc65",
+          "expected_managed_frontier_digest": "sha256:ea0a8084c8fe3f16b5c6dc42c85ddd0beeac1ad56ec6e6090a9d032f74f159f0",
+          "fence_receipt_digest": "sha256:f9cab75c3083b12fb0bb0ca149cc75ad4576116917cb84985b743caefc01e233",
+          "kind": "cutover_commit"
+        },
+        "from_state": "ready_to_cutover",
+        "migration_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+        "ordinal": "8",
+        "previous_receipt_digest": "sha256:a8e36ced62475d5256895bed92d1655504d5249e0e55837f055f3d06802eb1b7",
+        "principal": "9f28c8f9-7fd8-44e3-a8c1-12c50a4aeb49",
+        "receipt_digest": "sha256:436bc2f31bde93354e806732a38a776d87bb8281c60ca77a559fd68eaf3d78ea",
+        "recorded_at": "2026-09-13T02:07:38.678193+00:00",
+        "to_state": "cutover_committed",
+        "transition_id": "894c9243-05da-4ea4-97ff-2d2182895c0c",
+        "transition_policy_version": "1",
+        "workspace_id": "e76e060b-5e4e-4d29-8044-c1d04e517e47"
+      },
+      "schema_version": "agentdoc.cloud.export_native_fact.v0"
+    },
+    {
+      "evidence": {
+        "expected_authority_policy_receipt_digest": "sha256:2fbe8972dec47a33070d8847269fc6fd4eb4ad19f04784df25ca908c4925cc65",
+        "expected_managed_frontier_digest": "sha256:ea0a8084c8fe3f16b5c6dc42c85ddd0beeac1ad56ec6e6090a9d032f74f159f0",
+        "fence_receipt_digest": "sha256:f9cab75c3083b12fb0bb0ca149cc75ad4576116917cb84985b743caefc01e233",
+        "kind": "cutover"
+      },
+      "expected": {
+        "ordinal": "7",
+        "receipt_digest": "sha256:a8e36ced62475d5256895bed92d1655504d5249e0e55837f055f3d06802eb1b7"
+      },
+      "migration_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+      "schema_version": "agentdoc.cloud.migration_cutover_transition_request.v0",
+      "to_state": "cutover_committed",
+      "transition_id": "894c9243-05da-4ea4-97ff-2d2182895c0c"
+    },
+    {
+      "auth_session_id": "c120639b-d783-4112-bdec-5f08819a3560",
+      "command_digest": "sha256:25cf25cbe373b312cfb5e61fcdce08365ee0d057bd1f430e72aeb33c52bfa2da",
+      "connector_authorization_decision_id": "0a865e7e-1439-4121-a6a3-de03c12bde75",
+      "evidence": {
+        "cutover_receipt_digest": "sha256:2126f66b89f3fee3ad229f3ad747c16fd4a1f4f099e194d2a23d51e89df7bd85",
+        "expected_authority_policy_receipt_digest": "sha256:2fbe8972dec47a33070d8847269fc6fd4eb4ad19f04784df25ca908c4925cc65",
+        "expected_managed_frontier_digest": "sha256:ea0a8084c8fe3f16b5c6dc42c85ddd0beeac1ad56ec6e6090a9d032f74f159f0",
+        "fence_receipt_digest": "sha256:f9cab75c3083b12fb0bb0ca149cc75ad4576116917cb84985b743caefc01e233",
+        "kind": "cutover_commit"
+      },
+      "from_state": "ready_to_cutover",
+      "initial_revision": "9d92919a5ef0afa76811ced83191010c70f1c5ed",
+      "job_digest": "sha256:16f60fb652372bd6a71587ced6d77a95db00ad458bb053d11a7a0b8cedb2c747",
+      "migration_authorization_decision_id": "604ce0be-ce8a-4ecc-85ab-2b36e7ca3939",
+      "migration_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+      "ordinal": "8",
+      "preparation_receipt_digest": "sha256:83ad2b31abb1898535bdce53159ad137eb6d11e34cd0d061ddf1f00865151669",
+      "previous_receipt_digest": "sha256:a8e36ced62475d5256895bed92d1655504d5249e0e55837f055f3d06802eb1b7",
+      "principal_id": "9f28c8f9-7fd8-44e3-a8c1-12c50a4aeb49",
+      "recorded_at": "2026-09-13T02:07:38.678193+00:00",
+      "request_digest": "sha256:dbf3568ac181d6545a7efc7140bcdb0f80e0e0be866bd75e88730d29e9d1fb17",
+      "schema_version": "agentdoc.cloud.migration_cutover_transition_receipt.v0",
+      "scope": {
+        "connector_id": "457d947d-aa8f-4cda-a51a-123262e2b6a5",
+        "resource": {
+          "id": "repository-1",
+          "kind": "repository"
+        },
+        "source_container_id": "source-1",
+        "workspace_id": "e76e060b-5e4e-4d29-8044-c1d04e517e47"
+      },
+      "to_state": "cutover_committed",
+      "transition_id": "894c9243-05da-4ea4-97ff-2d2182895c0c",
+      "transition_policy_version": "1",
+      "workspace_id": "e76e060b-5e4e-4d29-8044-c1d04e517e47"
+    },
+    {
+      "kind": "migration_cutover_transition",
+      "record": {
+        "authorization_decision_id": "604ce0be-ce8a-4ecc-85ab-2b36e7ca3939",
+        "command_digest": "sha256:af6e53ebb439b59e467e2452d3c89319befb356b8e5052ef640c3c87801ff915",
+        "evidence": {
+          "expected_authority_policy_receipt_digest": "sha256:2fbe8972dec47a33070d8847269fc6fd4eb4ad19f04784df25ca908c4925cc65",
+          "expected_managed_frontier_digest": "sha256:ea0a8084c8fe3f16b5c6dc42c85ddd0beeac1ad56ec6e6090a9d032f74f159f0",
+          "fence_receipt_digest": "sha256:f9cab75c3083b12fb0bb0ca149cc75ad4576116917cb84985b743caefc01e233",
+          "kind": "cutover_readiness"
+        },
+        "from_state": "catching_up",
+        "migration_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+        "ordinal": "7",
+        "previous_receipt_digest": "sha256:9eef80140bc1e4dd990505294ebc565bbbbb8533acf9810d1f7e4617f3666c59",
+        "principal": "9f28c8f9-7fd8-44e3-a8c1-12c50a4aeb49",
+        "receipt_digest": "sha256:a8e36ced62475d5256895bed92d1655504d5249e0e55837f055f3d06802eb1b7",
+        "recorded_at": "2026-09-13T02:07:38.555074+00:00",
+        "to_state": "ready_to_cutover",
+        "transition_id": "91bfaccf-49f3-4f90-b481-4a73b4fb8bc4",
+        "transition_policy_version": "1",
+        "workspace_id": "e76e060b-5e4e-4d29-8044-c1d04e517e47"
+      },
+      "schema_version": "agentdoc.cloud.export_native_fact.v0"
+    },
+    {
+      "evidence": {
+        "expected_authority_policy_receipt_digest": "sha256:2fbe8972dec47a33070d8847269fc6fd4eb4ad19f04784df25ca908c4925cc65",
+        "expected_managed_frontier_digest": "sha256:ea0a8084c8fe3f16b5c6dc42c85ddd0beeac1ad56ec6e6090a9d032f74f159f0",
+        "fence_receipt_digest": "sha256:f9cab75c3083b12fb0bb0ca149cc75ad4576116917cb84985b743caefc01e233",
+        "kind": "cutover"
+      },
+      "expected": {
+        "ordinal": "6",
+        "receipt_digest": "sha256:9eef80140bc1e4dd990505294ebc565bbbbb8533acf9810d1f7e4617f3666c59"
+      },
+      "migration_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+      "schema_version": "agentdoc.cloud.migration_cutover_transition_request.v0",
+      "to_state": "ready_to_cutover",
+      "transition_id": "91bfaccf-49f3-4f90-b481-4a73b4fb8bc4"
+    },
+    {
+      "auth_session_id": "c120639b-d783-4112-bdec-5f08819a3560",
+      "command_digest": "sha256:af6e53ebb439b59e467e2452d3c89319befb356b8e5052ef640c3c87801ff915",
+      "connector_authorization_decision_id": "0a865e7e-1439-4121-a6a3-de03c12bde75",
+      "evidence": {
+        "expected_authority_policy_receipt_digest": "sha256:2fbe8972dec47a33070d8847269fc6fd4eb4ad19f04784df25ca908c4925cc65",
+        "expected_managed_frontier_digest": "sha256:ea0a8084c8fe3f16b5c6dc42c85ddd0beeac1ad56ec6e6090a9d032f74f159f0",
+        "fence_receipt_digest": "sha256:f9cab75c3083b12fb0bb0ca149cc75ad4576116917cb84985b743caefc01e233",
+        "kind": "cutover_readiness"
+      },
+      "from_state": "catching_up",
+      "initial_revision": "9d92919a5ef0afa76811ced83191010c70f1c5ed",
+      "job_digest": "sha256:16f60fb652372bd6a71587ced6d77a95db00ad458bb053d11a7a0b8cedb2c747",
+      "migration_authorization_decision_id": "604ce0be-ce8a-4ecc-85ab-2b36e7ca3939",
+      "migration_id": "cfb80120-e6be-44c0-9896-5e04b1ad8623",
+      "ordinal": "7",
+      "preparation_receipt_digest": "sha256:83ad2b31abb1898535bdce53159ad137eb6d11e34cd0d061ddf1f00865151669",
+      "previous_receipt_digest": "sha256:9eef80140bc1e4dd990505294ebc565bbbbb8533acf9810d1f7e4617f3666c59",
+      "principal_id": "9f28c8f9-7fd8-44e3-a8c1-12c50a4aeb49",
+      "recorded_at": "2026-09-13T02:07:38.555074+00:00",
+      "request_digest": "sha256:dbf3568ac181d6545a7efc7140bcdb0f80e0e0be866bd75e88730d29e9d1fb17",
+      "schema_version": "agentdoc.cloud.migration_cutover_transition_receipt.v0",
+      "scope": {
+        "connector_id": "457d947d-aa8f-4cda-a51a-123262e2b6a5",
+        "resource": {
+          "id": "repository-1",
+          "kind": "repository"
+        },
+        "source_container_id": "source-1",
+        "workspace_id": "e76e060b-5e4e-4d29-8044-c1d04e517e47"
+      },
+      "to_state": "ready_to_cutover",
+      "transition_id": "91bfaccf-49f3-4f90-b481-4a73b4fb8bc4",
+      "transition_policy_version": "1",
+      "workspace_id": "e76e060b-5e4e-4d29-8044-c1d04e517e47"
+    }
+  ],
+  "retained_policy_parts": [
+    {
+      "kind": "connector_authority_policy",
+      "part": "record",
+      "scope": {
+        "resource": {
+          "id": "repository-1",
+          "kind": "repository"
+        },
+        "connector_id": "457d947d-aa8f-4cda-a51a-123262e2b6a5",
+        "workspace_id": "e76e060b-5e4e-4d29-8044-c1d04e517e47",
+        "source_container_id": "source-1"
+      },
+      "opaque": true,
+      "claimed": "sha256:2fbe8972dec47a33070d8847269fc6fd4eb4ad19f04784df25ca908c4925cc65",
+      "sources": [],
+      "contract": "retained_bytes",
+      "observed": "sha256:2fbe8972dec47a33070d8847269fc6fd4eb4ad19f04784df25ca908c4925cc65",
+      "previous": null,
+      "versions": [],
+      "algorithm": "sha256_bytes",
+      "permission": "policy.read",
+      "record_key": "connector_authority_policy:97:record",
+      "byte_length": "832",
+      "file_sha256": "sha256:2fbe8972dec47a33070d8847269fc6fd4eb4ad19f04784df25ca908c4925cc65",
+      "recorded_at": "2026-09-13T02:07:38.351061+00:00",
+      "bytes_base64": "eyJzY29wZSI6IHsicmVzb3VyY2UiOiB7ImlkIjogInJlcG9zaXRvcnktMSIsICJraW5kIjogInJlcG9zaXRvcnkifSwgImNvbm5lY3Rvcl9pZCI6ICI0NTdkOTQ3ZC1hYThmLTRjZGEtYTUxYS0xMjMyNjJlMmI2YTUiLCAid29ya3NwYWNlX2lkIjogImU3NmUwNjBiLTVlNGUtNGQyOS04MDQ0LWMxZDA0ZTUxN2U0NyIsICJzb3VyY2VfY29udGFpbmVyX2lkIjogInNvdXJjZS0xIn0sICJwb2xpY3lfaWQiOiAiZWExNjVjYmEtNjJjYy00OGVkLWJmY2UtZjQxMDdhMmY3NDAzIiwgInByaW5jaXBhbF9pZCI6ICI5ZjI4YzhmOS03ZmQ4LTQ0ZTMtYThjMS0xMmM1MGE0YWViNDkiLCAid29ya3NwYWNlX2lkIjogImU3NmUwNjBiLTVlNGUtNGQyOS04MDQ0LWMxZDA0ZTUxN2U0NyIsICJhdXRob3JpdHlfbW9kZSI6ICJleHRlcm5hbGx5X2Nhbm9uaWNhbCIsICJwb2xpY3lfdmVyc2lvbiI6ICJ0My1odHRwLWZpeHR1cmUiLCAicHJvbW90aW9uX3J1bGUiOiB7ImtpbmQiOiAiZXh0ZXJuYWxfYXR0ZXN0YXRpb24iLCAiaXNzdWVyIjogImZpeHR1cmUiLCAiYXR0ZXN0YXRpb25fdHlwZSI6ICJmaXh0dXJlIn0sICJzY2hlbWFfdmVyc2lvbiI6ICJhZ2VudGRvYy5jbG91ZC5jb25uZWN0b3JfYXV0aG9yaXR5X3BvbGljeV9yZWNlaXB0LnYwIiwgInByaW9yX3BvbGljeV9pZCI6IG51bGwsICJwcmlvcl9wb2xpY3lfdmVyc2lvbiI6IG51bGwsICJwb2xpY3lfZWZmZWN0X29yZGluYWwiOiAxNTcsICJhdXRob3JpemF0aW9uX2RlY2lzaW9uX2lkIjogIjBhODY1ZTdlLTE0MzktNDEyMS1hNmEzLWRlMDNjMTJiZGU3NSIsICJwb2xpY3lfZWZmZWN0X3RyYW5zYWN0aW9uX2lkIjogIjc1ODcifQ==",
+      "representation": "exact_binary",
+      "verification_code": null
+    },
+    {
+      "kind": "connector_authority_policy",
+      "part": "record",
+      "scope": {
+        "resource": {
+          "id": "repository-1",
+          "kind": "repository"
+        },
+        "connector_id": "457d947d-aa8f-4cda-a51a-123262e2b6a5",
+        "workspace_id": "e76e060b-5e4e-4d29-8044-c1d04e517e47",
+        "source_container_id": "source-1"
+      },
+      "opaque": true,
+      "claimed": "sha256:3017446b923253b1ef8434d928df59df4512ab4c2b31039803b234f1ae9b98ee",
+      "sources": [],
+      "contract": "retained_bytes",
+      "observed": "sha256:3017446b923253b1ef8434d928df59df4512ab4c2b31039803b234f1ae9b98ee",
+      "previous": null,
+      "versions": [],
+      "algorithm": "sha256_bytes",
+      "permission": "policy.read",
+      "record_key": "connector_authority_policy:98:record",
+      "byte_length": "863",
+      "file_sha256": "sha256:3017446b923253b1ef8434d928df59df4512ab4c2b31039803b234f1ae9b98ee",
+      "recorded_at": "2026-09-13T02:07:38.64558+00:00",
+      "bytes_base64": "eyJzY29wZSI6IHsicmVzb3VyY2UiOiB7ImlkIjogInJlcG9zaXRvcnktMSIsICJraW5kIjogInJlcG9zaXRvcnkifSwgImNvbm5lY3Rvcl9pZCI6ICI0NTdkOTQ3ZC1hYThmLTRjZGEtYTUxYS0xMjMyNjJlMmI2YTUiLCAid29ya3NwYWNlX2lkIjogImU3NmUwNjBiLTVlNGUtNGQyOS04MDQ0LWMxZDA0ZTUxN2U0NyIsICJzb3VyY2VfY29udGFpbmVyX2lkIjogInNvdXJjZS0xIn0sICJwb2xpY3lfaWQiOiAiZmI2ZmUxY2YtZTgzNS00YTQ2LTg3ZmYtYWIxY2FiZWM1MTIxIiwgInByaW5jaXBhbF9pZCI6ICI5ZjI4YzhmOS03ZmQ4LTQ0ZTMtYThjMS0xMmM1MGE0YWViNDkiLCAid29ya3NwYWNlX2lkIjogImU3NmUwNjBiLTVlNGUtNGQyOS04MDQ0LWMxZDA0ZTUxN2U0NyIsICJhdXRob3JpdHlfbW9kZSI6ICJhZ2VudGRvY19jYW5vbmljYWwiLCAicG9saWN5X3ZlcnNpb24iOiAibWlncmF0aW9uLWN1dG92ZXItdjE6ODk0YzkyNDMtMDVkYS00ZWE0LTk3ZmYtMmQyMTgyODk1YzBjIiwgInByb21vdGlvbl9ydWxlIjogeyJraW5kIjogImNsb3VkX2dvdmVybmFuY2UifSwgInNjaGVtYV92ZXJzaW9uIjogImFnZW50ZG9jLmNsb3VkLmNvbm5lY3Rvcl9hdXRob3JpdHlfcG9saWN5X3JlY2VpcHQudjAiLCAicHJpb3JfcG9saWN5X2lkIjogImVhMTY1Y2JhLTYyY2MtNDhlZC1iZmNlLWY0MTA3YTJmNzQwMyIsICJwcmlvcl9wb2xpY3lfdmVyc2lvbiI6ICJ0My1odHRwLWZpeHR1cmUiLCAicG9saWN5X2VmZmVjdF9vcmRpbmFsIjogMTU4LCAiYXV0aG9yaXphdGlvbl9kZWNpc2lvbl9pZCI6ICIwYTg2NWU3ZS0xNDM5LTQxMjEtYTZhMy1kZTAzYzEyYmRlNzUiLCAicG9saWN5X2VmZmVjdF90cmFuc2FjdGlvbl9pZCI6ICI3NjA0In0=",
+      "representation": "exact_binary",
+      "verification_code": null
+    }
+  ]
+}

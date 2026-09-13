@@ -11564,6 +11564,401 @@
           ]
         }
       }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "record"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "agentdoc.cloud.export_native_fact.v0"
+        },
+        "kind": {
+          "const": "migration_cutover_admission"
+        },
+        "record": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "workspace_id",
+            "admission_id",
+            "migration_id",
+            "admission_digest",
+            "source_target_digest",
+            "controller_binding_digest",
+            "inventory_digest",
+            "principal",
+            "auth_session_id",
+            "authorization_decision_id",
+            "receipt_digest",
+            "recorded_at"
+          ],
+          "properties": {
+            "workspace_id": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_admission_receipt.v0.schema.json#/properties/workspace_id"
+            },
+            "admission_id": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_admission_receipt.v0.schema.json#/properties/admission_id"
+            },
+            "migration_id": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_admission_receipt.v0.schema.json#/properties/migration_id"
+            },
+            "admission_digest": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_admission_receipt.v0.schema.json#/properties/admission_digest"
+            },
+            "source_target_digest": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_admission_receipt.v0.schema.json#/properties/source_target_digest"
+            },
+            "controller_binding_digest": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_admission_receipt.v0.schema.json#/properties/controller_binding_digest"
+            },
+            "inventory_digest": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_admission_receipt.v0.schema.json#/properties/inventory_digest"
+            },
+            "principal": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_admission_receipt.v0.schema.json#/properties/principal_id"
+            },
+            "auth_session_id": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_admission_receipt.v0.schema.json#/properties/auth_session_id"
+            },
+            "authorization_decision_id": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_admission_receipt.v0.schema.json#/properties/authorization_decision_id"
+            },
+            "receipt_digest": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_admission_receipt.v0.schema.json#/properties/admission_digest"
+            },
+            "recorded_at": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_admission_receipt.v0.schema.json#/properties/recorded_at"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "record"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "agentdoc.cloud.export_native_fact.v0"
+        },
+        "kind": {
+          "const": "migration_cutover_configuration"
+        },
+        "record": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "workspace_id",
+            "migration_id",
+            "command_digest",
+            "admission_receipt_digest",
+            "principal",
+            "auth_session_id",
+            "authorization_decision_id",
+            "receipt_digest",
+            "recorded_at"
+          ],
+          "properties": {
+            "workspace_id": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_configuration_receipt.v0.schema.json#/properties/workspace_id"
+            },
+            "migration_id": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_configuration_receipt.v0.schema.json#/properties/migration_id"
+            },
+            "command_digest": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_configuration_receipt.v0.schema.json#/properties/command_digest"
+            },
+            "admission_receipt_digest": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_configuration_receipt.v0.schema.json#/properties/admission_evidence_digest"
+            },
+            "principal": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_configuration_receipt.v0.schema.json#/properties/principal_id"
+            },
+            "auth_session_id": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_configuration_receipt.v0.schema.json#/properties/auth_session_id"
+            },
+            "authorization_decision_id": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_configuration_receipt.v0.schema.json#/properties/authorization_decision_id"
+            },
+            "receipt_digest": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_admission_receipt.v0.schema.json#/properties/admission_digest"
+            },
+            "recorded_at": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_configuration_receipt.v0.schema.json#/properties/recorded_at"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "record"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "agentdoc.cloud.export_native_fact.v0"
+        },
+        "kind": {
+          "const": "migration_source_fence"
+        },
+        "record": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "workspace_id",
+            "evidence_id",
+            "migration_id",
+            "evidence_digest",
+            "configuration_receipt_digest",
+            "principal",
+            "auth_session_id",
+            "authorization_decision_id",
+            "receipt_digest",
+            "recorded_at"
+          ],
+          "properties": {
+            "workspace_id": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_source_fence_receipt.v0.schema.json#/properties/workspace_id"
+            },
+            "evidence_id": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_source_fence_receipt.v0.schema.json#/properties/evidence_id"
+            },
+            "migration_id": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_source_fence_receipt.v0.schema.json#/properties/migration_id"
+            },
+            "evidence_digest": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_source_fence_receipt.v0.schema.json#/properties/evidence_digest"
+            },
+            "configuration_receipt_digest": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_source_fence_receipt.v0.schema.json#/properties/configuration_receipt_digest"
+            },
+            "principal": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_source_fence_receipt.v0.schema.json#/properties/principal_id"
+            },
+            "auth_session_id": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_source_fence_receipt.v0.schema.json#/properties/auth_session_id"
+            },
+            "authorization_decision_id": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_source_fence_receipt.v0.schema.json#/properties/authorization_decision_id"
+            },
+            "receipt_digest": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_result.v0.schema.json#/properties/receipt_digest"
+            },
+            "recorded_at": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_source_fence_receipt.v0.schema.json#/properties/recorded_at"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "record"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "agentdoc.cloud.export_native_fact.v0"
+        },
+        "kind": {
+          "const": "migration_cutover_receipt"
+        },
+        "record": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "workspace_id",
+            "migration_id",
+            "transition_id",
+            "recorded_xid",
+            "initialization_id",
+            "committed_policy_id",
+            "effective_prior_policy_digest",
+            "prior_exact_scope_policy_digest",
+            "committed_policy_digest",
+            "receipt_digest"
+          ],
+          "properties": {
+            "workspace_id": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_receipt.v0.schema.json#/properties/workspace_id"
+            },
+            "migration_id": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_receipt.v0.schema.json#/properties/migration_id"
+            },
+            "transition_id": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_receipt.v0.schema.json#/properties/transition_id"
+            },
+            "recorded_xid": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            },
+            "initialization_id": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_receipt.v0.schema.json#/properties/initialization_id"
+            },
+            "committed_policy_id": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_receipt.v0.schema.json#/properties/initialization_id"
+            },
+            "effective_prior_policy_digest": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_receipt.v0.schema.json#/properties/effective_prior_policy_receipt_digest"
+            },
+            "prior_exact_scope_policy_digest": {
+              "anyOf": [
+                {
+                  "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_receipt.v0.schema.json#/properties/effective_prior_policy_receipt_digest"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "committed_policy_digest": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_receipt.v0.schema.json#/properties/committed_policy_receipt_digest"
+            },
+            "receipt_digest": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_admission_receipt.v0.schema.json#/properties/admission_digest"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "record"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "agentdoc.cloud.export_native_fact.v0"
+        },
+        "kind": {
+          "const": "migration_cutover_transition"
+        },
+        "record": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "workspace_id",
+            "migration_id",
+            "ordinal",
+            "transition_id",
+            "command_digest",
+            "from_state",
+            "to_state",
+            "transition_policy_version",
+            "evidence",
+            "principal",
+            "authorization_decision_id",
+            "receipt_digest",
+            "previous_receipt_digest",
+            "recorded_at"
+          ],
+          "properties": {
+            "workspace_id": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_transition_receipt.v0.schema.json#/properties/workspace_id"
+            },
+            "migration_id": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_transition_receipt.v0.schema.json#/properties/migration_id"
+            },
+            "ordinal": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_transition_receipt.v0.schema.json#/properties/ordinal"
+            },
+            "transition_id": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_transition_receipt.v0.schema.json#/properties/transition_id"
+            },
+            "command_digest": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_transition_receipt.v0.schema.json#/properties/command_digest"
+            },
+            "from_state": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_transition_receipt.v0.schema.json#/properties/from_state"
+            },
+            "to_state": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_transition_receipt.v0.schema.json#/properties/to_state"
+            },
+            "transition_policy_version": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_transition_receipt.v0.schema.json#/properties/transition_policy_version"
+            },
+            "evidence": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_transition_receipt.v0.schema.json#/properties/evidence"
+            },
+            "principal": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_transition_receipt.v0.schema.json#/properties/principal_id"
+            },
+            "authorization_decision_id": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_transition_receipt.v0.schema.json#/properties/migration_authorization_decision_id"
+            },
+            "receipt_digest": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_admission_receipt.v0.schema.json#/properties/admission_digest"
+            },
+            "previous_receipt_digest": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_transition_receipt.v0.schema.json#/properties/previous_receipt_digest"
+            },
+            "recorded_at": {
+              "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_transition_receipt.v0.schema.json#/properties/recorded_at"
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "to_state": {
+                    "const": "ready_to_cutover"
+                  }
+                },
+                "required": [
+                  "to_state"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "from_state": {
+                    "const": "catching_up"
+                  },
+                  "evidence": {
+                    "properties": {
+                      "kind": {
+                        "const": "cutover_readiness"
+                      }
+                    }
+                  }
+                }
+              },
+              "else": {
+                "properties": {
+                  "from_state": {
+                    "const": "ready_to_cutover"
+                  },
+                  "evidence": {
+                    "properties": {
+                      "kind": {
+                        "const": "cutover_commit"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
     }
   ]
 }

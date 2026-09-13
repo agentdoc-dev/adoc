@@ -1678,6 +1678,176 @@ fn mcp_serves_schema_resources_byte_equal_to_on_disk_files() {
 }
 
 #[test]
+fn migration_cutover_schemas_are_published_as_mcp_resources() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let server = AgentDocMcpServer::new(workspace.path().to_path_buf());
+    for name in [
+        "migration_cutover_configuration_request",
+        "migration_cutover_configuration_receipt",
+        "migration_source_fence_evidence",
+        "migration_source_fence_receipt",
+        "migration_cutover_admission",
+        "migration_cutover_admission_receipt",
+        "migration_cutover_receipt",
+        "migration_cutover_result",
+        "migration_cutover_transition_request",
+        "migration_cutover_transition_receipt",
+        "migration_cutover_context",
+    ] {
+        let uri = format!("adoc://agent/v0/schema/agentdoc.cloud.{name}.v0.schema.json");
+        let result = server
+            .read_agent_resource(&uri)
+            .unwrap_or_else(|error| panic!("resource {uri} reads: {error}"));
+        assert_eq!(result.contents.len(), 1, "resource {uri}");
+    }
+}
+
+#[test]
+fn migration_cutover_contracts_accept_native_timestamps_and_reject_invalid_shapes() {
+    let id = "00000000-0000-4000-8000-000000000001";
+    let other_id = "00000000-0000-4000-8000-000000000002";
+    let digest = format!("sha256:{}", "a".repeat(64));
+    let timestamp = "2026-09-12T15:30:55.080252+00:00";
+    let scope = json!({"workspace_id":id,"connector_id":other_id,"source_container_id":"source-one","resource":{"kind":"repository","id":"repo-one"}});
+    let configuration = json!({"schema_version":"agentdoc.cloud.migration_cutover_configuration_request.v0","migration_id":id,"source_target_digest":digest,"controller_binding_digest":digest,"admission_evidence_digest":digest});
+    let transition = json!({"schema_version":"agentdoc.cloud.migration_cutover_transition_request.v0","migration_id":id,"transition_id":"00000000-0000-4000-8000-000000000002","expected":{"ordinal":"1","receipt_digest":digest},"to_state":"ready_to_cutover","evidence":{"kind":"cutover","fence_receipt_digest":digest,"expected_authority_policy_receipt_digest":digest,"expected_managed_frontier_digest":digest}});
+    let configuration_receipt = json!({"schema_version":"agentdoc.cloud.migration_cutover_configuration_receipt.v0","workspace_id":id,"migration_id":id,"source_target_digest":digest,"controller_binding_digest":digest,"admission_evidence_digest":digest,"command_digest":digest,"principal_id":id,"auth_session_id":other_id,"authorization_decision_id":id,"recorded_at":timestamp});
+    let fence = json!({"schema_version":"agentdoc.cloud.migration_source_fence_evidence.v0","evidence_id":other_id,"migration_id":id,"configuration_receipt_digest":digest,"source_target_digest":digest,"controller_binding_digest":digest,"admission_evidence_digest":digest,"inventory_digest":digest,"provider":"github","repository_id":id,"external_repository_id":"1","ref":"refs/heads/main","ruleset_id":"1","ruleset_digest":digest,"observed_oid":"a".repeat(40),"observed_at":timestamp,"controller_observed_at":timestamp,"restriction":"creation_update_deletion","bypass":"empty","retention":"until_authorized_reconciliation"});
+    let admission = json!({"schema_version":"agentdoc.cloud.migration_cutover_admission.v0","admission_id":id,"migration_id":id,"source_target_digest":digest,"controller_binding_digest":digest,"provider":"github","external_repository_id":"1","inventory":{"collaborators":[],"installations":[{"id":"1","app_id":"1","repository_membership":"potential","contents":"read","administration":"write","workflows":"none"}],"deploy_keys":[],"deploy_keys_policy":"disabled"},"inventory_digest":digest,"writer_qualification":[],"control_policy":{"mode":"controller_protocol_only","trusted_editors":[],"source_workers":[],"qualification_evidence_digest":digest},"observed_at":timestamp});
+    let mut fence_receipt = fence.clone();
+    fence_receipt["schema_version"] = json!("agentdoc.cloud.migration_source_fence_receipt.v0");
+    fence_receipt["workspace_id"] = json!(id);
+    fence_receipt["evidence_digest"] = json!(digest);
+    fence_receipt["principal_id"] = json!(id);
+    fence_receipt["auth_session_id"] = json!(other_id);
+    fence_receipt["authorization_decision_id"] = json!(id);
+    fence_receipt["recorded_at"] = json!(timestamp);
+    let mut admission_receipt = admission.clone();
+    admission_receipt["schema_version"] =
+        json!("agentdoc.cloud.migration_cutover_admission_receipt.v0");
+    admission_receipt["workspace_id"] = json!(id);
+    admission_receipt["admission_digest"] = json!(digest);
+    admission_receipt["principal_id"] = json!(id);
+    admission_receipt["auth_session_id"] = json!(other_id);
+    admission_receipt["authorization_decision_id"] = json!(id);
+    admission_receipt["recorded_at"] = json!(timestamp);
+    let cutover_receipt = json!({"schema_version":"agentdoc.cloud.migration_cutover_receipt.v0","workspace_id":id,"migration_id":id,"transition_id":other_id,"command_digest":digest,"readiness_receipt_digest":digest,"source_target_digest":digest,"fence_receipt_digest":digest,"initialization_id":id,"initialization_attestation_digest":digest,"initial_revision":"a".repeat(40),"scope":scope.clone(),"effective_prior_policy_receipt_digest":digest,"prior_exact_scope_policy_receipt_digest":null,"committed_policy_receipt_digest":digest,"managed_frontier":[],"managed_frontier_digest":digest,"principal_id":id,"auth_session_id":other_id,"migration_authorization_decision_id":id,"connector_authorization_decision_id":other_id,"recorded_at":timestamp});
+    let transition_receipt = json!({"schema_version":"agentdoc.cloud.migration_cutover_transition_receipt.v0","workspace_id":id,"migration_id":id,"transition_id":other_id,"ordinal":"1","previous_receipt_digest":digest,"command_digest":digest,"request_digest":digest,"job_digest":digest,"preparation_receipt_digest":digest,"scope":scope,"initial_revision":"a".repeat(40),"from_state":"catching_up","to_state":"ready_to_cutover","transition_policy_version":"1","evidence":{"kind":"cutover_readiness","fence_receipt_digest":digest,"expected_authority_policy_receipt_digest":digest,"expected_managed_frontier_digest":digest},"principal_id":id,"auth_session_id":other_id,"migration_authorization_decision_id":id,"connector_authorization_decision_id":other_id,"recorded_at":timestamp});
+    let context = json!({"schema_version":"agentdoc.cloud.migration_cutover_context.v0","workspace_id":id,"migration_id":id,"principal_id":id,"auth_session_id":other_id,"expected":{"ordinal":"1","receipt_digest":digest},"initialization_id":id,"initialization_attestation_digest":digest,"effective_prior_policy_receipt_digest":digest,"prior_exact_scope_policy_receipt_digest":null,"managed_frontier":[],"managed_frontier_digest":digest,"configuration_receipt_digest":null,"fence_receipt_digest":null});
+    let cases = vec![
+        (
+            "agentdoc.cloud.migration_cutover_configuration_request.v0.schema.json",
+            configuration,
+        ),
+        (
+            "agentdoc.cloud.migration_cutover_configuration_receipt.v0.schema.json",
+            configuration_receipt,
+        ),
+        (
+            "agentdoc.cloud.migration_source_fence_evidence.v0.schema.json",
+            fence,
+        ),
+        (
+            "agentdoc.cloud.migration_source_fence_receipt.v0.schema.json",
+            fence_receipt,
+        ),
+        (
+            "agentdoc.cloud.migration_cutover_admission.v0.schema.json",
+            admission,
+        ),
+        (
+            "agentdoc.cloud.migration_cutover_admission_receipt.v0.schema.json",
+            admission_receipt,
+        ),
+        (
+            "agentdoc.cloud.migration_cutover_receipt.v0.schema.json",
+            cutover_receipt,
+        ),
+        (
+            "agentdoc.cloud.migration_cutover_result.v0.schema.json",
+            json!({"schema_version":"agentdoc.cloud.migration_cutover_result.v0","receipt_bytes_base64":"e30K","receipt_digest":digest}),
+        ),
+        (
+            "agentdoc.cloud.migration_cutover_transition_request.v0.schema.json",
+            transition,
+        ),
+        (
+            "agentdoc.cloud.migration_cutover_transition_receipt.v0.schema.json",
+            transition_receipt,
+        ),
+        (
+            "agentdoc.cloud.migration_cutover_context.v0.schema.json",
+            context,
+        ),
+    ];
+    for (name, value) in cases {
+        assert_valid(name, &value);
+        let document = schema(name);
+        for field in document["required"].as_array().unwrap() {
+            let field = field.as_str().unwrap();
+            let mut invalid = value.clone();
+            invalid.as_object_mut().unwrap().remove(field);
+            assert!(
+                !schema_accepts(name, &invalid),
+                "{name} accepts missing {field}"
+            );
+            if !value[field].is_null() {
+                invalid = value.clone();
+                invalid[field] = json!(null);
+                assert!(
+                    !schema_accepts(name, &invalid),
+                    "{name} accepts null {field}"
+                );
+            }
+            invalid = value.clone();
+            invalid[field] = if value[field].is_string() {
+                json!(false)
+            } else {
+                json!("wrong scalar")
+            };
+            assert!(
+                !schema_accepts(name, &invalid),
+                "{name} accepts wrong scalar {field}"
+            );
+            if field.ends_with("_id") && value[field].is_string() {
+                invalid = value.clone();
+                invalid[field] = json!("not-an-id");
+                assert!(
+                    !schema_accepts(name, &invalid),
+                    "{name} accepts bad ID {field}"
+                );
+            }
+        }
+        let mut invalid = value.clone();
+        invalid["unexpected"] = json!(true);
+        assert!(
+            !schema_accepts(name, &invalid),
+            "{name} accepts unknown field"
+        );
+        if name.contains("migration_cutover_admission") {
+            for membership in ["included", "excluded"] {
+                let mut valid = value.clone();
+                valid["inventory"]["installations"][0]["repository_membership"] = json!(membership);
+                assert_valid(name, &valid);
+            }
+            invalid = value.clone();
+            invalid["inventory"]["installations"][0]["repository_membership"] = json!("unknown");
+            assert!(
+                !schema_accepts(name, &invalid),
+                "{name} accepts unknown repository membership"
+            );
+            invalid = value.clone();
+            invalid["inventory"]["collaborators"] =
+                json!([{"id":"1","role":"write"},{"id":"1","role":"write"}]);
+            assert!(
+                !schema_accepts(name, &invalid),
+                "{name} accepts duplicate inventory identity"
+            );
+        }
+    }
+}
+
+#[test]
 fn validates_complete_and_error_change_assessments_and_rejects_illegal_tuples() {
     let workspace = tempfile::tempdir().expect("workspace");
     let root = workspace.path();
@@ -6426,6 +6596,60 @@ fn migration_native_facts_are_closed_nonnullable_and_preserve_sequence_precision
 }
 
 #[test]
+fn migration_cutover_native_facts_are_closed_and_preserve_native_columns() {
+    let id = "00000000-0000-4000-8000-000000000001";
+    let other_id = "00000000-0000-4000-8000-000000000002";
+    let digest = format!("sha256:{}", "a".repeat(64));
+    let timestamp = "2026-09-12T15:30:55.080252+00:00";
+    let cases = [
+        (
+            "migration_cutover_admission",
+            json!({"workspace_id":id,"admission_id":other_id,"migration_id":id,"admission_digest":digest,"source_target_digest":digest,"controller_binding_digest":digest,"inventory_digest":digest,"principal":id,"auth_session_id":other_id,"authorization_decision_id":id,"receipt_digest":digest,"recorded_at":timestamp}),
+        ),
+        (
+            "migration_cutover_configuration",
+            json!({"workspace_id":id,"migration_id":id,"command_digest":digest,"admission_receipt_digest":digest,"principal":id,"auth_session_id":other_id,"authorization_decision_id":id,"receipt_digest":digest,"recorded_at":timestamp}),
+        ),
+        (
+            "migration_source_fence",
+            json!({"workspace_id":id,"evidence_id":other_id,"migration_id":id,"evidence_digest":digest,"configuration_receipt_digest":digest,"principal":id,"auth_session_id":other_id,"authorization_decision_id":id,"receipt_digest":digest,"recorded_at":timestamp}),
+        ),
+        (
+            "migration_cutover_receipt",
+            json!({"workspace_id":id,"migration_id":id,"transition_id":other_id,"recorded_xid":"9007199254740993","initialization_id":id,"committed_policy_id":other_id,"effective_prior_policy_digest":digest,"prior_exact_scope_policy_digest":null,"committed_policy_digest":digest,"receipt_digest":digest}),
+        ),
+        (
+            "migration_cutover_transition",
+            json!({"workspace_id":id,"migration_id":id,"ordinal":"1","transition_id":other_id,"command_digest":digest,"from_state":"catching_up","to_state":"ready_to_cutover","transition_policy_version":"1","evidence":{"kind":"cutover_readiness","fence_receipt_digest":digest,"expected_authority_policy_receipt_digest":digest,"expected_managed_frontier_digest":digest},"principal":id,"authorization_decision_id":id,"receipt_digest":digest,"previous_receipt_digest":digest,"recorded_at":timestamp}),
+        ),
+    ];
+    let name = "agentdoc.cloud.export_native_fact.v0.schema.json";
+    let validator = validator_for(&schema(name));
+    for (kind, record) in &cases {
+        let value = json!({"schema_version":"agentdoc.cloud.export_native_fact.v0","kind":kind,"record":record});
+        assert_valid(name, &value);
+        for field in record.as_object().unwrap().keys() {
+            let mut invalid = value.clone();
+            invalid["record"].as_object_mut().unwrap().remove(field);
+            assert!(!validator.is_valid(&invalid), "{kind} requires {field}");
+        }
+        let mut invalid = value.clone();
+        invalid["record"]["unexpected"] = json!(true);
+        assert!(
+            !validator.is_valid(&invalid),
+            "{kind} rejects unknown record field"
+        );
+    }
+    let nullable = &cases[3].1;
+    let mut present = nullable.clone();
+    present["prior_exact_scope_policy_digest"] = json!(digest);
+    assert_valid(
+        name,
+        &json!({"schema_version":"agentdoc.cloud.export_native_fact.v0","kind":"migration_cutover_receipt","record":present}),
+    );
+}
+
+#[test]
 fn migration_export_actual_native_outputs_match_published_contracts() {
     // Unmodified JSON values from real pinned-runtime and human-authorized Cloud
     // exports. This checks wire shape, not native authorization or causal joins.
@@ -7112,4 +7336,335 @@ fn migration_source_actual_native_outputs_match_closed_contracts() {
             assert_eq!(native["outcome"], receipt["outcome"]);
         }
     }
+}
+
+#[test]
+fn migration_cutover_committed_native_outputs_match_closed_contracts() {
+    use base64::Engine;
+    use sha2::Digest;
+    use std::fmt::Write;
+    let sha256 = |raw: &[u8]| {
+        let mut result = String::from("sha256:");
+        for byte in sha2::Sha256::digest(raw) {
+            write!(result, "{byte:02x}").unwrap();
+        }
+        result
+    };
+    let capture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/migration-cutover-native.json")).unwrap();
+    let records = capture["records"].as_array().unwrap();
+    assert_eq!(records.len(), 28);
+    for record in records {
+        assert_valid(
+            &format!("{}.schema.json", record["schema_version"].as_str().unwrap()),
+            record,
+        );
+    }
+    let results: Vec<_> = records
+        .iter()
+        .filter(|r| r["schema_version"] == "agentdoc.cloud.migration_cutover_result.v0")
+        .collect();
+    assert_eq!(results.len(), 5);
+    for result in results {
+        let raw = base64::engine::general_purpose::STANDARD
+            .decode(result["receipt_bytes_base64"].as_str().unwrap())
+            .unwrap();
+        let digest = sha256(&raw);
+        assert_eq!(result["receipt_digest"], digest);
+        let receipt: serde_json::Value = serde_json::from_slice(&raw).unwrap();
+        assert!(records.contains(&receipt));
+        let mut canonical = serde_json::to_vec(&receipt).unwrap();
+        canonical.push(b'\n');
+        assert_eq!(raw, canonical);
+    }
+    let kinds: BTreeSet<_> = records
+        .iter()
+        .filter(|r| r["schema_version"] == "agentdoc.cloud.export_native_fact.v0")
+        .map(|r| r["kind"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        kinds,
+        BTreeSet::from([
+            "migration_cutover_admission",
+            "migration_cutover_configuration",
+            "migration_source_fence",
+            "migration_cutover_receipt",
+            "migration_cutover_transition"
+        ])
+    );
+    let committed = records
+        .iter()
+        .find(|r| r["schema_version"] == "agentdoc.cloud.migration_cutover_receipt.v0")
+        .unwrap();
+    let policy_parts = capture["retained_policy_parts"].as_array().unwrap();
+    assert_eq!(policy_parts.len(), 2);
+    let mut retained_digests = BTreeSet::new();
+    for part in policy_parts {
+        assert_eq!(part["kind"], "connector_authority_policy");
+        assert_eq!(part["part"], "record");
+        assert_eq!(part["contract"], "retained_bytes");
+        assert_eq!(part["representation"], "exact_binary");
+        assert_eq!(part["permission"], "policy.read");
+        assert_eq!(part["opaque"], true);
+        let raw = base64::engine::general_purpose::STANDARD
+            .decode(part["bytes_base64"].as_str().unwrap())
+            .unwrap();
+        let digest = sha256(&raw);
+        assert_eq!(part["file_sha256"], digest);
+        assert_eq!(part["claimed"], digest);
+        assert_eq!(part["observed"], digest);
+        let policy: serde_json::Value = serde_json::from_slice(&raw).unwrap();
+        assert_eq!(part["scope"], policy["scope"]);
+        retained_digests.insert(digest);
+    }
+    let expected_policy_digests: BTreeSet<_> = [
+        "effective_prior_policy_receipt_digest",
+        "prior_exact_scope_policy_receipt_digest",
+        "committed_policy_receipt_digest",
+    ]
+    .iter()
+    .filter_map(|key| committed[key].as_str().map(str::to_owned))
+    .collect();
+    assert_eq!(retained_digests, expected_policy_digests);
+    let final_transition = records
+        .iter()
+        .find(|r| {
+            r["schema_version"] == "agentdoc.cloud.migration_cutover_transition_receipt.v0"
+                && r["to_state"] == "cutover_committed"
+        })
+        .unwrap();
+    let mut raw = serde_json::to_vec(committed).unwrap();
+    raw.push(b'\n');
+    assert_eq!(
+        final_transition["evidence"]["cutover_receipt_digest"],
+        sha256(&raw)
+    );
+    assert_eq!(
+        committed["transition_id"],
+        final_transition["transition_id"]
+    );
+    assert_eq!(
+        committed["readiness_receipt_digest"],
+        final_transition["previous_receipt_digest"]
+    );
+}
+
+#[test]
+fn migration_cutover_native_contracts_reject_zero_oids_and_nullable_frontier_bindings() {
+    let capture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/migration-cutover-native.json")).unwrap();
+    let records = capture["records"].as_array().unwrap();
+    let zero_oid = "0".repeat(40);
+    for schema_version in [
+        "agentdoc.cloud.migration_source_fence_evidence.v0",
+        "agentdoc.cloud.migration_source_fence_receipt.v0",
+        "agentdoc.cloud.migration_cutover_receipt.v0",
+    ] {
+        let mut invalid = records
+            .iter()
+            .find(|record| record["schema_version"] == schema_version)
+            .unwrap()
+            .clone();
+        let pointer = if schema_version.ends_with("cutover_receipt.v0") {
+            "/initial_revision"
+        } else {
+            "/observed_oid"
+        };
+        *invalid.pointer_mut(pointer).unwrap() = json!(zero_oid);
+        assert!(!schema_accepts(
+            &format!("{schema_version}.schema.json"),
+            &invalid
+        ));
+    }
+    for schema_version in [
+        "agentdoc.cloud.migration_cutover_context.v0",
+        "agentdoc.cloud.migration_cutover_receipt.v0",
+    ] {
+        let valid = records
+            .iter()
+            .find(|record| record["schema_version"] == schema_version)
+            .unwrap();
+        assert_valid(&format!("{schema_version}.schema.json"), valid);
+        for field in [
+            "active_version_id",
+            "active_promotion_seq",
+            "latest_promotion_seq",
+            "latest_state_event_seq",
+            "latest_state_event_digest",
+        ] {
+            let mut invalid = valid.clone();
+            invalid["managed_frontier"][0][field] = serde_json::Value::Null;
+            assert!(!schema_accepts(
+                &format!("{schema_version}.schema.json"),
+                &invalid
+            ));
+        }
+        let mut valid_null = valid.clone();
+        valid_null["managed_frontier"][0]["latest_effectivity_policy_seq"] =
+            serde_json::Value::Null;
+        assert_valid(&format!("{schema_version}.schema.json"), &valid_null);
+    }
+}
+
+#[test]
+fn migration_cutover_receipt_contracts_close_t3_bindings() {
+    let capture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/migration-cutover-native.json")).unwrap();
+    let records = capture["records"].as_array().unwrap();
+    let record = |schema_version| {
+        records
+            .iter()
+            .find(|record| record["schema_version"] == schema_version)
+            .unwrap()
+            .clone()
+    };
+    let transition = records
+        .iter()
+        .find(|record| {
+            record["schema_version"] == "agentdoc.cloud.migration_cutover_transition_receipt.v0"
+                && record["to_state"] == "cutover_committed"
+        })
+        .unwrap()
+        .clone();
+    assert_valid(
+        "agentdoc.cloud.migration_cutover_transition_receipt.v0.schema.json",
+        &transition,
+    );
+    let mut zero_revision = transition.clone();
+    zero_revision["initial_revision"] = json!("0".repeat(40));
+    assert!(!schema_accepts(
+        "agentdoc.cloud.migration_cutover_transition_receipt.v0.schema.json",
+        &zero_revision
+    ));
+
+    for (schema_version, valid) in [
+        (
+            "agentdoc.cloud.migration_cutover_receipt.v0",
+            record("agentdoc.cloud.migration_cutover_receipt.v0"),
+        ),
+        (
+            "agentdoc.cloud.migration_cutover_transition_receipt.v0",
+            transition.clone(),
+        ),
+    ] {
+        for (pointer, invalid_value) in [
+            ("/scope/source_container_id", json!(" ")),
+            ("/scope/source_container_id", json!(" source-one ")),
+            ("/scope/resource/id", json!("repo\u{0007}one")),
+        ] {
+            let mut invalid = valid.clone();
+            *invalid.pointer_mut(pointer).unwrap() = invalid_value;
+            assert!(!schema_accepts(
+                &format!("{schema_version}.schema.json"),
+                &invalid
+            ));
+        }
+    }
+
+    let commit = transition;
+    let transition_fact = records
+        .iter()
+        .find(|record| {
+            record["schema_version"] == "agentdoc.cloud.export_native_fact.v0"
+                && record["kind"] == "migration_cutover_transition"
+                && record["record"]["to_state"] == "cutover_committed"
+        })
+        .unwrap()
+        .clone();
+    let readiness = records
+        .iter()
+        .find(|record| {
+            record["schema_version"] == "agentdoc.cloud.migration_cutover_transition_receipt.v0"
+                && record["to_state"] == "ready_to_cutover"
+        })
+        .unwrap()
+        .clone();
+    let readiness_fact = records
+        .iter()
+        .find(|record| {
+            record["schema_version"] == "agentdoc.cloud.export_native_fact.v0"
+                && record["kind"] == "migration_cutover_transition"
+                && record["record"]["to_state"] == "ready_to_cutover"
+        })
+        .unwrap()
+        .clone();
+    for (field, value) in [
+        ("/from_state", json!("catching_up")),
+        ("/to_state", json!("ready_to_cutover")),
+    ] {
+        let mut invalid_receipt = commit.clone();
+        *invalid_receipt.pointer_mut(field).unwrap() = value.clone();
+        assert!(!schema_accepts(
+            "agentdoc.cloud.migration_cutover_transition_receipt.v0.schema.json",
+            &invalid_receipt
+        ));
+        let mut invalid_fact = transition_fact.clone();
+        let pointer = format!("/record{field}");
+        *invalid_fact.pointer_mut(&pointer).unwrap() = value;
+        assert!(!schema_accepts(
+            "agentdoc.cloud.export_native_fact.v0.schema.json",
+            &invalid_fact
+        ));
+    }
+    for (receipt, fact, opposite_receipt, opposite_fact) in [
+        (&commit, &transition_fact, &readiness, &readiness_fact),
+        (&readiness, &readiness_fact, &commit, &transition_fact),
+    ] {
+        let mut invalid_receipt = receipt.clone();
+        invalid_receipt["evidence"] = opposite_receipt["evidence"].clone();
+        assert!(!schema_accepts(
+            "agentdoc.cloud.migration_cutover_transition_receipt.v0.schema.json",
+            &invalid_receipt
+        ));
+        let mut invalid_fact = fact.clone();
+        invalid_fact["record"]["evidence"] = opposite_fact["record"]["evidence"].clone();
+        assert!(!schema_accepts(
+            "agentdoc.cloud.export_native_fact.v0.schema.json",
+            &invalid_fact
+        ));
+    }
+
+    for schema_version in [
+        "agentdoc.cloud.migration_cutover_admission.v0",
+        "agentdoc.cloud.migration_cutover_admission_receipt.v0",
+    ] {
+        let valid = record(schema_version);
+        assert_valid(&format!("{schema_version}.schema.json"), &valid);
+        let mut duplicate = valid.clone();
+        let qualification = duplicate["writer_qualification"][0].clone();
+        duplicate["writer_qualification"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({
+                "credential_class": qualification["credential_class"],
+                "baseline": "allowed", "update": "GH013", "force_update": "GH013",
+                "deletion": "GH013", "creation": "GH013",
+                "evidence_digest": format!("sha256:{}", "b".repeat(64))
+            }));
+        assert!(!schema_accepts(
+            &format!("{schema_version}.schema.json"),
+            &duplicate
+        ));
+    }
+
+    let committed = record("agentdoc.cloud.migration_cutover_receipt.v0");
+    assert_eq!(
+        committed["prior_exact_scope_policy_receipt_digest"],
+        committed["effective_prior_policy_receipt_digest"]
+    );
+    assert!(!committed["prior_exact_scope_policy_receipt_digest"].is_null());
+    let parts = capture["retained_policy_parts"].as_array().unwrap();
+    let prior = parts
+        .iter()
+        .find(|part| part["claimed"] == committed["effective_prior_policy_receipt_digest"])
+        .unwrap();
+    let committed_part = parts
+        .iter()
+        .find(|part| part["claimed"] == committed["committed_policy_receipt_digest"])
+        .unwrap();
+    assert_eq!(prior["record_key"], "connector_authority_policy:97:record");
+    assert_eq!(
+        committed_part["record_key"],
+        "connector_authority_policy:98:record"
+    );
 }

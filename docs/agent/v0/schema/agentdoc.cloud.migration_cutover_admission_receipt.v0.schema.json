@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_admission_receipt.v0.schema.json",
+  "title": "agentdoc.cloud.migration_cutover_admission_receipt.v0",
+  "description": "Closed immutable native admission receipt retaining the full trusted-server assertion. It is not provider-signed proof and native authority remains required.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "workspace_id",
+    "admission_id",
+    "migration_id",
+    "source_target_digest",
+    "controller_binding_digest",
+    "provider",
+    "external_repository_id",
+    "inventory",
+    "inventory_digest",
+    "writer_qualification",
+    "control_policy",
+    "observed_at",
+    "admission_digest",
+    "principal_id",
+    "auth_session_id",
+    "authorization_decision_id",
+    "recorded_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "agentdoc.cloud.migration_cutover_admission_receipt.v0"
+    },
+    "workspace_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "admission_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "migration_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "source_target_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "controller_binding_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "provider": {
+      "const": "github"
+    },
+    "external_repository_id": {
+      "$ref": "#/$defs/decimal"
+    },
+    "inventory": {
+      "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_admission.v0.schema.json#/$defs/inventory"
+    },
+    "inventory_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "writer_qualification": {
+      "type": "array",
+      "maxItems": 3,
+      "uniqueItems": true,
+      "allOf": [
+        {
+          "contains": { "properties": { "credential_class": { "const": "human_git" } }, "required": ["credential_class"] },
+          "minContains": 0,
+          "maxContains": 1
+        },
+        {
+          "contains": { "properties": { "credential_class": { "const": "github_installation_token" } }, "required": ["credential_class"] },
+          "minContains": 0,
+          "maxContains": 1
+        },
+        {
+          "contains": { "properties": { "credential_class": { "const": "deploy_key" } }, "required": ["credential_class"] },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      ],
+      "items": {
+        "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_admission.v0.schema.json#/$defs/qualification"
+      }
+    },
+    "control_policy": {
+      "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_admission.v0.schema.json#/$defs/control"
+    },
+    "observed_at": {
+      "$ref": "#/$defs/time"
+    },
+    "admission_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "principal_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "auth_session_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "authorization_decision_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "recorded_at": {
+      "$ref": "#/$defs/time"
+    }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "decimal": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*$"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$"
+    }
+  }
+}
