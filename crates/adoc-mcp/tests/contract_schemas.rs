@@ -1703,6 +1703,260 @@ fn migration_cutover_schemas_are_published_as_mcp_resources() {
 }
 
 #[test]
+fn migration_reconciliation_contracts_conform_to_actual_native_records() {
+    let capture: serde_json::Value = serde_json::from_str(include_str!(
+        "fixtures/migration-reconciliation-native.json"
+    ))
+    .unwrap();
+    let records = capture["records"].as_array().unwrap();
+    assert_eq!(records.len(), 4);
+    for record in records {
+        let name = format!("{}.schema.json", record["schema_version"].as_str().unwrap());
+        assert_valid(&name, record);
+        for field in schema(&name)["required"].as_array().unwrap() {
+            let mut invalid = record.clone();
+            invalid
+                .as_object_mut()
+                .unwrap()
+                .remove(field.as_str().unwrap());
+            assert!(
+                !schema_accepts(&name, &invalid),
+                "{name} accepts missing {field}"
+            );
+        }
+        let mut invalid = record.clone();
+        invalid["unexpected"] = json!(true);
+        assert!(
+            !schema_accepts(&name, &invalid),
+            "{name} accepts unknown keys"
+        );
+    }
+    let context = records
+        .iter()
+        .find(|record| {
+            record["schema_version"] == "agentdoc.cloud.migration_reconciliation_context.v0"
+        })
+        .unwrap();
+    let name = "agentdoc.cloud.migration_reconciliation_context.v0.schema.json";
+    for field in ["active_version_id", "active_promotion_seq"] {
+        let mut invalid = context.clone();
+        invalid["managed_frontier"][0][field] = serde_json::Value::Null;
+        assert!(
+            !schema_accepts(name, &invalid),
+            "{field} nullable on active binding"
+        );
+    }
+    for (field, value) in [
+        ("latest_state_event_seq", json!("1")),
+        (
+            "latest_state_event_digest",
+            json!(format!("sha256:{}", "a".repeat(64))),
+        ),
+    ] {
+        let mut invalid = context.clone();
+        invalid["managed_frontier"][1][field] = value;
+        assert!(
+            !schema_accepts(name, &invalid),
+            "{field} uncoupled from null frontier"
+        );
+    }
+    let mut invalid = context.clone();
+    invalid["managed_frontier"][0]["latest_promotion_seq"] = serde_json::Value::Null;
+    assert!(!schema_accepts(name, &invalid));
+    let mut valid = context.clone();
+    valid["managed_frontier"][1]["latest_promotion_seq"] = serde_json::Value::Null;
+    valid["managed_frontier"][1]["latest_state_event_seq"] = json!("12");
+    valid["managed_frontier"][1]["latest_state_event_digest"] =
+        context["managed_frontier"][0]["latest_state_event_digest"].clone();
+    assert_valid(name, &valid);
+}
+
+#[test]
+fn migration_reconciliation_schemas_are_published_as_mcp_resources() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let server = AgentDocMcpServer::new(workspace.path().to_path_buf());
+    for name in [
+        "migration_reconciliation_begin_request",
+        "migration_reconciliation_begin_receipt",
+        "migration_reconciliation_context",
+        "migration_reconciliation_import_receipt",
+        "migration_reconciliation_accept_request",
+        "migration_reconciliation_attestation",
+        "migration_reconciliation_accept_receipt",
+    ] {
+        let uri = format!("adoc://agent/v0/schema/agentdoc.cloud.{name}.v0.schema.json");
+        assert!(server.read_agent_resource(&uri).is_ok(), "resource {uri}");
+    }
+}
+
+#[test]
+fn migration_reconciliation_acceptance_contracts_conform_to_actual_native_records() {
+    let capture: serde_json::Value = serde_json::from_str(include_str!(
+        "fixtures/migration-reconciliation-accept-native.json"
+    ))
+    .unwrap();
+    let records = capture["records"].as_array().unwrap();
+    assert_eq!(records.len(), 3);
+    for record in records {
+        let name = format!("{}.schema.json", record["schema_version"].as_str().unwrap());
+        assert_valid(&name, record);
+        for field in schema(&name)["required"].as_array().unwrap() {
+            let mut invalid = record.clone();
+            invalid
+                .as_object_mut()
+                .unwrap()
+                .remove(field.as_str().unwrap());
+            assert!(!schema_accepts(&name, &invalid), "{name} missing {field}");
+        }
+        let mut invalid = record.clone();
+        invalid["unexpected"] = json!(true);
+        assert!(!schema_accepts(&name, &invalid), "{name} unknown field");
+    }
+    let receipt = &records[2];
+    let name = "agentdoc.cloud.migration_reconciliation_accept_receipt.v0.schema.json";
+    let mut invalid = receipt.clone();
+    invalid["cutover_receipt_digest"] = json!(false);
+    assert!(!schema_accepts(name, &invalid));
+    invalid = receipt.clone();
+    invalid["source_revision"] = json!("0".repeat(40));
+    assert!(!schema_accepts(name, &invalid));
+}
+
+#[test]
+fn migration_rollback_contracts_conform_to_actual_native_records() {
+    let capture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/migration-rollback-native.json")).unwrap();
+    let records = capture["records"].as_array().unwrap();
+    assert_eq!(records.len(), 7);
+    for record in records {
+        let name = format!("{}.schema.json", record["schema_version"].as_str().unwrap());
+        assert_valid(&name, record);
+        for field in schema(&name)["required"].as_array().unwrap() {
+            let mut invalid = record.clone();
+            invalid
+                .as_object_mut()
+                .unwrap()
+                .remove(field.as_str().unwrap());
+            assert!(!schema_accepts(&name, &invalid), "{name} missing {field}");
+        }
+        let mut invalid = record.clone();
+        invalid["unexpected"] = json!(true);
+        assert!(!schema_accepts(&name, &invalid));
+    }
+    let context = records
+        .iter()
+        .find(|record| record["schema_version"] == "agentdoc.cloud.migration_rollback_context.v0")
+        .unwrap();
+    let name = "agentdoc.cloud.migration_rollback_context.v0.schema.json";
+    let mut invalid = context.clone();
+    invalid["expected"]["ordinal"] = json!(0);
+    assert!(!schema_accepts(name, &invalid));
+    invalid = context.clone();
+    invalid["observation"]["extra"] = json!(true);
+    assert!(!schema_accepts(name, &invalid));
+    let release = records
+        .iter()
+        .find(|record| {
+            record["schema_version"] == "agentdoc.cloud.migration_fence_release_context.v0"
+        })
+        .unwrap();
+    let name = "agentdoc.cloud.migration_fence_release_context.v0.schema.json";
+    invalid = release.clone();
+    invalid["claim"]["extra"] = json!(true);
+    assert!(!schema_accepts(name, &invalid));
+    invalid = release.clone();
+    invalid["claim"] = serde_json::Value::Null;
+    assert!(!schema_accepts(name, &invalid));
+}
+
+#[test]
+fn migration_reconciliation_export_native_facts_conform_to_actual_records() {
+    let records: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+        "fixtures/migration-reconciliation-export-native.json"
+    ))
+    .unwrap();
+    assert_eq!(records.len(), 9);
+    let name = "agentdoc.cloud.export_native_fact.v0.schema.json";
+    for fact in &records {
+        assert_valid(name, fact);
+        for field in fact["record"].as_object().unwrap().keys() {
+            let mut invalid = fact.clone();
+            invalid["record"].as_object_mut().unwrap().remove(field);
+            assert!(
+                !schema_accepts(name, &invalid),
+                "{} missing {field}",
+                fact["kind"]
+            );
+        }
+        let mut invalid = fact.clone();
+        invalid["record"]["unexpected"] = json!(true);
+        assert!(
+            !schema_accepts(name, &invalid),
+            "{} unknown field",
+            fact["kind"]
+        );
+        invalid = fact.clone();
+        invalid["record"]["workspace_id"] = json!("not-a-uuid");
+        assert!(
+            !schema_accepts(name, &invalid),
+            "{} workspace type",
+            fact["kind"]
+        );
+    }
+    let initialization = records
+        .iter()
+        .find(|x| x["kind"] == "migration_reconciliation_initialization")
+        .unwrap();
+    let mut invalid = initialization.clone();
+    invalid["record"]["id"] = json!("x");
+    assert!(!schema_accepts(name, &invalid));
+    invalid = initialization.clone();
+    invalid["record"]["request_id"] = json!("external-request");
+    assert!(!schema_accepts(name, &invalid));
+    let reconciliation = records
+        .iter()
+        .find(|x| x["kind"] == "migration_reconciliation")
+        .unwrap();
+    let mut invalid = reconciliation.clone();
+    invalid["record"]["expected_parent"]["ordinal"] = json!(8);
+    assert!(!schema_accepts(name, &invalid));
+    let rollback = records
+        .iter()
+        .find(|x| x["kind"] == "migration_rollback")
+        .unwrap();
+    invalid = rollback.clone();
+    invalid["record"]["recorded_xid"] = json!(0);
+    assert!(!schema_accepts(name, &invalid));
+    let target = records
+        .iter()
+        .find(|x| x["kind"] == "migration_reconciliation_target")
+        .unwrap();
+    invalid = target.clone();
+    invalid["record"]["content_hash"] = json!("not-a-digest");
+    assert!(!schema_accepts(name, &invalid));
+    invalid = target.clone();
+    invalid["record"]["object_id"] = json!(" test.one");
+    assert!(!schema_accepts(name, &invalid));
+    let import = records
+        .iter()
+        .find(|x| x["kind"] == "migration_reconciliation_import")
+        .unwrap();
+    let mut valid = import.clone();
+    valid["record"]["request_id"] = json!("external-request");
+    assert_valid(name, &valid);
+    invalid = import.clone();
+    invalid["record"]["request_id"] = json!(" request");
+    assert!(!schema_accepts(name, &invalid));
+    let transition = records
+        .iter()
+        .find(|x| x["kind"] == "migration_rollback_transition")
+        .unwrap();
+    invalid = transition.clone();
+    invalid["record"]["previous_receipt_digest"] = serde_json::Value::Null;
+    assert!(!schema_accepts(name, &invalid));
+}
+
+#[test]
 fn migration_cutover_contracts_accept_native_timestamps_and_reject_invalid_shapes() {
     let id = "00000000-0000-4000-8000-000000000001";
     let other_id = "00000000-0000-4000-8000-000000000002";
@@ -7018,6 +7272,20 @@ fn migration_source_contracts_are_closed_bound_and_conservative() {
         "principal_id":id,"authorization_decision_id":id,"recorded_at":timestamp});
     let result = json!({"schema_version":"agentdoc.cloud.migration_source_result.v0",
         "receipt_bytes_base64":"e30K","receipt_digest":digest});
+    for kind in ["advance", "initialize", "accept", "rollback"] {
+        let mut request = checkpoint.clone();
+        request["operation"]["kind"] = json!(kind);
+        assert_valid(
+            "agentdoc.cloud.migration_source_checkpoint_request.v0.schema.json",
+            &request,
+        );
+        let mut checkpoint_receipt = receipt.clone();
+        checkpoint_receipt["operation"]["kind"] = json!(kind);
+        assert_valid(
+            "agentdoc.cloud.migration_source_checkpoint_receipt.v0.schema.json",
+            &checkpoint_receipt,
+        );
+    }
     for value in [&target, &checkpoint, &target_receipt, &receipt, &result] {
         let name = format!("{}.schema.json", value["schema_version"].as_str().unwrap());
         assert_valid(&name, value);
@@ -7093,6 +7361,9 @@ fn migration_source_contracts_are_closed_bound_and_conservative() {
         assert!(!schema_accepts(name, &invalid));
     }
     let name = "agentdoc.cloud.migration_source_checkpoint_receipt.v0.schema.json";
+    let mut invalid_kind = receipt.clone();
+    invalid_kind["operation"]["kind"] = json!("cutover");
+    assert!(!schema_accepts(name, &invalid_kind));
     let mut negative = receipt.clone();
     negative["outcome"] = json!("drift");
     negative["observed_oid"] = json!("b".repeat(40));
@@ -7140,6 +7411,14 @@ fn migration_source_contracts_are_closed_bound_and_conservative() {
     }
     let mut checkpoint_native_fact = json!({"schema_version":"agentdoc.cloud.export_native_fact.v0",
         "kind":"migration_source_checkpoint","record":checkpoint_fact.clone()});
+    for kind in ["advance", "initialize", "accept", "rollback"] {
+        let mut fact = checkpoint_native_fact.clone();
+        fact["record"]["operation_kind"] = json!(kind);
+        assert_valid(name, &fact);
+    }
+    let mut invalid_operation = checkpoint_native_fact.clone();
+    invalid_operation["record"]["operation_kind"] = json!("cutover");
+    assert!(!schema_accepts(name, &invalid_operation));
     for (kind, record) in [
         ("migration_source_target", target_fact),
         ("migration_source_checkpoint", checkpoint_fact),

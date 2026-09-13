@@ -1,0 +1,156 @@
+{
+  "source": "actual native runtime rollback integration, synthetic provider only",
+  "records": [
+    {
+      "expected": {
+        "ordinal": "8",
+        "receipt_digest": "sha256:ff154c66af7daef521237e2c17c5a399428287609a86673a88c1ec64158d00ea"
+      },
+      "observation": {
+        "expected": {
+          "ordinal": "8",
+          "receipt_digest": "sha256:ff154c66af7daef521237e2c17c5a399428287609a86673a88c1ec64158d00ea"
+        },
+        "migration_id": "41979501-2df4-49d5-a351-951bd8ab5171",
+        "target_receipt_digest": "sha256:5d39075659aa57276b97b78c4d1d34c5eb913d17699474bf7ecd39e79e597499"
+      },
+      "migration_id": "41979501-2df4-49d5-a351-951bd8ab5171",
+      "principal_id": "929390c5-c34f-4128-936b-ddb5442b5140",
+      "workspace_id": "c29cd049-cd70-4afe-9c76-9640eb98b0a3",
+      "schema_version": "agentdoc.cloud.migration_rollback_context.v0",
+      "auth_session_id": "0ce1afd1-5309-4508-8722-b67e59ef71b2",
+      "fence_receipt_digest": "sha256:5f36f0d26eaffa740f701ba8d564e2f89469cf9ae5a0a1ae3be8db6fce7c1859",
+      "source_target_digest": "sha256:5d39075659aa57276b97b78c4d1d34c5eb913d17699474bf7ecd39e79e597499",
+      "cutover_receipt_digest": "sha256:7d428b649aae5f1d5c5723e42898970de7412ca44a6ace55523a3e3564c3339d",
+      "expected_source_revision": "33da8bad94dcc273ff76a266b8f2f2dcfca0bfee",
+      "controller_binding_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "configuration_receipt_digest": "sha256:b1832ea83944a4261d6d925f6d4019d42e093e2b0666c49df543d775b8b64ea2",
+      "reconciliation_receipt_digest": null,
+      "expected_managed_frontier_digest": "sha256:22a9b532a574bb286310fc873958eb52b81d6696b2f3ccf0a63338e7e0772dff",
+      "expected_authority_policy_receipt_digest": "sha256:5a8f7288632ef5bf05f1112772a37252255d2d3ba6a696410964da65eeb7b3e3"
+    },
+    {
+      "cutover_receipt_digest": "sha256:7d428b649aae5f1d5c5723e42898970de7412ca44a6ace55523a3e3564c3339d",
+      "expected": {
+        "ordinal": "8",
+        "receipt_digest": "sha256:ff154c66af7daef521237e2c17c5a399428287609a86673a88c1ec64158d00ea"
+      },
+      "expected_authority_policy_receipt_digest": "sha256:5a8f7288632ef5bf05f1112772a37252255d2d3ba6a696410964da65eeb7b3e3",
+      "expected_managed_frontier_digest": "sha256:22a9b532a574bb286310fc873958eb52b81d6696b2f3ccf0a63338e7e0772dff",
+      "expected_source_revision": "33da8bad94dcc273ff76a266b8f2f2dcfca0bfee",
+      "fence_receipt_digest": "sha256:5f36f0d26eaffa740f701ba8d564e2f89469cf9ae5a0a1ae3be8db6fce7c1859",
+      "migration_id": "41979501-2df4-49d5-a351-951bd8ab5171",
+      "reconciliation_receipt_digest": null,
+      "schema_version": "agentdoc.cloud.migration_rollback_request.v0",
+      "transition_id": "c1416512-2502-49e8-a31b-07cc3f4f0570"
+    },
+    {
+      "auth_session_id": "0ce1afd1-5309-4508-8722-b67e59ef71b2",
+      "command_digest": "sha256:1d993095f2b6d3deaf64e03240c4945fe97c97d75ad5df182dc0620e58c28b3e",
+      "connector_authorization_decision_id": "d9267bea-24e4-4aca-824e-e2a0e03f1a61",
+      "cutover_receipt_digest": "sha256:7d428b649aae5f1d5c5723e42898970de7412ca44a6ace55523a3e3564c3339d",
+      "effective_restored_policy_receipt_digest": "sha256:51a08fa0697ff0813df325ba35c0eb9e72434bf776859b9885367ac7c4e5604c",
+      "fence_receipt_digest": "sha256:5f36f0d26eaffa740f701ba8d564e2f89469cf9ae5a0a1ae3be8db6fce7c1859",
+      "from_state": "cutover_committed",
+      "managed_frontier_digest": "sha256:22a9b532a574bb286310fc873958eb52b81d6696b2f3ccf0a63338e7e0772dff",
+      "migration_authorization_decision_id": "c2018a07-b22b-4418-9b5d-f4748a97daa8",
+      "migration_id": "41979501-2df4-49d5-a351-951bd8ab5171",
+      "ordinal": "9",
+      "previous_receipt_digest": "sha256:ff154c66af7daef521237e2c17c5a399428287609a86673a88c1ec64158d00ea",
+      "principal_id": "929390c5-c34f-4128-936b-ddb5442b5140",
+      "prior_exact_scope_policy_receipt_digest": "sha256:5a8f7288632ef5bf05f1112772a37252255d2d3ba6a696410964da65eeb7b3e3",
+      "reconciliation_receipt_digest": null,
+      "recorded_at": "2026-09-13T15:10:55.711747+00:00",
+      "restored_policy_receipt_digest": "sha256:98bbd058f9626d88c15aec11647722b00565c831c0a6c2ca098d7bfde9826a93",
+      "schema_version": "agentdoc.cloud.migration_rollback_receipt.v0",
+      "scope": {
+        "connector_id": "cde8d2f2-e1e7-48ac-8885-ce7cb1e99746",
+        "resource": {
+          "id": "repository-1",
+          "kind": "repository"
+        },
+        "source_container_id": "source-1",
+        "workspace_id": "c29cd049-cd70-4afe-9c76-9640eb98b0a3"
+      },
+      "source_checkpoint_receipt_digest": "sha256:f4b205028c0583958d689d9eedadb229ebf2f13c09b1e90f0ac0077355c581a8",
+      "source_observation_migration_id": "41979501-2df4-49d5-a351-951bd8ab5171",
+      "source_observation_target_digest": "sha256:5d39075659aa57276b97b78c4d1d34c5eb913d17699474bf7ecd39e79e597499",
+      "source_revision": "33da8bad94dcc273ff76a266b8f2f2dcfca0bfee",
+      "source_target_digest": "sha256:5d39075659aa57276b97b78c4d1d34c5eb913d17699474bf7ecd39e79e597499",
+      "to_state": "rolled_back",
+      "transition_id": "c1416512-2502-49e8-a31b-07cc3f4f0570",
+      "workspace_id": "c29cd049-cd70-4afe-9c76-9640eb98b0a3"
+    },
+    {
+      "auth_session_id": "0ce1afd1-5309-4508-8722-b67e59ef71b2",
+      "configuration_receipt_digest": "sha256:b1832ea83944a4261d6d925f6d4019d42e093e2b0666c49df543d775b8b64ea2",
+      "connector_authorization_decision_id": "d9267bea-24e4-4aca-824e-e2a0e03f1a61",
+      "controller_binding_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "external_repository_id": "42",
+      "fence_receipt_digest": "sha256:5f36f0d26eaffa740f701ba8d564e2f89469cf9ae5a0a1ae3be8db6fce7c1859",
+      "migration_id": "41979501-2df4-49d5-a351-951bd8ab5171",
+      "principal_id": "929390c5-c34f-4128-936b-ddb5442b5140",
+      "provider": "github",
+      "recorded_at": "2026-09-13T15:10:55.711747+00:00",
+      "ref": "refs/heads/main",
+      "rollback_receipt_digest": "sha256:cd27b5e9c9c853cca351816f86cd84e9084cbf29968a55e591aecd42b23949fc",
+      "ruleset_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ruleset_id": "1",
+      "schema_version": "agentdoc.cloud.migration_fence_release_claim.v0",
+      "source_target_digest": "sha256:5d39075659aa57276b97b78c4d1d34c5eb913d17699474bf7ecd39e79e597499",
+      "transition_id": "c1416512-2502-49e8-a31b-07cc3f4f0570",
+      "workspace_id": "c29cd049-cd70-4afe-9c76-9640eb98b0a3"
+    },
+    {
+      "controller_binding_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "controller_observed_at": "2026-09-13T15:10:55.766Z",
+      "evidence_id": "3a89ded6-e856-490a-b7b8-393c99a5c21c",
+      "fence_receipt_digest": "sha256:5f36f0d26eaffa740f701ba8d564e2f89469cf9ae5a0a1ae3be8db6fce7c1859",
+      "migration_id": "41979501-2df4-49d5-a351-951bd8ab5171",
+      "observed_at": "2026-09-13T15:10:55.766Z",
+      "outcome": "released",
+      "release_claim_receipt_digest": "sha256:b026eba7cfb6b6caf1b4e129a8393615d0ed9beae9b15b78c678adfa616798cb",
+      "rollback_receipt_digest": "sha256:cd27b5e9c9c853cca351816f86cd84e9084cbf29968a55e591aecd42b23949fc",
+      "ruleset_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ruleset_id": "1",
+      "schema_version": "agentdoc.cloud.migration_fence_release_evidence.v0"
+    },
+    {
+      "auth_session_id": "0ce1afd1-5309-4508-8722-b67e59ef71b2",
+      "connector_authorization_decision_id": "d9267bea-24e4-4aca-824e-e2a0e03f1a61",
+      "controller_binding_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "controller_observed_at": "2026-09-13T15:10:55.766Z",
+      "evidence_digest": "sha256:39cc6db257869a79f45b1a1022ca6c4c75112e1d9d0328843711e0a645855798",
+      "evidence_id": "3a89ded6-e856-490a-b7b8-393c99a5c21c",
+      "fence_receipt_digest": "sha256:5f36f0d26eaffa740f701ba8d564e2f89469cf9ae5a0a1ae3be8db6fce7c1859",
+      "migration_id": "41979501-2df4-49d5-a351-951bd8ab5171",
+      "observed_at": "2026-09-13T15:10:55.766Z",
+      "outcome": "released",
+      "principal_id": "929390c5-c34f-4128-936b-ddb5442b5140",
+      "recorded_at": "2026-09-13T15:10:55.798113+00:00",
+      "release_claim_receipt_digest": "sha256:b026eba7cfb6b6caf1b4e129a8393615d0ed9beae9b15b78c678adfa616798cb",
+      "rollback_receipt_digest": "sha256:cd27b5e9c9c853cca351816f86cd84e9084cbf29968a55e591aecd42b23949fc",
+      "ruleset_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ruleset_id": "1",
+      "schema_version": "agentdoc.cloud.migration_fence_release_receipt.v0",
+      "workspace_id": "c29cd049-cd70-4afe-9c76-9640eb98b0a3"
+    },
+    {
+      "claim": {
+        "receipt_digest": "sha256:b026eba7cfb6b6caf1b4e129a8393615d0ed9beae9b15b78c678adfa616798cb",
+        "schema_version": "agentdoc.cloud.migration_cutover_result.v0",
+        "receipt_bytes_base64": "eyJhdXRoX3Nlc3Npb25faWQiOiIwY2UxYWZkMS01MzA5LTQ1MDgtODcyMi1iNjdlNTllZjcxYjIiLCJjb25maWd1cmF0aW9uX3JlY2VpcHRfZGlnZXN0Ijoic2hhMjU2OmIxODMyZWE4Mzk0NGE0MjYxZDZkOTI1ZjZkNDAxOWQ0MmUwOTNlMmIwNjY2YzQ5ZGY1NDNkNzc1YjhiNjRlYTIiLCJjb25uZWN0b3JfYXV0aG9yaXphdGlvbl9kZWNpc2lvbl9pZCI6ImQ5MjY3YmVhLTI0ZTQtNGFjYS04MjRlLWUyYTBlMDNmMWE2MSIsImNvbnRyb2xsZXJfYmluZGluZ19kaWdlc3QiOiJzaGEyNTY6ZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZCIsImV4dGVybmFsX3JlcG9zaXRvcnlfaWQiOiI0MiIsImZlbmNlX3JlY2VpcHRfZGlnZXN0Ijoic2hhMjU2OjVmMzZmMGQyNmVhZmZhNzQwZjcwMWJhOGQ1NjRlMmY4OTQ2OWNmOWFlNWEwYTFhZTNiZThkYjZmY2U3YzE4NTkiLCJtaWdyYXRpb25faWQiOiI0MTk3OTUwMS0yZGY0LTQ5ZDUtYTM1MS05NTFiZDhhYjUxNzEiLCJwcmluY2lwYWxfaWQiOiI5MjkzOTBjNS1jMzRmLTQxMjgtOTM2Yi1kZGI1NDQyYjUxNDAiLCJwcm92aWRlciI6ImdpdGh1YiIsInJlY29yZGVkX2F0IjoiMjAyNi0wOS0xM1QxNToxMDo1NS43MTE3NDcrMDA6MDAiLCJyZWYiOiJyZWZzL2hlYWRzL21haW4iLCJyb2xsYmFja19yZWNlaXB0X2RpZ2VzdCI6InNoYTI1NjpjZDI3YjVlOWM5Yzg1M2NjYTM1MTgxNmY4NmNkODRlOTA4NGNiZjI5OTY4YTU1ZTU5MWFlY2Q0MmIyMzk0OWZjIiwicnVsZXNldF9kaWdlc3QiOiJzaGEyNTY6YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYSIsInJ1bGVzZXRfaWQiOiIxIiwic2NoZW1hX3ZlcnNpb24iOiJhZ2VudGRvYy5jbG91ZC5taWdyYXRpb25fZmVuY2VfcmVsZWFzZV9jbGFpbS52MCIsInNvdXJjZV90YXJnZXRfZGlnZXN0Ijoic2hhMjU2OjVkMzkwNzU2NTlhYTU3Mjc2Yjk3Yjc4YzRkMWQzNGM1ZWI5MTNkMTc2OTk0NzRiZjdlY2QzOWU3OWU1OTc0OTkiLCJ0cmFuc2l0aW9uX2lkIjoiYzE0MTY1MTItMjUwMi00OWU4LWEzMWItMDdjYzNmNGYwNTcwIiwid29ya3NwYWNlX2lkIjoiYzI5Y2QwNDktY2Q3MC00YWZlLTljNzYtOTY0MGViOThiMGEzIn0K"
+      },
+      "release": {
+        "receipt_digest": "sha256:a48bc3ca84ef2adb750f30cdf47321c47d5aa286a3d56b2f44239073cedea218",
+        "schema_version": "agentdoc.cloud.migration_cutover_result.v0",
+        "receipt_bytes_base64": "eyJhdXRoX3Nlc3Npb25faWQiOiIwY2UxYWZkMS01MzA5LTQ1MDgtODcyMi1iNjdlNTllZjcxYjIiLCJjb25uZWN0b3JfYXV0aG9yaXphdGlvbl9kZWNpc2lvbl9pZCI6ImQ5MjY3YmVhLTI0ZTQtNGFjYS04MjRlLWUyYTBlMDNmMWE2MSIsImNvbnRyb2xsZXJfYmluZGluZ19kaWdlc3QiOiJzaGEyNTY6ZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZCIsImNvbnRyb2xsZXJfb2JzZXJ2ZWRfYXQiOiIyMDI2LTA5LTEzVDE1OjEwOjU1Ljc2NloiLCJldmlkZW5jZV9kaWdlc3QiOiJzaGEyNTY6MzljYzZkYjI1Nzg2OWE3OWY0NWIxYTEwMjJjYTZjNGM3NTExMmUxZDlkMDMyODg0MzcxMWUwYTY0NTg1NTc5OCIsImV2aWRlbmNlX2lkIjoiM2E4OWRlZDYtZTg1Ni00OTBhLWI3YjgtMzkzYzk5YTVjMjFjIiwiZmVuY2VfcmVjZWlwdF9kaWdlc3QiOiJzaGEyNTY6NWYzNmYwZDI2ZWFmZmE3NDBmNzAxYmE4ZDU2NGUyZjg5NDY5Y2Y5YWU1YTBhMWFlM2JlOGRiNmZjZTdjMTg1OSIsIm1pZ3JhdGlvbl9pZCI6IjQxOTc5NTAxLTJkZjQtNDlkNS1hMzUxLTk1MWJkOGFiNTE3MSIsIm9ic2VydmVkX2F0IjoiMjAyNi0wOS0xM1QxNToxMDo1NS43NjZaIiwib3V0Y29tZSI6InJlbGVhc2VkIiwicHJpbmNpcGFsX2lkIjoiOTI5MzkwYzUtYzM0Zi00MTI4LTkzNmItZGRiNTQ0MmI1MTQwIiwicmVjb3JkZWRfYXQiOiIyMDI2LTA5LTEzVDE1OjEwOjU1Ljc5ODExMyswMDowMCIsInJlbGVhc2VfY2xhaW1fcmVjZWlwdF9kaWdlc3QiOiJzaGEyNTY6YjAyNmViYTdjZmI2YjZjYWYxYjRlMTI5YTgzOTM2MTVkMGVkOWJlYWU5YjE1Yjc4YzY3OGFkZmE2MTY3OThjYiIsInJvbGxiYWNrX3JlY2VpcHRfZGlnZXN0Ijoic2hhMjU2OmNkMjdiNWU5YzljODUzY2NhMzUxODE2Zjg2Y2Q4NGU5MDg0Y2JmMjk5NjhhNTVlNTkxYWVjZDQyYjIzOTQ5ZmMiLCJydWxlc2V0X2RpZ2VzdCI6InNoYTI1NjphYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwicnVsZXNldF9pZCI6IjEiLCJzY2hlbWFfdmVyc2lvbiI6ImFnZW50ZG9jLmNsb3VkLm1pZ3JhdGlvbl9mZW5jZV9yZWxlYXNlX3JlY2VpcHQudjAiLCJ3b3Jrc3BhY2VfaWQiOiJjMjljZDA0OS1jZDcwLTRhZmUtOWM3Ni05NjQwZWI5OGIwYTMifQo="
+      },
+      "migration_id": "41979501-2df4-49d5-a351-951bd8ab5171",
+      "principal_id": "929390c5-c34f-4128-936b-ddb5442b5140",
+      "workspace_id": "c29cd049-cd70-4afe-9c76-9640eb98b0a3",
+      "schema_version": "agentdoc.cloud.migration_fence_release_context.v0",
+      "auth_session_id": "0ce1afd1-5309-4508-8722-b67e59ef71b2"
+    }
+  ]
+}

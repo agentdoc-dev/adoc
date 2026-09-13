@@ -893,6 +893,146 @@ const RESOURCES: &[AgentResource] = &[
         ),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_reconciliation_begin_request.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-reconciliation-begin-request-v0-json",
+        title: "Migration Reconciliation Begin Request JSON Schema",
+        description: "Closed reconciliation reservation command.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_reconciliation_begin_request.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_reconciliation_begin_receipt.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-reconciliation-begin-receipt-v0-json",
+        title: "Migration Reconciliation Begin Receipt JSON Schema",
+        description: "Closed immutable reconciliation reservation receipt.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_reconciliation_begin_receipt.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_reconciliation_context.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-reconciliation-context-v0-json",
+        title: "Migration Reconciliation Context JSON Schema",
+        description: "Closed transient authenticated reconciliation inspection context.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_reconciliation_context.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_reconciliation_import_receipt.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-reconciliation-import-receipt-v0-json",
+        title: "Migration Reconciliation Import Receipt JSON Schema",
+        description: "Closed immutable reconciliation import receipt.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_reconciliation_import_receipt.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_reconciliation_accept_request.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-reconciliation-accept-request-v0-json",
+        title: "Migration Reconciliation Accept Request JSON Schema",
+        description: "Closed current human reconciliation acceptance command.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_reconciliation_accept_request.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_reconciliation_attestation.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-reconciliation-attestation-v0-json",
+        title: "Migration Reconciliation Attestation JSON Schema",
+        description: "Closed immutable attributed reconciliation attestation.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_reconciliation_attestation.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_reconciliation_accept_receipt.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-reconciliation-accept-receipt-v0-json",
+        title: "Migration Reconciliation Accept Receipt JSON Schema",
+        description: "Closed immutable reconciliation acceptance receipt.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_reconciliation_accept_receipt.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_rollback_context.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-rollback-context-v0-json",
+        title: "Migration Rollback Context JSON Schema",
+        description: "Closed rollback inspection context.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_rollback_context.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_rollback_request.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-rollback-request-v0-json",
+        title: "Migration Rollback Request JSON Schema",
+        description: "Closed rollback command.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_rollback_request.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_rollback_receipt.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-rollback-receipt-v0-json",
+        title: "Migration Rollback Receipt JSON Schema",
+        description: "Closed rollback receipt.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_rollback_receipt.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_fence_release_claim.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-fence-release-claim-v0-json",
+        title: "Migration Fence Release Claim JSON Schema",
+        description: "Closed release claim.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_fence_release_claim.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_fence_release_evidence.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-fence-release-evidence-v0-json",
+        title: "Migration Fence Release Evidence JSON Schema",
+        description: "Closed release evidence.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_fence_release_evidence.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_fence_release_receipt.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-fence-release-receipt-v0-json",
+        title: "Migration Fence Release Receipt JSON Schema",
+        description: "Closed release receipt.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_fence_release_receipt.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_fence_release_context.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-fence-release-context-v0-json",
+        title: "Migration Fence Release Context JSON Schema",
+        description: "Closed release read context.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_fence_release_context.v0.schema.json"
+        ),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_source_target_request.v0.schema.json",
         name: "schema-agentdoc-cloud-migration-source-target-request-v0-json",
         title: "Migration Source Target Request JSON Schema",
