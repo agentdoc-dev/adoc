@@ -192,6 +192,17 @@ The 13 `agentdoc.cloud.*` rows below whose owning slice is E5 also inventory imp
 | `agentdoc.cloud.migration_transition_request.v0` | cloud | E7.2.T1 | closed expected-head command and evidence union; native admission owns adjacency and authorization; schema and MCP published |
 | `agentdoc.cloud.migration_transition_receipt.v0` | cloud | E7.2.T1 | exact append-only migration lifecycle receipt with frozen scope/revision, predecessor, native actor and evidence; no cutover or rollback by label alone; schema and MCP published |
 | `agentdoc.cloud.migration_transition_result.v0` | cloud | E7.2.T1 | closed exact receipt-byte base64 and SHA256 response; no parsed authoritative duplicate; schema and MCP published |
+| `agentdoc.cloud.migration_cutover_configuration_request.v0` | cloud | E7.2.T3 | closed immutable cutover configuration command; schema and MCP published; native authorization remains required |
+| `agentdoc.cloud.migration_cutover_configuration_receipt.v0` | cloud | E7.2.T3 | closed native configuration receipt without self-referential digest; schema and MCP published |
+| `agentdoc.cloud.migration_source_fence_evidence.v0` | cloud | E7.2.T3 | closed trusted-controller GitHub fence observation; not provider-signed evidence; schema and MCP published |
+| `agentdoc.cloud.migration_source_fence_receipt.v0` | cloud | E7.2.T3 | closed immutable positive fence receipt; schema and MCP published |
+| `agentdoc.cloud.migration_cutover_admission.v0` | cloud | E7.2.T3 | closed trusted-server deployment admission assertion and inventory/qualification binding; schema and MCP published |
+| `agentdoc.cloud.migration_cutover_admission_receipt.v0` | cloud | E7.2.T3 | closed immutable native admission receipt; schema and MCP published |
+| `agentdoc.cloud.migration_cutover_receipt.v0` | cloud | E7.2.T3 | closed final cutover receipt preserving separate effective and exact-scope predecessor policy links; schema and MCP published |
+| `agentdoc.cloud.migration_cutover_result.v0` | cloud | E7.2.T3 | closed exact receipt-byte base64 and SHA256 transport; concrete receipt schemas discriminate bytes; schema and MCP published |
+| `agentdoc.cloud.migration_cutover_transition_request.v0` | cloud | E7.2.T3 | closed T3 readiness/final-cutover command; existing T2 transition schemas unchanged; schema and MCP published |
+| `agentdoc.cloud.migration_cutover_transition_receipt.v0` | cloud | E7.2.T3 | closed T3 lifecycle receipt with restricted cutover edges; schema and MCP published |
+| `agentdoc.cloud.migration_cutover_context.v0` | cloud | E7.2.T3 | closed transient authenticated current-state context; no future authorization claim; schema and MCP published |
 | `agentdoc.cloud.migration_source_target_request.v0` | cloud | E7.2.T2 | explicit authorized source-scope to native repository/ref declaration; schema and MCP published |
 | `agentdoc.cloud.migration_source_target_receipt.v0` | cloud | E7.2.T2 | immutable native mapping, source scope and configuration authority; no private endpoint or credentials; schema and MCP published |
 | `agentdoc.cloud.migration_source_checkpoint_request.v0` | cloud | E7.2.T2 | closed worker observation bound to exact intended operation and lifecycle predecessor; schema and MCP published |
@@ -640,6 +651,9 @@ The pre-release implementation annotations mark only the ten code rows added by 
 | `migration.illegal_transition` | planned (E7.2.T1) | syntactically valid but unavailable/illegal migration state edge or unmet native evidence precondition; no state or authority advance |
 | `migration.source_checkpoint_required` | planned (E7.2.T2) | enrolled migration lacks an exact matching source checkpoint for this intended operation and lifecycle predecessor; no progress or initialization |
 | `migration.source_checkpoint_stopped` | planned (E7.2.T2) | retained drift or unavailable source observation permanently stops new successful work for this enrolled job; later match does not clear it |
+| `migration.source_fence_required` | planned (E7.2.T3) | cutover lacks the exact retained source fence or its current provider continuity proof; no authority advance |
+| `migration.cutover_conflict` | planned (E7.2.T3) | expected policy, managed frontier or cutover ownership differs; no partial authority switch |
+| `migration.cutover_required` | planned (E7.2.T3) | overlapping managed authority change requires the native migration cutover transaction and receipt |
 <!-- /registry:cloud-codes -->
 
 ## Attestation codes — planned, owner `cloud`
@@ -773,7 +787,7 @@ The closed K8 `required_at` stage vocabulary. Whether an obligation is informati
 
 ## Migration lifecycle states — owner `cloud`
 
-E7.2.T1 publishes the RT-13 state vocabulary. Version1 implemented edges stop at catching_up or explicit failed; later readiness, atomic cutover and rollback require their real operations. These states are separate from Knowledge Object governance dimensions.
+E7.2.T1 publishes the RT-13 state vocabulary. E7.2.T3 implements readiness and atomic cutover; rollback remains a future operation. These states are separate from Knowledge Object governance dimensions.
 
 <!-- registry:migration-lifecycle-states -->
 | state |

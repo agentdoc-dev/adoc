@@ -2639,3 +2639,37 @@ fn migration_source_contracts_and_native_stop_codes_are_registered() {
         );
     }
 }
+
+#[test]
+fn migration_cutover_native_facts_and_codes_are_registered() {
+    let doc = registry();
+    let facts: serde_json::Value = serde_json::from_str(&read_repo_doc(
+        "docs/agent/v0/schema/agentdoc.cloud.export_native_fact.v0.schema.json",
+    ))
+    .unwrap();
+    for kind in [
+        "migration_cutover_admission",
+        "migration_cutover_configuration",
+        "migration_source_fence",
+        "migration_cutover_receipt",
+        "migration_cutover_transition",
+    ] {
+        assert_eq!(
+            facts["oneOf"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|arm| arm["properties"]["kind"]["const"] == kind)
+                .count(),
+            1,
+            "{kind} native-fact arm"
+        );
+    }
+    for code in [
+        "migration.source_fence_required",
+        "migration.cutover_conflict",
+        "migration.cutover_required",
+    ] {
+        assert!(anchored_ids(&doc, "registry:cloud-codes").contains(code));
+    }
+}

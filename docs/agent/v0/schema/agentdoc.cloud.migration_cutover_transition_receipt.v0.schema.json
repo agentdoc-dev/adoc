@@ -1,0 +1,210 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_transition_receipt.v0.schema.json",
+  "title": "agentdoc.cloud.migration_cutover_transition_receipt.v0",
+  "description": "Closed immutable T3 lifecycle receipt. Native admission owns adjacency, authorization and source fence/checkpoint requirements.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "workspace_id",
+    "migration_id",
+    "transition_id",
+    "ordinal",
+    "previous_receipt_digest",
+    "command_digest",
+    "request_digest",
+    "job_digest",
+    "preparation_receipt_digest",
+    "scope",
+    "initial_revision",
+    "from_state",
+    "to_state",
+    "transition_policy_version",
+    "evidence",
+    "principal_id",
+    "auth_session_id",
+    "migration_authorization_decision_id",
+    "connector_authorization_decision_id",
+    "recorded_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "agentdoc.cloud.migration_cutover_transition_receipt.v0"
+    },
+    "workspace_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "migration_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "transition_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "ordinal": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*$"
+    },
+    "previous_receipt_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "command_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "request_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "job_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "preparation_receipt_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "scope": {
+      "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_transition_receipt.v0.schema.json#/properties/scope"
+    },
+    "initial_revision": {
+      "$ref": "adoc://agent/v0/schema/adoc.migration_request.v0.schema.json#/properties/revision/properties/value"
+    },
+    "from_state": {
+      "enum": [
+        "catching_up",
+        "ready_to_cutover"
+      ]
+    },
+    "to_state": {
+      "enum": [
+        "ready_to_cutover",
+        "cutover_committed"
+      ]
+    },
+    "transition_policy_version": {
+      "const": "1"
+    },
+    "evidence": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "fence_receipt_digest",
+            "expected_authority_policy_receipt_digest",
+            "expected_managed_frontier_digest"
+          ],
+          "properties": {
+            "kind": {
+              "const": "cutover_readiness"
+            },
+            "fence_receipt_digest": {
+              "$ref": "#/$defs/digest"
+            },
+            "expected_authority_policy_receipt_digest": {
+              "$ref": "#/$defs/digest"
+            },
+            "expected_managed_frontier_digest": {
+              "$ref": "#/$defs/digest"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "fence_receipt_digest",
+            "expected_authority_policy_receipt_digest",
+            "expected_managed_frontier_digest",
+            "cutover_receipt_digest"
+          ],
+          "properties": {
+            "kind": {
+              "const": "cutover_commit"
+            },
+            "fence_receipt_digest": {
+              "$ref": "#/$defs/digest"
+            },
+            "expected_authority_policy_receipt_digest": {
+              "$ref": "#/$defs/digest"
+            },
+            "expected_managed_frontier_digest": {
+              "$ref": "#/$defs/digest"
+            },
+            "cutover_receipt_digest": {
+              "$ref": "#/$defs/digest"
+            }
+          }
+        }
+      ]
+    },
+    "principal_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "auth_session_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "migration_authorization_decision_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "connector_authorization_decision_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "recorded_at": {
+      "$ref": "#/$defs/time"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "to_state": {
+            "const": "ready_to_cutover"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "from_state": {
+            "const": "catching_up"
+          },
+          "evidence": {
+            "properties": {
+              "kind": {
+                "const": "cutover_readiness"
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "from_state": {
+            "const": "ready_to_cutover"
+          },
+          "evidence": {
+            "properties": {
+              "kind": {
+                "const": "cutover_commit"
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$"
+    }
+  }
+}
