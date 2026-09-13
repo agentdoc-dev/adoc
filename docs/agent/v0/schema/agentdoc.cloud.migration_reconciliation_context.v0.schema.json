@@ -1,0 +1,279 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/agentdoc.cloud.migration_reconciliation_context.v0.schema.json",
+  "title": "agentdoc.cloud.migration_reconciliation_context.v0",
+  "description": "Closed transient authenticated reconciliation inspection context. It reports current native bindings and grants no future authorization.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "workspace_id",
+    "parent_migration_id",
+    "principal_id",
+    "auth_session_id",
+    "expected_parent",
+    "managed_frontier",
+    "managed_frontier_digest",
+    "cutover_receipt_digest"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "agentdoc.cloud.migration_reconciliation_context.v0"
+    },
+    "workspace_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "parent_migration_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "principal_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "auth_session_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "expected_parent": {
+      "$ref": "#/$defs/expected"
+    },
+    "managed_frontier": {
+      "type": "array",
+      "maxItems": 512,
+      "items": {
+        "$ref": "#/$defs/frontier"
+      }
+    },
+    "managed_frontier_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "cutover_receipt_digest": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/digest"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "decimal": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*$"
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ordinal",
+        "receipt_digest"
+      ],
+      "properties": {
+        "ordinal": {
+          "$ref": "#/$defs/decimal"
+        },
+        "receipt_digest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "frontier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "object_id",
+        "canonical_id",
+        "baseline_version_id",
+        "content_digest",
+        "active_version_id",
+        "active_promotion_seq",
+        "latest_promotion_seq",
+        "latest_state_event_seq",
+        "latest_state_event_digest",
+        "latest_effectivity_policy_seq"
+      ],
+      "properties": {
+        "object_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "pattern": "^\\S(?:[^\\u0000-\\u001f\\u007f-\\u009f]*\\S)?$"
+        },
+        "canonical_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "baseline_version_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "content_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "active_version_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "active_promotion_seq": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "latest_promotion_seq": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "latest_state_event_seq": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "latest_state_event_digest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "latest_effectivity_policy_seq": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "active_version_id": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "active_version_id"
+            ]
+          },
+          "then": {
+            "properties": {
+              "active_promotion_seq": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "active_promotion_seq": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "active_promotion_seq"
+            ]
+          },
+          "then": {
+            "properties": {
+              "active_version_id": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "active_promotion_seq": {
+                "$ref": "#/$defs/decimal"
+              }
+            },
+            "required": [
+              "active_promotion_seq"
+            ]
+          },
+          "then": {
+            "properties": {
+              "latest_promotion_seq": {
+                "$ref": "#/$defs/decimal"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "latest_state_event_seq": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "latest_state_event_seq"
+            ]
+          },
+          "then": {
+            "properties": {
+              "latest_state_event_digest": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "latest_state_event_digest": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "latest_state_event_digest"
+            ]
+          },
+          "then": {
+            "properties": {
+              "latest_state_event_seq": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

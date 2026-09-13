@@ -1,0 +1,123 @@
+{
+  "source": "actual native acceptance records from passing pinned-runtime integration",
+  "records": [
+    {
+      "meaning": "accept_exact_revision_and_qualifying_history_as_reconciliation_evidence",
+      "rationale": "Accept this reconciled source history.",
+      "command_id": "bf693baa-49d8-45ce-909a-c1e7f85a8296",
+      "expected_child": {
+        "ordinal": "5",
+        "receipt_digest": "sha256:69b251ce5e6010ec3560a32beab524ee846d1da62714bf0d6e5c722c40659dbd"
+      },
+      "schema_version": "agentdoc.cloud.migration_reconciliation_accept_request.v0",
+      "qualification_id": "8045d3d0-2503-4da1-920d-567155ef1a73",
+      "reconciliation_id": "ca01a0c4-280e-45a2-b9ef-14916f0368a4",
+      "begin_receipt_digest": "sha256:90bdaabde6a0d37363b3ddf9f460437c45d8940d4d2b60d5d92d96d15e69f78e",
+      "delta_receipt_digest": "sha256:1ab7e97b1622a301f791dfb81ff11209cc11f016ad24185b94ed1309af5ba46f",
+      "qualification_receipt_digest": "sha256:43143aba69a7c554d0439ea2d59c3622a6bb43fcf6d881008affc8bfd406847a",
+      "qualification_envelope_digest": "sha256:e5d410e7bad22d065572f2b903e096c775f73b00d84e47908c63cdf84d30e8a0",
+      "expected_managed_frontier_digest": "sha256:939eadb0c4e82e9afc584c914850e9f1232ed31a29b2f2add91aee46e14199d5"
+    },
+    {
+      "meaning": "accept_exact_revision_and_qualifying_history_as_reconciliation_evidence",
+      "rationale": "Accept this reconciled source history.",
+      "command_id": "bf693baa-49d8-45ce-909a-c1e7f85a8296",
+      "attested_at": "2026-09-13T14:38:41.911413Z",
+      "principal_id": "0cb80f42-f431-4008-aaab-074073a17d66",
+      "workspace_id": "2abc806a-31fe-462c-b3f6-d499b4b8fd98",
+      "command_digest": "sha256:ad7572541e5c5e4f539a82ebb3e87f6d713f757487c6317b2a0378b467ef3b3f",
+      "schema_version": "agentdoc.cloud.migration_reconciliation_attestation.v0",
+      "auth_session_id": "6c47b425-4c42-49a8-b08e-c4d5f9d21e51",
+      "qualification_id": "8045d3d0-2503-4da1-920d-567155ef1a73",
+      "reconciliation_id": "ca01a0c4-280e-45a2-b9ef-14916f0368a4",
+      "child_migration_id": "4e0f1fd0-b8de-4172-b91c-ee0532d2799c",
+      "identity_session_id": "cf19acf4-57cd-4274-8e4f-a88ef4f32fc2",
+      "parent_migration_id": "d3f7a8b0-881b-431a-8f27-dcfb95388203",
+      "begin_receipt_digest": "sha256:90bdaabde6a0d37363b3ddf9f460437c45d8940d4d2b60d5d92d96d15e69f78e",
+      "delta_receipt_digest": "sha256:1ab7e97b1622a301f791dfb81ff11209cc11f016ad24185b94ed1309af5ba46f",
+      "external_identity_link_id": "53456bde-093e-4d25-99bd-73fbb2ee4fa8",
+      "authorization_policy_version": "authz-policy-v1",
+      "qualification_receipt_digest": "sha256:43143aba69a7c554d0439ea2d59c3622a6bb43fcf6d881008affc8bfd406847a",
+      "authorization_decision_digest": "sha256:e99032a49a8a0526d941fa9b8c0587c3a4675127695ec2ff2438734c7e7530d2",
+      "qualification_envelope_digest": "sha256:e5d410e7bad22d065572f2b903e096c775f73b00d84e47908c63cdf84d30e8a0",
+      "expected_managed_frontier_digest": "sha256:939eadb0c4e82e9afc584c914850e9f1232ed31a29b2f2add91aee46e14199d5",
+      "connector_authorization_decision_id": "6d729f2d-f2e0-4441-a5af-f4c201f5adf3",
+      "migration_authorization_decision_id": "d04b7cc9-ca33-4cdb-a8ef-b97c06552c98"
+    },
+    {
+      "command_id": "bf693baa-49d8-45ce-909a-c1e7f85a8296",
+      "recorded_at": "2026-09-13T14:38:41.911413+00:00",
+      "principal_id": "0cb80f42-f431-4008-aaab-074073a17d66",
+      "workspace_id": "2abc806a-31fe-462c-b3f6-d499b4b8fd98",
+      "command_digest": "sha256:ad7572541e5c5e4f539a82ebb3e87f6d713f757487c6317b2a0378b467ef3b3f",
+      "expected_child": {
+        "ordinal": "5",
+        "receipt_digest": "sha256:69b251ce5e6010ec3560a32beab524ee846d1da62714bf0d6e5c722c40659dbd"
+      },
+      "schema_version": "agentdoc.cloud.migration_reconciliation_accept_receipt.v0",
+      "auth_session_id": "6c47b425-4c42-49a8-b08e-c4d5f9d21e51",
+      "source_revision": "8b516043671a19b5cc1f04b5427d2a44c67d6569",
+      "qualification_id": "8045d3d0-2503-4da1-920d-567155ef1a73",
+      "initialization_id": "109beac4-8ed6-4814-9fe3-4a99252ff46e",
+      "reconciliation_id": "ca01a0c4-280e-45a2-b9ef-14916f0368a4",
+      "attestation_digest": "sha256:7481878eaf4dfd2d1f0a3c222bc48539e5e6a77b8c898af26a74fccee602b222",
+      "child_migration_id": "4e0f1fd0-b8de-4172-b91c-ee0532d2799c",
+      "parent_migration_id": "d3f7a8b0-881b-431a-8f27-dcfb95388203",
+      "begin_receipt_digest": "sha256:90bdaabde6a0d37363b3ddf9f460437c45d8940d4d2b60d5d92d96d15e69f78e",
+      "delta_receipt_digest": "sha256:1ab7e97b1622a301f791dfb81ff11209cc11f016ad24185b94ed1309af5ba46f",
+      "cutover_receipt_digest": null,
+      "qualification_receipt_digest": "sha256:43143aba69a7c554d0439ea2d59c3622a6bb43fcf6d881008affc8bfd406847a",
+      "prior_managed_frontier_digest": "sha256:939eadb0c4e82e9afc584c914850e9f1232ed31a29b2f2add91aee46e14199d5",
+      "qualification_envelope_digest": "sha256:e5d410e7bad22d065572f2b903e096c775f73b00d84e47908c63cdf84d30e8a0",
+      "accepted_managed_frontier_digest": "sha256:939eadb0c4e82e9afc584c914850e9f1232ed31a29b2f2add91aee46e14199d5",
+      "connector_authorization_decision_id": "6d729f2d-f2e0-4441-a5af-f4c201f5adf3",
+      "migration_authorization_decision_id": "d04b7cc9-ca33-4cdb-a8ef-b97c06552c98"
+    }
+  ],
+  "targets": [
+    {
+      "object_id": "test.one",
+      "version_id": "776d1d10-9a3a-4606-bef7-2ff0d52fa6e7",
+      "disposition": "retained",
+      "canonical_id": "3e000501-cb8f-4597-983d-3947875a6ec1",
+      "content_hash": "sha256:18221099c9914b1e1d58858263f96ebf862969e3e04e5cf33e9995a05643521a",
+      "workspace_id": "2abc806a-31fe-462c-b3f6-d499b4b8fd98",
+      "promotion_seq": 12,
+      "content_digest": "sha256:1c28acde5ac3d4dc4878f5f6f8e7bc29debd44c234867ef9cce8c29f2c9dcbf7",
+      "prior_version_id": "776d1d10-9a3a-4606-bef7-2ff0d52fa6e7",
+      "source_record_id": "79c56cf3-ce0a-4383-8bc7-4d1865054bd9",
+      "initialization_id": "109beac4-8ed6-4814-9fe3-4a99252ff46e",
+      "reconciliation_id": "ca01a0c4-280e-45a2-b9ef-14916f0368a4",
+      "source_binding_id": "a9778bd4-0ee6-4660-8a5d-1f3aa92038b5",
+      "governance_event_seq": 15,
+      "effectivity_event_seq": 16,
+      "validation_receipt_id": "cc586063-8310-4747-b4b6-8b0970a1e8d8"
+    }
+  ],
+  "accepted_frontier": [
+    {
+      "object_id": "test.one",
+      "canonical_id": "3e000501-cb8f-4597-983d-3947875a6ec1",
+      "content_digest": "sha256:1c28acde5ac3d4dc4878f5f6f8e7bc29debd44c234867ef9cce8c29f2c9dcbf7",
+      "active_version_id": "776d1d10-9a3a-4606-bef7-2ff0d52fa6e7",
+      "baseline_version_id": "776d1d10-9a3a-4606-bef7-2ff0d52fa6e7",
+      "active_promotion_seq": "12",
+      "latest_promotion_seq": "12",
+      "latest_state_event_seq": "16",
+      "latest_state_event_digest": "sha256:26062a008ffdfc69014c2487ac31a057fdede7183819c02bdd760f0b34e9d607",
+      "latest_effectivity_policy_seq": null
+    },
+    {
+      "object_id": "test.two",
+      "canonical_id": "d1438920-c935-4382-928a-c927e12aa774",
+      "content_digest": "sha256:886048cb54c886f2077de1bd0d7e96c5b0b9f82808da989459b96bf8bd739022",
+      "active_version_id": null,
+      "baseline_version_id": "f8ace773-f955-4bdb-a5c5-3af07d4deb3a",
+      "active_promotion_seq": null,
+      "latest_promotion_seq": null,
+      "latest_state_event_seq": null,
+      "latest_state_event_digest": null,
+      "latest_effectivity_policy_seq": null
+    }
+  ]
+}

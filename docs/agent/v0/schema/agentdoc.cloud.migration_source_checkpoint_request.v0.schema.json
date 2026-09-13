@@ -48,7 +48,9 @@
         "kind": {
           "enum": [
             "advance",
-            "initialize"
+            "initialize",
+            "accept",
+            "rollback"
           ]
         },
         "id": {
