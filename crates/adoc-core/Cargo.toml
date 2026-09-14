@@ -16,10 +16,10 @@ fastembed-it = ["embeddings"]
 test-embedding-provider = []
 
 [dependencies]
-base64 = "0.22"
+base64 = "0.23"
 tracing = "0.1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
-dirs = { version = "6", optional = true }
+dirs = { version = "7", optional = true }
 fastembed = { version = "6", optional = true }
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 serde = { version = "1", features = ["derive"] }
