@@ -4,9 +4,16 @@ on:
   push:
     branches:
       - main
+  # `branches:` filters the BASE. `feat/**` is not decoration: the E-slice
+  # stacks target each other, not main, so a `- main` filter alone creates no
+  # run at all on a stacked PR — and `ci` is a required context, so the merge
+  # box waits on a report that can never arrive. A workflow_dispatch run is not
+  # a substitute: its check runs land on the head SHA but GitHub keeps them out
+  # of the PR's check rollup, which is what the required-check gate reads.
   pull_request:
     branches:
       - main
+      - 'feat/**'
   workflow_dispatch:
     inputs:
       fastembed:
