@@ -715,7 +715,7 @@ fn e5_3_gate_result_and_closed_reason_set_are_shipped() {
 }
 
 #[test]
-fn e5_cloud_prerelease_contracts_are_registered_exactly() {
+fn cloud_prerelease_contracts_are_registered_exactly() {
     let doc = registry();
     let planned = anchored_ids(&doc, "registry:envelopes-planned");
     let planned_block =
@@ -794,17 +794,38 @@ fn e5_cloud_prerelease_contracts_are_registered_exactly() {
         );
     }
     let cloud_block = support::doc_scan::anchored_block(&doc, REGISTRY, "registry:cloud-codes");
-    let actual_codes: BTreeSet<_> = cloud_codes
+    let status_row = |code: &str| {
+        cloud_block
+            .lines()
+            .find(|line| line.trim_start().starts_with(&format!("| `{code}` |")))
+            .filter(|row| row.contains("implemented in Cloud v0.1.0 pre-release"))
+    };
+    let annotated_codes: BTreeSet<_> = cloud_codes
         .iter()
         .map(String::as_str)
-        .filter(|code| {
-            cloud_block
-                .lines()
-                .find(|line| line.trim_start().starts_with(&format!("| `{code}` |")))
-                .is_some_and(|row| row.contains("implemented in Cloud v0.1.0 pre-release"))
-        })
+        .filter(|code| status_row(code).is_some())
         .collect();
-    assert_eq!(actual_codes, expected_codes);
+    let actual_codes: BTreeSet<_> = annotated_codes
+        .iter()
+        .copied()
+        .filter(|code| status_row(code).is_some_and(|row| row.contains("| planned (E5")))
+        .collect();
+    assert_eq!(
+        actual_codes, expected_codes,
+        "E5 Cloud pre-release codes must retain their E5 slice status"
+    );
+    let mut expected_annotated = expected_codes;
+    expected_annotated.insert("connect.installation_removed");
+    assert_eq!(
+        annotated_codes, expected_annotated,
+        "Cloud pre-release annotations must match the documented E5 and E7.3 inventory"
+    );
+    assert!(
+        cloud_block.lines().any(|row| row.trim_start().starts_with(
+            "| `connect.installation_removed` | planned (E7.3, implemented in Cloud v0.1.0 pre-release) |"
+        )),
+        "E7.3 connect.installation_removed must retain its Cloud pre-release status"
+    );
 }
 
 #[test]
@@ -852,6 +873,7 @@ fn planned_delivery_and_connect_codes_stay_with_their_owner() {
     for (slice, code) in [
         ("E8.2", "delivery.reference_missing"),
         ("E8.2", "delivery.reference_stale"),
+        ("E7.3", "connect.installation_removed"),
         ("E7.3", "connect.unknown_config_field"),
         ("E7.3", "connect.credential_store_violation"),
     ] {
