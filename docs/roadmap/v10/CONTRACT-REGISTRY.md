@@ -587,7 +587,7 @@ The closed E2.4 state vocabulary retained when an authorization decision cannot 
 
 Operation labels and typed failure codes owned by the private Cloud service. New Cloud wire codes register here before they ship: `workspace.bootstrap` names the identity-bootstrap operation, the E2.1 `workspace.*` failures cover repository registration and tenant isolation, `governance.decision_binding_missing` belongs to the E1.3 reconciliation-decision route, and Cloud-owned operational `gate.*` codes belong here rather than in the closed gate-result reason set.
 
-The pre-release implementation annotations mark only the ten code rows added by the E5 inventory correction, verified against Cloud commit `53f4c3e`; their absence on another planned row does not mean that contract is unimplemented.
+The pre-release implementation annotations identify the ten E5 inventory-correction rows verified against Cloud commit `53f4c3e` and `connect.installation_removed`, emitted by the [Cloud onboarding read model at `7a01988`](https://github.com/agentdoc-dev/cloud/blob/7a01988791a634f45322af9f77e0d9c24dd3d56b/src/lib/read-models/onboarding.ts) (Cloud UI slice U3.2.T4). E7.3 registers that existing emission when widening Cloud's `scripts/contract-scan.sh` to the `connect.*` family. An absent annotation does not imply an unimplemented contract.
 
 <!-- registry:cloud-codes -->
 | code | status | meaning |
@@ -642,6 +642,7 @@ The pre-release implementation annotations mark only the ten code rows added by 
 | `ingest.stale_run` | planned (E4.6) | an older observed head is retained in history but cannot replace the repository's newer lineage head |
 | `ingest.digest_mismatch` | planned (E4.6) | a claimed assessment or receipt digest does not match the submitted envelope bytes; the attempt is recorded and the delivery rejected |
 | `connect.permission_exceeds_manifest` | planned (E4.6) | a connector grant exceeds its authenticated capability manifest; the connection becomes unhealthy and ingestion pauses until re-consent |
+| `connect.installation_removed` | planned (E7.3, implemented in Cloud v0.1.0 pre-release) | a previously completed source step has no installation visible through the member-filtered installation view; regress the onboarding source state without granting authority or replacing a retained unhealthy permission audit |
 | `connect.unknown_config_field` | planned (E7.3) | strict settings parsing rejects an unknown field instead of silently accepting it |
 | `connect.credential_store_violation` | planned (E7.3) | a service identity attempts to read both semantic-provider and source/write credential stores |
 | `connector.manifest_invalid` | planned (E4.5) | connector capability manifest fails exact-version decoding or its adapter, connector, or authenticated-publisher binding is invalid |
