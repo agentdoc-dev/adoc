@@ -801,7 +801,10 @@ fn e5_cloud_prerelease_contracts_are_registered_exactly() {
             cloud_block
                 .lines()
                 .find(|line| line.trim_start().starts_with(&format!("| `{code}` |")))
-                .is_some_and(|row| row.contains("implemented in Cloud v0.1.0 pre-release"))
+                .is_some_and(|row| {
+                    row.contains("| planned (E5")
+                        && row.contains("implemented in Cloud v0.1.0 pre-release")
+                })
         })
         .collect();
     assert_eq!(actual_codes, expected_codes);
@@ -837,6 +840,7 @@ fn e4_6_ingestion_codes_are_registered_exactly() {
 #[test]
 fn planned_delivery_and_connect_codes_stay_with_their_owner() {
     let registry = registry();
+    assert!(registry.contains("| `connect.installation_removed` | planned (E7.3, implemented in Cloud v0.1.0 pre-release) |"));
     let action = anchored_ids(&registry, "registry:action-codes");
     let cloud = anchored_ids(&registry, "registry:cloud-codes");
 
@@ -852,6 +856,7 @@ fn planned_delivery_and_connect_codes_stay_with_their_owner() {
     for (slice, code) in [
         ("E8.2", "delivery.reference_missing"),
         ("E8.2", "delivery.reference_stale"),
+        ("E7.3", "connect.installation_removed"),
         ("E7.3", "connect.unknown_config_field"),
         ("E7.3", "connect.credential_store_violation"),
     ] {
