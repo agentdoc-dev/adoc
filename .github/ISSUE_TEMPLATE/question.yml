@@ -1,0 +1,21 @@
+name: Question or help
+description: Ask a public, non-sensitive AgentDoc usage question.
+title: "question: "
+labels: [question]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include vulnerabilities, credentials, or other sensitive information. SECURITY.md explains private vulnerability reporting.
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: Explain what you are trying to do and where you are blocked.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Relevant context
+      description: Include AgentDoc version or commit, commands, and non-sensitive configuration where useful.
