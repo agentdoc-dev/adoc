@@ -1,6 +1,7 @@
 # Extended launch qualification
 
-Status: planned 2026-09-18; none of these slices is marked passed.
+Status: all nine slices planned; implementation explicitly authorized 2026-09-18.
+HN-M4.T1 installation is running; no new slice is marked passed yet.
 Baseline: `ce836c1c1ba94a579d3b022f9cb3337ae06ece0a`, branch
 `feat/hn-launch-readiness`. The preceding five implementation slices are complete.
 Authority: [HN-9 through HN-17](../product/HN-LAUNCH-READINESS.md#extended-qualification-requested-2026-09-18).
@@ -223,3 +224,15 @@ Primary command/workflow references (checked 2026-09-18):
 [Cargo install](https://doc.rust-lang.org/cargo/commands/cargo-install.html),
 [Cargo profiles](https://doc.rust-lang.org/cargo/reference/profiles.html),
 [GitHub workflow events](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows).
+
+## Executable plans
+
+- [HN-M4.T1](../plans/HN-M4.T1.md)
+- [HN-M4.T2](../plans/HN-M4.T2.md)
+- [HN-M4.T3](../plans/HN-M4.T3.md)
+- [HN-M4.T4](../plans/HN-M4.T4.md)
+- [HN-M5.T1](../plans/HN-M5.T1.md)
+- [HN-M5.T2](../plans/HN-M5.T2.md)
+- [HN-M5.T3](../plans/HN-M5.T3.md)
+- [HN-M6.T1](../plans/HN-M6.T1.md)
+- [HN-M6.T2](../plans/HN-M6.T2.md)
