@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/release.yml
       - scripts/smoke-test.py
+      - scripts/qualification/build-intel-runtime.sh
       - examples/quickstart/**
   push:
     tags:
@@ -24,23 +25,29 @@ jobs:
   build:
     name: Build (${{ matrix.target }})
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    timeout-minutes: ${{ matrix.timeout_minutes }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - runner: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+            timeout_minutes: 60
           - runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
+            timeout_minutes: 60
           - runner: macos-15
             target: aarch64-apple-darwin
+            timeout_minutes: 60
           - runner: macos-15-intel
             target: x86_64-apple-darwin
+            timeout_minutes: 120
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - uses: ./.github/actions/rust-setup
         with:
@@ -57,7 +64,28 @@ jobs:
           # toolchain install.
           save: false
 
+      - name: Verify native host and candidate
+        env:
+          EXPECTED_TARGET: ${{ matrix.target }}
+        run: |
+          test "$(rustc -vV | sed -n 's/^host: //p')" = "$EXPECTED_TARGET"
+          uname -sm
+          git rev-parse HEAD
+
+      - name: Build Intel ONNX Runtime from pinned source
+        if: matrix.target == 'x86_64-apple-darwin'
+        run: scripts/qualification/build-intel-runtime.sh target/release
+
+      - name: Build CLI and MCP gateway with Intel ONNX Runtime
+        if: matrix.target == 'x86_64-apple-darwin'
+        env:
+          ORT_LIB_LOCATION: ${{ github.workspace }}/target/release/lib
+          ORT_PREFER_DYNAMIC_LINK: "1"
+          RUSTFLAGS: "-C link-arg=-Wl,-rpath,@executable_path/lib"
+        run: cargo build --release --locked -p adoc-cli -p adoc-mcp
+
       - name: Build CLI and MCP gateway
+        if: matrix.target != 'x86_64-apple-darwin'
         run: cargo build --release --locked -p adoc-cli -p adoc-mcp
 
       - name: Identify the candidate version
@@ -76,10 +104,44 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           ARCHIVE="adoc-${VERSION}-${{ matrix.target }}.tar.gz"
-          tar -czf "$ARCHIVE" -C target/release adoc adoc-mcp -C "$GITHUB_WORKSPACE" LICENSE
+          if [ "${{ matrix.target }}" = x86_64-apple-darwin ]; then
+            for binary in target/release/adoc target/release/adoc-mcp; do
+              if ! otool -l "$binary" | grep -A2 LC_RPATH | grep -Fq 'path @executable_path/lib (offset'; then
+                install_name_tool -add_rpath '@executable_path/lib' "$binary"
+              fi
+              otool -L "$binary"
+              otool -l "$binary" | grep -A2 LC_RPATH | grep -Fq 'path @executable_path/lib (offset'
+            done
+            find -L target/release/lib -maxdepth 1 -name 'libonnxruntime*.dylib' -type f -print
+            test -f target/release/lib/LICENSE
+            test -f target/release/lib/ThirdPartyNotices.txt
+            (cd target/release && shasum -a 256 lib/libonnxruntime*.dylib) > "$ARCHIVE.runtime.sha256"
+            tar -czf "$ARCHIVE" -C target/release adoc adoc-mcp lib -C "$GITHUB_WORKSPACE" LICENSE
+          else
+            tar -czf "$ARCHIVE" -C target/release adoc adoc-mcp -C "$GITHUB_WORKSPACE" LICENSE
+          fi
+          case "${{ matrix.target }}" in
+            x86_64-apple-darwin) EXPECTED_ARCH='Mach-O 64-bit executable x86_64' ;;
+            aarch64-apple-darwin) EXPECTED_ARCH='Mach-O 64-bit executable arm64' ;;
+            x86_64-unknown-linux-gnu) EXPECTED_ARCH='ELF 64-bit LSB.*x86-64' ;;
+            aarch64-unknown-linux-gnu) EXPECTED_ARCH='ELF 64-bit LSB.*ARM aarch64' ;;
+            *) exit 1 ;;
+          esac
+          for binary in target/release/adoc target/release/adoc-mcp; do
+            file "$binary"
+            file "$binary" | grep -Eq "$EXPECTED_ARCH"
+          done
           shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256"
+          shasum -a 256 -c "$ARCHIVE.sha256"
           mkdir unpacked
           tar -xzf "$ARCHIVE" -C unpacked
+          if [ "${{ matrix.target }}" = x86_64-apple-darwin ]; then
+            find -L unpacked/lib -maxdepth 1 -name 'libonnxruntime*.dylib' -type f -print
+            for binary in unpacked/adoc unpacked/adoc-mcp; do
+              otool -L "$binary" | grep -Eq '@rpath/libonnxruntime.*\.dylib'
+              otool -l "$binary" | grep -A2 LC_RPATH | grep -Fq 'path @executable_path/lib (offset'
+            done
+          fi
 
       - name: Verify the packaged first-use journey
         run: python3 scripts/smoke-test.py --bin-dir unpacked --embeddings
@@ -91,6 +153,7 @@ jobs:
           path: |
             adoc-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz
             adoc-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz.sha256
+            adoc-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz.runtime.sha256
           if-no-files-found: error
           retention-days: 1
 
