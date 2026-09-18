@@ -16,9 +16,10 @@ concurrency:
 jobs:
   claude-review:
     name: claude-review (claude-opus-5)
-    # Bot pull requests run without access to Actions secrets, so the review can
-    # only fail there. Skip them instead of reporting a red check.
-    if: ${{ !endsWith(github.event.pull_request.user.login, '[bot]') }}
+    # This optional review uses repository secrets. Run it only for human PRs
+    # from this repository: bots and forks deliberately skip it. Ordinary CI
+    # continues to run for all pull requests.
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository && !endsWith(github.event.pull_request.user.login, '[bot]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
