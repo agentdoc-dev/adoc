@@ -50,6 +50,26 @@ target/release/adoc-mcp
 
 The server speaks MCP over stdio. It does not listen on a network port.
 
+## Claude Code quick setup
+
+First follow [installation](installation.md) and build the example's artifacts.
+From that AgentDoc project directory, register the absolute gateway executable:
+
+```sh
+claude mcp add --transport stdio --scope local agentdoc -- /absolute/path/to/adoc/target/release/adoc-mcp
+```
+
+Start Claude Code in the project and inspect `/mcp`. Ask it:
+
+> Use AgentDoc to explain `billing.refund-window`. Start with project status and
+> include the source path and line in your answer. Pass this project's absolute
+> path as `project_root` when calling the tools.
+
+Using an explicit `project_root` avoids relying on client-specific working-directory
+behavior. `--scope local` keeps the machine-specific binary path out of shared
+project configuration. See [Claude Code's MCP documentation](https://code.claude.com/docs/en/mcp)
+for scope, trust prompts, and registration options. Configure other clients below.
+
 ## Configure An MCP Client
 
 Use an absolute path for the command. Set the process working directory to the
