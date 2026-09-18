@@ -1,0 +1,75 @@
+name: Native qualification
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/qualification.yml
+      - .github/actions/rust-setup/action.yml
+      - Cargo.lock
+      - Cargo.toml
+      - rust-toolchain.toml
+      - crates/**
+      - examples/quickstart/**
+      - scripts/smoke-test.py
+      - scripts/test_smoke_test.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qualification-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Native Windows qualification
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Install pinned Rust toolchain
+        shell: pwsh
+        run: rustup toolchain install --no-self-update
+
+      - name: Verify native MSVC host and candidate
+        shell: pwsh
+        run: |
+          $host_line = (& rustc -vV | Where-Object { $_ -like 'host:*' })
+          if ($host_line -ne 'host: x86_64-pc-windows-msvc') {
+            throw "expected x86_64-pc-windows-msvc; got $host_line"
+          }
+          Write-Host "candidate_sha=$(& git rev-parse HEAD)"
+
+      - name: Install release CLI and MCP into an isolated root
+        shell: pwsh
+        run: |
+          $env:CARGO_INSTALL_ROOT = Join-Path $env:RUNNER_TEMP 'adoc-install'
+          New-Item -ItemType Directory -Force -Path $env:CARGO_INSTALL_ROOT | Out-Null
+          $env:CARGO_TARGET_DIR = Join-Path $env:RUNNER_TEMP 'adoc-build'
+          cargo install --locked --path crates/adoc-cli --root $env:CARGO_INSTALL_ROOT
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo install --locked --path crates/adoc-mcp --root $env:CARGO_INSTALL_ROOT
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo install --list --root $env:CARGO_INSTALL_ROOT
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:CARGO_INSTALL_ROOT/bin/adoc.exe" --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-FileHash "$env:CARGO_INSTALL_ROOT/bin/adoc.exe", "$env:CARGO_INSTALL_ROOT/bin/adoc-mcp.exe" -Algorithm SHA256
+          "CARGO_INSTALL_ROOT=$env:CARGO_INSTALL_ROOT" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Check portable harness regression
+        shell: pwsh
+        run: python -B -m unittest discover -s scripts -p test_smoke_test.py
+
+      - name: Smoke offline fixture
+        shell: pwsh
+        run: python scripts/smoke-test.py --bin-dir "$env:CARGO_INSTALL_ROOT/bin"
+
+      - name: Smoke FastEmbed retrieval
+        shell: pwsh
+        run: python scripts/smoke-test.py --bin-dir "$env:CARGO_INSTALL_ROOT/bin" --embeddings
