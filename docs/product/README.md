@@ -2,6 +2,12 @@
 
 This directory separates historical numbered specifications from the current accepted Product V1 direction.
 
+## Scoped launch preparation
+
+[Hacker News launch readiness](HN-LAUNCH-READINESS.md) records the accepted
+standalone CLI/agent positioning, full audit, and recommended remediation plan.
+It does not replace Product V1 requirements or claim launch work is implemented.
+
 ## Current accepted Product V1 direction
 
 ### [`PRD-v1.0.md`](PRD-v1.0.md) — full capability reference
