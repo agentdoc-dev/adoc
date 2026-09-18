@@ -463,6 +463,7 @@ pub(crate) struct Cli {
 #[derive(Subcommand)]
 pub(crate) enum Commands {
     /// Evaluate versioned migration eligibility or retain failed source evidence.
+    #[command(display_order = 100)]
     MigrationQualify {
         #[arg(long)]
         request: PathBuf,
@@ -476,6 +477,7 @@ pub(crate) enum Commands {
         runtime_binary_digest: String,
     },
     /// Export exact-snapshot source evidence and inactive candidate inputs.
+    #[command(display_order = 101)]
     MigrationImport {
         #[arg(long)]
         request: PathBuf,
@@ -487,6 +489,7 @@ pub(crate) enum Commands {
         runtime_binary_digest: String,
     },
     /// Prepare a full exact-commit migration receipt in an isolated worker.
+    #[command(display_order = 102)]
     MigrationPrepare {
         #[arg(long)]
         request: PathBuf,
@@ -496,8 +499,10 @@ pub(crate) enum Commands {
         runtime_binary_digest: String,
     },
     /// Project an authorized retained corpus; bounded JSON on stdin and stdout.
+    #[command(display_order = 103)]
     PortableProject,
     /// Runtime port for an explicitly authorized managed corpus; always emits retrieval JSON.
+    #[command(display_order = 104)]
     ManagedRetrieve {
         /// Require this runtime to label every returned internal/restricted Knowledge Object.
         #[arg(long)]
@@ -769,6 +774,7 @@ pub(crate) enum Commands {
         name = "semantic-context",
         about = "Build canonical adoc.semantic_context.v0 from portable producer input."
     )]
+    #[command(display_order = 105)]
     SemanticContext {
         #[arg(long, value_name = "INPUT_JSON")]
         input: PathBuf,
@@ -779,6 +785,7 @@ pub(crate) enum Commands {
         name = "proposal-record",
         about = "Build the canonical adoc.proposal.v0 record from exact patch files and their bindings."
     )]
+    #[command(display_order = 106)]
     ProposalRecord {
         /// Producer input: bindings, patch files, and optional supersedes/dispositions.
         #[arg(long, value_name = "INPUT_JSON")]
@@ -790,6 +797,7 @@ pub(crate) enum Commands {
         name = "semantic-executor",
         about = "Validate one semantic executor response and write its deterministic receipt."
     )]
+    #[command(display_order = 107)]
     SemanticExecutor {
         #[arg(long, value_name = "REQUEST_JSON")]
         request: PathBuf,

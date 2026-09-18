@@ -1,5 +1,6 @@
 //! Docs-truth guard (ADR-0041): the tool and kind lists published in
-//! `README.md` and `docs/guides/mcp-agent-gateway.md` are asserted against the code
+//! `docs/reference/cli.md`, `docs/reference/source.md`, and
+//! `docs/guides/mcp-agent-gateway.md` are asserted against the code
 //! registry — set-equality on names, so a failure says which name drifted.
 //! The parse targets pinned HTML comment anchors, never free prose.
 
@@ -81,10 +82,14 @@ fn assert_matches_registry(
 }
 
 #[test]
-fn readme_mcp_tool_list_matches_registry() {
-    let published = anchored_list(&read_repo_doc("README.md"), "README.md", "adoc:mcp-tools");
+fn cli_reference_mcp_tool_list_matches_registry() {
+    let published = anchored_list(
+        &read_repo_doc("docs/reference/cli.md"),
+        "docs/reference/cli.md",
+        "adoc:mcp-tools",
+    );
     assert_matches_registry(
-        "README.md",
+        "docs/reference/cli.md",
         "MCP tool",
         &published,
         &registered_tool_names(),
@@ -107,11 +112,20 @@ fn gateway_doc_mcp_tool_list_matches_registry() {
 }
 
 #[test]
-fn readme_kind_list_matches_block_kinds() {
-    let published = anchored_list(&read_repo_doc("README.md"), "README.md", "adoc:kinds");
+fn source_reference_kind_list_matches_block_kinds() {
+    let published = anchored_list(
+        &read_repo_doc("docs/reference/source.md"),
+        "docs/reference/source.md",
+        "adoc:kinds",
+    );
     let shipped: BTreeSet<String> = adoc_core::block_kind_names()
         .into_iter()
         .map(str::to_string)
         .collect();
-    assert_matches_registry("README.md", "object kind", &published, &shipped);
+    assert_matches_registry(
+        "docs/reference/source.md",
+        "object kind",
+        &published,
+        &shipped,
+    );
 }

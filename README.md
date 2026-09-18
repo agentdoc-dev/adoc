@@ -1,757 +1,111 @@
 # AgentDoc
 
-[![CI](https://github.com/alex-bako/adoc/actions/workflows/ci.yml/badge.svg)](https://github.com/alex-bako/adoc/actions/workflows/ci.yml)
+[![CI](https://github.com/agentdoc-dev/adoc/actions/workflows/ci.yml/badge.svg)](https://github.com/agentdoc-dev/adoc/actions/workflows/ci.yml)
 
-AgentDoc is a human-readable documentation system for teams that need documentation to behave like maintained, agent-safe knowledge.
+**Documentation your coding agent can validate, search, and cite.**
 
-The current implementation is a pre-release Rust CLI named `adoc`. It compiles native AgentDoc Source (`.adoc`) into:
+Write policies, decisions, and constraints alongside your code. AgentDoc checks their structure and references, builds readable HTML, and gives agents a local knowledge graph with source citations through a Rust CLI and MCP gateway.
 
-- `docs.html` for humans
-- `docs.graph.json` for agents, tooling, graph traversal, and retrieval
-- `docs.search.json` for local embedding-backed retrieval
-- source-located diagnostics for invalid input
-
-It also provides local, read-only retrieval over compiled artifacts with `adoc why`, `adoc graph`, and hybrid `adoc search`.
-
-AgentDoc is not AsciiDoc, even though the source extension is `.adoc`.
-
-## Status
-
-AgentDoc is pre-release compiler and retrieval infrastructure. The source-to-artifact loop supports:
-
-- `adoc init`
-- `adoc check [path]`
-- `adoc build [path] [--out <directory>]`
-- one file or a directory of `.adoc` files as input
-- config-backed defaults from `agentdoc.config.yaml` for `docs_path`, outputs, and embedding mode
-- page headings with optional `@doc(id)` page identity
-- path-derived page identity when no annotation exists
-- headings, paragraphs, unordered lists, ordered lists, and fenced code blocks
-- rich inline rendering for inline code, emphasis, strong text, and links
-- typed Knowledge Objects across the full kind vocabulary (the canonical list is under "Supported object kinds" below)
-- verified claims with `owner`, `verified_at`, and V0 evidence fields
-- object references written as `[[object.id]]`
-- relation fields `depends_on`, `supersedes`, and `related_to`
-- strict diagnostics for raw HTML, unsafe links, unclosed fenced code blocks, malformed typed blocks, malformed page annotations, invalid or duplicate Object IDs, invalid verified claims, broken references, and unsupported single-file source extensions
-- diagnostic metadata with source location, severity, code, message, and `object_id`/`help` when available
-- HTML, graph JSON, and search artifact emission when no error diagnostics exist
-- warning-only `lifecycle.expired` diagnostics for Knowledge Objects with parseable past `expires_at` dates; source files are not mutated
-
-V1.5 local workflow supports:
-
-- `adoc init` creates `agentdoc.config.yaml` and `docs/index.adoc`
-- omitted `check` and `build` paths use config `docs_path`
-- omitted `build --out` uses config outputs
-- `embeddings.provider: local|deterministic|none`; missing `embeddings` defaults to `local`
-- `local` uses FastEmbed `bge-small-en-v1.5` (`provider: "fastembed"`, `dim: 384`)
-- `deterministic` uses repeatable hash-based embeddings (`provider: "deterministic"`, `id: "hash-v1"`, `dim: 384`) for offline or reproducible workflows, with lower retrieval quality than semantic model providers
-- first-run model download through `fastembed-rs`, then local cache reuse on later builds
-- per-Object-ID vector reuse when the model header and content hash match the prior `docs.search.json`
-- `--no-embeddings` to skip search artifact generation and leave any prior `docs.search.json` untouched
-- hosted embedding adapters remain deferred; the shipped default provider is local
-
-V1 local retrieval supports:
-
-- `adoc why <object-id>` over a compiled `docs.graph.json`
-- `adoc graph <object-id>` over compiled Knowledge Object relations
-- `adoc search <query>` over `docs.graph.json` and, when present, `docs.search.json`
-- text and JSON retrieval output
-- hybrid search by default, fusing lexical BM25 and vector cosine ranks with Reciprocal Rank Fusion
-- `--lexical` and `--semantic` escape hatches
-- exact Object ID and ID-prefix pins in all search modes
-- search filters for kind, status, owner, and source path
-- graph relation filters for opt-in candidate narrowing with `--related-to`
-
-Includes, custom schemas, automatic semantic-alignment guarantees, a web app, hosted embedding adapters, and permissioned managed governance remain deferred. Markdown migration, deterministic diff/review, CI/PR integration, and guarded agent patch check/apply are shipped. The detailed next implementation cycle is [ROADMAP-V10.md](docs/roadmap/ROADMAP-V10.md).
-
-## Quick Start
-
-### Prerequisites
-
-- Rust `1.95.0`
-- Cargo, rustfmt, and Clippy
-- prek for local Git hooks
-
-The repository pins the toolchain in [rust-toolchain.toml](rust-toolchain.toml), so Rustup will select the correct version automatically.
-
-```bash
-rustup toolchain install --no-self-update
-```
-
-### Run From Source
-
-Build the CLI, then initialize a local AgentDoc project:
-
-````bash
-cargo build -p adoc-cli
-ADOC_BIN="$(pwd)/target/debug/adoc"
-
-mkdir -p /tmp/adoc-example
-cd /tmp/adoc-example
-
-"$ADOC_BIN" init
-````
-
-`adoc init` writes:
-
-```text
-agentdoc.config.yaml
-docs/index.adoc
-```
-
-Check the source using the config default `docs_path`:
-
-```bash
-"$ADOC_BIN" check
-```
-
-Expected output:
-
-```text
-0 errors, 0 warnings
-```
-
-Build artifacts using the config output defaults:
-
-```bash
-"$ADOC_BIN" build
-```
-
-Inspect the generated files:
-
-```bash
-ls -la dist
-cat dist/docs.html
-cat dist/docs.graph.json
-cat dist/docs.search.json
-```
-
-Expected files:
-
-```text
-docs.html
-docs.graph.json
-docs.search.json
-```
-
-Explicit paths still work and override config defaults where provided:
-
-```bash
-"$ADOC_BIN" check docs/index.adoc
-"$ADOC_BIN" build docs/index.adoc --out /tmp/adoc-example/explicit-dist
-```
-
-### Try The Billing Pilot
-
-The realistic V0 pilot under [examples/billing-pilot](examples/billing-pilot) exercises the four V0 core kinds: `claim`, `decision`, `warning`, and `glossary`. It contains 30+ Knowledge Objects, 8+ verified claims, object references, relations, source spans, and a golden retrieval set.
-
-```bash
-rm -rf /tmp/adoc-billing-pilot
-cargo run -p adoc-cli --bin adoc -- check examples/billing-pilot
-cargo run -p adoc-cli --bin adoc -- build examples/billing-pilot --out /tmp/adoc-billing-pilot
-ls -la /tmp/adoc-billing-pilot
-```
-
-Expected files:
-
-```text
-docs.html
-docs.graph.json
-docs.search.json
-```
-
-The pilot also has [agentdoc.config.yaml](examples/billing-pilot/agentdoc.config.yaml), so config-backed local commands work from the example directory:
-
-```bash
-cd examples/billing-pilot
-cargo run -p adoc-cli --manifest-path ../../Cargo.toml --bin adoc -- check
-cargo run -p adoc-cli --manifest-path ../../Cargo.toml --bin adoc -- build
-```
-
-### Use From An MCP Agent
-
-AgentDoc also ships a local MCP Agent Gateway for MCP-capable agents:
-
-```bash
-cargo build -p adoc-mcp --release
-```
-
-Configure your MCP client to launch `target/release/adoc-mcp` over stdio with
-the AgentDoc project as the process working directory.
-
-Retrieval defaults to public-only. To authorize internal/restricted retrieval or
-specific exclusions, add `--config /absolute/path/to/gateway.yaml` to the launch
-arguments. The file must contain an explicit `retrieval_policy`; tool-selected
-project configuration cannot widen the gateway audience. See
-[Bind Retrieval Authority](docs/guides/mcp-agent-gateway.md#bind-retrieval-authority)
-for the configuration and upgrade steps.
-
-The gateway exposes these tools, plus versioned Agent Guidance Resources and
-Agent Workflow Prompts:
-
-<!-- adoc:mcp-tools -->
-- `adoc_init`
-- `adoc_check`
-- `adoc_build`
-- `adoc_why`
-- `adoc_graph`
-- `adoc_stale`
-- `adoc_contradictions`
-- `adoc_impacted_by`
-- `adoc_search`
-- `adoc_patch_check`
-- `adoc_patch_apply`
-- `adoc_diff`
-- `adoc_review`
-- `adoc_project_status`
-<!-- /adoc:mcp-tools -->
-
-Agents should begin by reading `adoc://agent/v0/usage-contract`, getting the
-`adoc_answer_with_citations` prompt, and calling `adoc_project_status` before
-retrieval or patch validation. See [docs/guides/mcp-agent-gateway.md](docs/guides/mcp-agent-gateway.md)
-for setup, JSON-RPC examples, and the safety boundary.
-
-### Install Locally
-
-To install the `adoc` binary from this checkout:
-
-```bash
-cargo install --path crates/adoc-cli --locked
-```
-
-Then run:
-
-```bash
-mkdir -p /tmp/adoc-example
-cd /tmp/adoc-example
-adoc init
-adoc check
-adoc build
-```
-
-## CLI Usage
-
-```bash
-adoc init
-adoc check [path] [--as-of <YYYY-MM-DD>]
-adoc build [path] [--out <directory>] [--no-embeddings] [--as-of <YYYY-MM-DD>] [--audience <public|internal|restricted>]
-adoc why <object-id> [--artifact <path>] [--format auto|plain|styled|json]
-adoc graph <object-id> [--artifact <path>] [--relation depends_on|supersedes|related_to] [--direction outgoing|incoming|both] [--format auto|plain|styled|json]
-adoc stale [--artifact <path>] [--within <Nd>] [--format auto|plain|styled|json]
-adoc contradictions [--artifact <path>] [--all] [--format auto|plain|styled|json]
-adoc impacted-by [path]... [--ref <git-ref>] [--artifact <path>] [--format auto|plain|styled|json|markdown]
-adoc patch (--check <patch-json> | --apply <patch-json|@->) [--artifact <path>] [--as-of <YYYY-MM-DD>] [--format auto|plain|styled|json]
-adoc diff <base-ref> [--format auto|plain|styled|json|markdown]
-adoc review <base-ref> [--patch <patch-json>] [--format auto|plain|styled|json|markdown]
-adoc assess-changes --base <git-ref> [--head <git-ref>] [--as-of <YYYY-MM-DD>] [--format auto|plain|styled|json|markdown]
-adoc baseline --ref <git-ref> [--as-of <YYYY-MM-DD>] [--format auto|plain|styled|json|markdown]
-adoc search <query> [--artifact <path>] [--search-artifact <path>] [--lexical | --semantic] [--kind <value>] [--status <value>] [--owner <value>] [--source-path <value>] [--related-to <object-id>] [--relation depends_on|supersedes|related_to] [--direction outgoing|incoming|both] [--top <n>] [--format auto|plain|styled|json]
-```
-
-`<path>` can be:
-
-- a single `.adoc` file
-- a directory, scanned recursively for `.adoc` files
-
-Config discovery walks upward from the current directory, checks for
-`agentdoc.config.yaml` in each directory, and stops after checking the first
-ancestor containing `.git` or `$HOME`. It never treats `/agentdoc.config.yaml`
-as global config.
-
-`adoc init`:
-
-- creates `agentdoc.config.yaml` and `docs/index.adoc` in the current directory
-- refuses to overwrite either target if it already exists
-- configures strict mode, `docs_path: docs`, `outputs.dir: dist`, and `embeddings.provider: local`
-
-`adoc check`:
-
-- uses explicit `[path]` when passed
-- otherwise discovers the nearest `agentdoc.config.yaml` from the current directory upward and uses `docs_path`
-- compiles the input in strict mode
-- prints diagnostics and a summary
-- exits `0` when there are no errors
-- exits `1` when any error diagnostic exists
-
-`adoc build`:
-
-- uses explicit `[path]` and `--out` when passed
-- otherwise discovers config defaults; without `--out`, config must provide `outputs.dir` or exact `outputs.html` and `outputs.graph`; `outputs.search` is also required when embeddings are enabled
-- with `--out <directory>`, writes `<directory>/docs.html`, `<directory>/docs.graph.json`, and, when embeddings are enabled, `<directory>/docs.search.json`
-- with config outputs, paths are resolved relative to the config file; `outputs.dir` fills omitted artifact paths as `docs.html`, `docs.graph.json`, and `docs.search.json`; exact artifact paths override the `outputs.dir` defaults
-- runs the same compile path as `check`
-- creates the output directory when it does not exist
-- fails if the output path exists as a file
-- writes `docs.html` and `docs.graph.json` when source compilation is clean
-- loads the local FastEmbed `bge-small-en-v1.5` model by default through the default-on `embeddings` feature; first run may download model weights into the platform cache
-- uses the deterministic hash-based provider instead when config sets `embeddings.provider: deterministic`
-- reads the prior output directory's `docs.search.json` when present and reuses vectors whose model header and content hash still match, reported as `info[build.embeddings_cached] embeddings: cached N, computed M`
-- if embedding model load, compute, or dimension validation fails after clean source compilation, exits `1`, still writes `docs.html` and `docs.graph.json`, omits a new `docs.search.json`, and leaves any prior `docs.search.json` untouched
-- accepts `--no-embeddings` to skip model loading and search artifact writes; any existing `docs.search.json` is left untouched and an info diagnostic `build.embeddings_skipped` is emitted
-- also skips embeddings when config sets `embeddings.provider: none`; config `local` and missing `embeddings` both enable the shipped local provider
-
-HTML rendering defaults to public-only. `--audience` selects an explicit local
-audience; the project's `retrieval_policy` supplies the default audience and
-retains its allowed-visibility restrictions and Object ID exclusions when a flag
-is supplied. Unknown audiences produce `retrieval.audience_unresolved`.
-Restricted objects render as kind-and-ID markers (`adoc-restricted`), sensitive fields are withheld,
-and existence-excluded objects are omitted. An MCP gateway's trusted policy takes
-precedence over project configuration. No audience is read from the environment.
-
-This rendering policy applies to `docs.html`. The canonical Graph Artifact is
-unchanged; search/vector exclusion is tracked separately in E6.3.T3. Neither
-artifact should be treated as an audience-filtered HTML export.
-
-`adoc why`:
-
-- reads a compiled graph artifact; it does not compile source
-- defaults to config `outputs.graph`, then `dist/docs.graph.json`
-- prints the matching Knowledge Object with source and relation metadata
-- supports `--format auto|plain|styled|json`
-
-`adoc graph`:
-
-- reads a compiled graph artifact; it does not compile source
-- defaults to config `outputs.graph`, then `dist/docs.graph.json`
-- traverses all reachable Knowledge Objects by default, with cycle detection
-- includes the root node at distance `0` and preserves original edge direction in output
-- supports `--relation depends_on|supersedes|related_to` and `--direction outgoing|incoming|both`
-- supports `--format auto|plain|styled|json`
-
-`adoc stale`:
-
-- reads a compiled graph artifact; it does not compile source
-- lists stale, review-overdue, and expiring Knowledge Objects, re-deriving lifecycle signals as of the query date
-- accepts `--within <Nd>` to widen the expiring-soon horizon
-- exits `0` whether or not records exist and emits the `adoc.stale.v0` envelope
-
-`adoc contradictions`:
-
-- reads a compiled graph artifact; it does not compile source
-- lists unresolved contradictions and contradicted claims; `--all` widens the contradictions listing to resolved ones
-- exits `0` whether or not records exist and emits the `adoc.contradictions.v0` envelope
-
-`adoc impacted-by`:
-
-- reads a compiled graph artifact; it does not compile source
-- lists verified Knowledge Objects implicated by changed source paths, passed explicitly or derived from `--ref <git-ref>`
-- emits the `adoc.impacted.v0` envelope and supports `--format markdown` for PR-comment output
-
-`adoc patch`:
-
-- validates one `adoc.patch.v0` document against the compiled graph artifact's `content_hash` preconditions
-- `--check <patch-json>` is read-only and emits the `adoc.patch.check.v0` envelope
-- `--apply <patch-json>` (or `@-` to read from stdin) validates, then rewrites the affected source spans and emits the `adoc.patch.apply.v0` envelope
-
-`adoc diff`:
-
-- diffs Knowledge Objects between `<base-ref>` and the working tree, emitting the `adoc.diff.v0` envelope
-- supports `--format markdown` for PR-comment output
-
-`adoc review`:
-
-- reviews Knowledge Object changes since `<base-ref>` with source-path impact and required reviewers, emitting the `adoc.review.v0` envelope
-- `--patch <patch-json>` embeds an `adoc.patch.check.v0` result in the review
-- supports `--format markdown` for PR-comment output
-
-`adoc assess-changes`:
-
-- resolves the requested base and head to commits and uses their unique merge base for the changed set and comparison snapshot
-- uses the current worktree when `--head` is omitted and records whether it is clean or dirty
-- compiles each snapshot under its own `agentdoc.config.yaml` while applying comparison-base exclusions to the current change
-- pins lifecycle evaluation to `--as-of`, defaulting once to the current UTC date
-- classifies every changed path as covered, provisional, uncovered, or explicitly excluded and emits body-free implicated objects, knowledge changes, reviewers, and proof obligations
-- emits the experimental `adoc.change_assessment.v0` envelope; complete advisory outcomes exit `0`, while partial, invalid, or not-evaluated envelopes exit `2`
-- supports heading-free `--format markdown` for embedding in a larger PR comment
-
-`adoc baseline`:
-
-- inventories every tracked path at one immutable Git ref
-- uses the same covered, provisional, uncovered, and excluded classifications as pull-request assessment
-- reports `readiness.ready: true` only when source is valid and every non-excluded path has authoritative coverage
-- emits `adoc.repository_baseline.v0`; complete inventories exit `0` even when they are not ready
-
-An `impacts:` entry may name an exact file or a directory prefix ending in
-`/`. Prefixes are component-aware (`src/editor/` does not match
-`src/editor-old/`); globs are not supported. Evidence paths remain exact.
-
-Repositories may add optional assessment exclusions. Entries are exact files or component-aware directory prefixes ending in `/`; globs are not supported:
-
-```yaml
-assessment:
-  exclude_paths:
-    - vendor/
-    - generated/
-```
-
-The block is intentionally absent from `adoc init`. Adding it requires a V9.2.1-capable binary because older strict config parsers reject unknown keys.
-
-`adoc search`:
-
-- reads compiled artifacts; it does not compile source
-- defaults to config `outputs.graph`, then `dist/docs.graph.json`
-- defaults to config `outputs.search`, then `dist/docs.search.json`
-- runs hybrid search by default when the search artifact loads
-- degrades to lexical search with one `search.artifact_missing` warning when the search artifact is absent
-- accepts `--lexical` for deterministic text search over `docs.graph.json`
-- accepts `--semantic` for vector-only search over `docs.search.json`
-- pins exact Object ID and raw case-sensitive ID-prefix query matches in every mode
-- supports `--kind`, `--status`, `--owner`, and `--source-path` filters
-- supports `--related-to`, `--relation`, and `--direction` for opt-in graph candidate filtering without changing unfiltered ranking
-- treats an empty lexical query plus filters as a deterministic listing of matching objects
-- limits results with `--top`, defaulting to `10`
-- supports `--format auto|plain|styled|json`
-
-See [docs/design/v1-retrieval.md](docs/design/v1-retrieval.md) for retrieval workflow, citation guidance, model-swap behavior, and retrieval-set maintenance.
-
-## AgentDoc Source
-
-The V0 source grammar is intentionally small.
-
-````adoc
-# Page Title @doc(product.area)
-
-Paragraph text is plain prose.
-
-- Unordered item
-- Another unordered item
-
-1. Ordered item
-2. Another ordered item
-
-```text
-Fenced code is preserved and escaped in HTML.
-```
-````
-
-Typed Knowledge Objects use top-level fenced blocks:
-
-````adoc
-::claim billing.ledger
-status: verified
-owner: team-billing
-verified_at: 2026-05-06
-source: ledger reconciliation report
---
-The ledger records every credit and refund balance movement.
-::
-
-::decision billing.refund-policy
-status: accepted
-decided_by: architecture
-depends_on: [billing.ledger, billing.credit-balance]
---
-Use policy-based refund approval with ledger-backed audit entries.
-::
-
-::warning billing.invoice.manual-adjustment
-severity: high
-related_to: billing.ledger
---
-Manual invoice adjustments must cite [[billing.ledger]] before approval.
-::
-
-::glossary billing.credit-balance
---
-The customer-visible balance available for future invoices.
-::
-````
-
-Supported object kinds:
-
-<!-- adoc:kinds -->
-- `claim`
-- `decision`
-- `glossary`
-- `warning`
-- `constraint`
-- `policy`
-- `procedure`
-- `example`
-- `agent_instruction`
-- `contradiction`
-- `source`
-- `api`
-- `observation`
-- `question`
-- `task`
-<!-- /adoc:kinds -->
-
-Supported relation fields:
-
-- `depends_on`
-- `supersedes`
-- `related_to`
-
-Relation values can be a single Object ID, a comma-separated list, or a bracket array. The compiler deduplicates repeated targets while preserving first occurrence order. A trailing empty segment from a final comma is ignored; leading or interior empty segments emit `id.invalid`. Valid targets that do not resolve to a declared Knowledge Object emit `ref.broken`; malformed targets emit `id.invalid`.
-
-Object references use `[[object.id]]` in prose, headings, list items, and typed object bodies. References are rendered as HTML links and preserved as citeable source text in graph JSON object bodies.
-
-Page annotations are optional. IDs must be lowercase dot-separated kebab-case values with at least two segments, such as `product.area`. If the first heading does not include `@doc(id)`, the compiler derives the page identity from the file path and applies the same ID grammar.
-
-Raw HTML is rejected in strict mode:
+For example, a refund policy becomes a named, retrievable claim:
 
 ```adoc
-<div>not allowed</div>
+# Refund policy @doc(billing.refunds)
+
+::claim billing.refund-window
+status: draft
+owner: billing
+--
+Customers can request a refund within 30 days of purchase.
+::
 ```
 
-Unclosed fenced code blocks are rejected:
-
-````adoc
-```rust
-fn main() {}
-````
-
-Current limitations:
-
-- custom schemas, includes, automatic semantic contradiction/alignment, hosted embedding adapters, web UI, managed multi-repository storage, and permissioned governance are not shipped
-- current configuration remains repository-local; managed central knowledge, connectors, and on-prem operation are gated successor programs
-
-## Diagnostics
-
-`adoc check` and `adoc build` run the same strict compiler path. Diagnostics include file, line, column, severity, diagnostic code, and fix-oriented message.
-
-When a diagnostic belongs to a Knowledge Object, the CLI also prints `object_id`. When a targeted remediation is available, it prints `help`.
-
-Examples:
-
-- raw HTML emits `error[parse.raw_html]`
-- unsafe links emit `error[parse.unsafe_link]`
-- broken object references and relation targets emit `error[ref.broken]`
-- parseable past `expires_at` values emit warning `lifecycle.expired`; the CLI reports only and does not edit source status or fields
-- unreadable directories emit `error[io.unreadable_directory]`
-- unsupported single-file source extensions emit `error[io.unsupported_source_extension]`
-
-`adoc build` writes nothing when source compilation has error diagnostics. Embedding failures do not block `docs.html` or `docs.graph.json`: they emit `embed.model_load_failed`, `embed.compute_failed`, or `embed.unexpected_dim`, omit the new search sidecar, preserve any prior `docs.search.json`, and exit `1`.
-
-## Smoke Tests
-
-Run the happy path:
-
-```bash
-rm -rf /tmp/adoc-smoke
-mkdir -p /tmp/adoc-smoke
-
-cat > /tmp/adoc-smoke/guide.adoc <<'EOF'
-# Getting Started @doc(docs.getting-started)
-
-AgentDoc keeps knowledge readable.
-
-- Write source
-- Run check
-- Build artifacts
-EOF
-
-cargo run -p adoc-cli --bin adoc -- check /tmp/adoc-smoke/guide.adoc
-cargo run -p adoc-cli --bin adoc -- build /tmp/adoc-smoke/guide.adoc --out /tmp/adoc-smoke/dist
-
-ls -la /tmp/adoc-smoke/dist
-cat /tmp/adoc-smoke/dist/docs.html
-cat /tmp/adoc-smoke/dist/docs.graph.json
-```
-
-Expected:
-
-- `check` exits `0`
-- `build` exits `0`
-- `docs.html` exists
-- `docs.graph.json` exists
-- `docs.search.json` exists
-- graph JSON includes `schema_version`, `"nodes": []`, `"edges": []`, and `"diagnostics": []`
-
-Run strict-mode failure checks:
-
-```bash
-cat > /tmp/adoc-smoke/raw-html.adoc <<'EOF'
-# Unsafe @doc(docs.unsafe)
-
-<div>raw html</div>
-EOF
-
-cargo run -p adoc-cli --bin adoc -- check /tmp/adoc-smoke/raw-html.adoc
-```
-
-Expected: non-zero exit with `error[parse.raw_html]`.
-
-````bash
-cat > /tmp/adoc-smoke/unclosed-fence.adoc <<'EOF'
-# Broken @doc(docs.broken)
-
-```rust
-fn main() {}
-EOF
-
-cargo run -p adoc-cli --bin adoc -- check /tmp/adoc-smoke/unclosed-fence.adoc
-````
-
-Expected: non-zero exit with `error[parse.unclosed_fence]`.
-
-```bash
-echo "not a directory" > /tmp/adoc-smoke/out-file
-cargo run -p adoc-cli --bin adoc -- build /tmp/adoc-smoke/guide.adoc --out /tmp/adoc-smoke/out-file
-```
-
-Expected: non-zero exit with `error[io.output_not_directory]`.
-
-## Development
-
-This is a Cargo workspace:
+Run `adoc why billing.refund-window` to retrieve it:
 
 ```text
-crates/
-  adoc-cli/   # command-line adapter, file output, exit codes
-  adoc-core/  # compile API, parser, diagnostics, renderers, artifacts
+Object: billing.refund-window
+Kind: claim
+Status: draft
+Owner: billing
+
+Statement:
+Customers can request a refund within 30 days of purchase.
+
+Source: docs/index.adoc:3:1
 ```
 
-The architectural contract is documented in [docs/design/V0-DESIGN.md](docs/design/V0-DESIGN.md).
+The citation points back to editable source. Validation checks the document's structure and declared evidence; it does not establish that the statement is true.
 
-### Quality Gates
+## Try it locally
 
-Single test command:
+This branch contains the unreleased **0.4.0 source preview**. The latest published release is the older **0.3.4 Linux CLI**, with different artifact formats. Build from source for the workflow below.
 
-```bash
-cargo test --workspace --locked
+Install [Rustup](https://rustup.rs/) and your platform's native build tools, then:
+
+```sh
+git clone https://github.com/agentdoc-dev/adoc.git
+cd adoc
+rustup toolchain install --no-self-update
+cargo build --release --locked -p adoc-cli -p adoc-mcp
+export PATH="$PWD/target/release:$PATH"
 ```
 
-Run the same full check set as CI:
+The repository pins Rust 1.95.0. See [installation](docs/guides/installation.md) for platform requirements, persistent installation, downloads, and checksums.
 
-```bash
-cargo fmt --all --check
-cargo clippy --workspace --all-targets --locked -- -D warnings
-cargo test --workspace --locked
-cargo build --workspace --locked
-RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
+Create a project using the example above:
+
+```sh
+ADOC_EXAMPLE="$PWD/examples/quickstart/refunds.adoc"
+mkdir ../agentdoc-demo
+cd ../agentdoc-demo
+adoc init
+cp "$ADOC_EXAMPLE" docs/index.adoc
+adoc check
+adoc build --no-embeddings
+adoc search refund --lexical
+adoc why billing.refund-window
 ```
 
-Install the pre-commit hook:
+`check` reports `0 errors, 0 warnings`. Search returns the policy heading and claim; `why` returns the cited claim shown above. Open `dist/docs.html` in a browser. The build also writes `dist/docs.graph.json` for tooling.
 
-```bash
-prek install
+This first build needs no model download. For local semantic and hybrid search, run `adoc build`, then `adoc search "How long do I have to request a refund?"`. The first model-backed build downloads FastEmbed's `bge-small-en-v1.5`; subsequent inference runs locally. Use `--no-embeddings` and `--lexical` when working offline.
+
+`init` refuses to overwrite existing starter files. Start in an empty project directory, fix any source-located errors, and rebuild after changing documents: retrieval reads compiled artifacts.
+
+## Give your coding agent access
+
+The `adoc-mcp` binary exposes local retrieval over stdio. In **Claude Code**, register the executable built above using its absolute path:
+
+```sh
+claude mcp add --transport stdio --scope local agentdoc -- /absolute/path/to/adoc/target/release/adoc-mcp
 ```
 
-Run the hook suite manually:
+Start Claude Code in `agentdoc-demo`, check the connection with `/mcp`, and ask:
 
-```bash
-prek run --all-files
-```
+> Use AgentDoc to check this project's status, then explain `billing.refund-window` and cite its source. Pass this project's absolute directory as `project_root` in both calls.
 
-Useful focused commands:
+The [MCP guide](docs/guides/mcp-agent-gateway.md) covers the tool list, other client configuration, and permissions. The gateway defaults to public-only retrieval; patch application is disabled unless the operator enables it. It opens no network listener.
 
-```bash
-cargo test -p adoc-cli
-cargo test -p adoc-core
-cargo run -p adoc-cli --bin adoc -- check <path>
-cargo run -p adoc-cli --bin adoc -- build <path> --out dist
-```
+## What you can do
 
-The `embeddings` feature is default-on and enables the FastEmbed dependency. Build without it with `cargo test -p adoc-core --no-default-features` or equivalent no-default build commands when embedding support is intentionally excluded.
+- **Validate knowledge:** check typed objects, IDs, references, required fields, and strict markup.
+- **Retrieve with context:** search prose and objects, look up an object with `why`, or follow relations with `graph`.
+- **Maintain documentation:** find stale and contradictory records, inspect change impact, and validate proposed patches.
+- **Read the same source:** generate HTML for people and graph/search artifacts for tools.
 
-Hermetic CLI/core tests use the deterministic embedding provider through the `test-embedding-provider` feature when `ADOC_TEST_EMBEDDING_PROVIDER=deterministic` is set. The legacy `in-memory` value remains accepted as a test alias. With that feature enabled, unset `ADOC_TEST_EMBEDDING_PROVIDER` and `ADOC_TEST_EMBEDDING_PROVIDER=fastembed` both use FastEmbed. FastEmbed end-to-end coverage is gated behind `fastembed-it`:
+AgentDoc Source uses `.adoc`, but **it is not AsciiDoc**. It combines prose with 15 built-in object kinds and explicit relations. Markdown ingestion and migration are also supported; Markdown prose can be searched and cited without first converting it into typed objects.
 
-```bash
-cargo test -p adoc-core --features fastembed-it --no-run --locked
-```
+For a larger example, see the [billing pilot](examples/billing-pilot). The [CLI reference](docs/reference/cli.md) covers command flags and diagnostics; the [Source reference](docs/reference/source.md) covers syntax and object kinds. [CI integration](docs/guides/ci-integration.md) describes the separate released Action/CLI assessment workflow.
 
-Format code before committing:
+## Maturity and limits
 
-```bash
-cargo fmt --all
-```
+AgentDoc is pre-release software. The source preview uses graph v6 and search v2; rebuild artifacts when upgrading from 0.3.4 and recreate patches based on older hashes. See [release compatibility](docs/guides/releases.md).
 
-## Continuous Integration
+There is no hosted service or web application in this local workflow. Custom schemas, automatic semantic contradiction detection, and managed multi-repository governance are not shipped. Platform verification and release availability are listed in the [installation guide](docs/guides/installation.md).
 
-CI runs on pushes and pull requests to `main` using [.github/workflows/ci.yml](.github/workflows/ci.yml).
+HTML can be filtered by audience. The canonical graph is **not** an audience-filtered export: protect generated artifacts as you would their source. Model download failures can leave an older search artifact in place; use lexical search until a successful rebuild.
 
-The workflow checks:
+## Contribute
 
-- formatting
-- Clippy with warnings denied
-- workspace tests
-- workspace build
-- documentation build with rustdoc warnings denied
+Bug reports, examples, documentation improvements, and focused code changes are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md) for setup, checks, and help. Report vulnerabilities privately through [SECURITY.md](SECURITY.md).
 
-Dependabot is configured in [.github/dependabot.yml](.github/dependabot.yml) for Cargo and GitHub Actions updates.
-
-## Project Documents
-
-- [CONTEXT.md](CONTEXT.md): project language and domain decisions
-- [docs/product/PRD.md](docs/product/PRD.md): product requirements
-- [docs/roadmap/ROADMAP.md](docs/roadmap/ROADMAP.md): product roadmap from completed V0 through planned retrieval, review, patching, schema, graph, and team surfaces
-- [docs/roadmap/ROADMAP-V10.md](docs/roadmap/ROADMAP-V10.md): current V10 implementation entry point — the `E*` slice sequence and milestones hand-off layer under `docs/roadmap/v10/`
-- [docs/roadmap/ROADMAP-V9.md](docs/roadmap/ROADMAP-V9.md): shipped V9 cycle record — trustworthy PR assessment and governed proposals
-- [docs/design/V0-DESIGN.md](docs/design/V0-DESIGN.md): Rust implementation contract
-- [docs/adr/](docs/adr): architecture decision records
-
-## Architecture
-
-AgentDoc V0 is intentionally shaped as a compiler pipeline:
-
-```text
-AgentDoc Source
-  -> adoc-core compile_workspace()
-  -> parser and diagnostics
-  -> HTML renderer
-  -> graph JSON artifact
-  -> adoc-cli exit codes and file output
-```
-
-The public Rust API is deliberately small:
-
-```rust
-pub fn compile_workspace(input: CompileInput) -> CompileResult;
-pub fn build_workspace(input: BuildInput) -> CompileResult;
-```
-
-Parser, validation, renderer, and artifact internals stay private until another real consumer needs lower-level APIs.
-
-## Roadmap
-
-V0 is complete for the local source-to-artifact compiler loop. Implemented milestones include:
-
-- richer page identity and source diagnostics
-- common prose rendering for inline code, emphasis, and links
-- first `claim` Knowledge Object
-- verified claim evidence fields
-- `decision`, `warning`, and `glossary`
-- object references and relations
-- multi-file project behavior
-- standardized diagnostics and production-usable fixtures
-- a realistic billing pilot
-- artifact-backed `adoc why <object-id>`
-- `adoc graph <object-id>` relation traversal over `docs.graph.json`
-- hybrid `adoc search <query>` over `docs.graph.json` and `docs.search.json`
-- `adoc init` and minimal `agentdoc.config.yaml`
-
-Current local retrieval focuses on the graph artifact:
-
-- define the supported `docs.graph.json` read contract
-- support `adoc why <object-id>` for object lookup and citation
-- support `adoc graph <object-id>` for relation traversal
-- support `adoc search <query>` for deterministic lexical and local embedding-backed search
-- prove retrieval against the billing pilot
-- build `docs.search.json` with local FastEmbed embeddings
-
-Graph artifacts use `adoc.graph.v6`. Config-backed check/build/review commands
-publish project-relative `/`-separated source paths and identify the project via
-`agentdoc.config.yaml`; explicit standalone check/build inputs publish
-invocation-relative paths with `"repository_identity": null`. The same source
-revision therefore produces the same Knowledge Object hashes in another clone
-or review worktree. The machine-readable contract is
-[`graph-artifact.v6.json`](docs/agent/v0/schema/graph-artifact.v6.json).
-
-Upgrading from an earlier graph version requires one rebuild. Regenerate
-`docs.graph.json`, regenerate or re-embed `docs.search.json`, and recreate any
-in-flight patch documents whose `base_hash` came from the earlier version.
-Readers reject earlier versions explicitly instead of silently mixing hash
-domains.
-
-The shipped surface also includes Markdown migration, review/impact workflows, deterministic local change assessment, patch validation/application, the expanded fifteen-kind schema, MCP, the composite GitHub Action, evidence-anchor drift checks, exact-SHA GitHub delivery of the assessment envelope, cited optional semantic review, and governed proposals. The next detailed cycle is Product V1 (V10): the graph v6 contract spine and provider-neutral assessment, then the Cloud control plane and governance trust chain.
-
-See [docs/roadmap/ROADMAP.md](docs/roadmap/ROADMAP.md) for the full sequence and [docs/roadmap/ROADMAP-V10.md](docs/roadmap/ROADMAP-V10.md) for the implementation handoff.
-
-## License
-
-This project is licensed under the [MIT License](LICENSE). The license applies
-to the entire history of this repository, including all revisions prior to the
-commit that introduced the LICENSE file; Cargo package metadata has declared
-`license = "MIT"` since early in the project's history.
+The [product index](docs/product/README.md) and [roadmap](docs/roadmap/ROADMAP-V10.md) describe the project's direction. AgentDoc is [MIT licensed](LICENSE), including revisions predating the license file.
