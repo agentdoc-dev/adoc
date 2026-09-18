@@ -1,6 +1,7 @@
 # HN-M4.T1: Qualify Cargo-installed release binaries
 
-Status: planned; installation checks not yet executed.
+Status: complete; installation evidence independently reviewed by Codex and Claude.
+Actual installation and both smoke modes passed; see [qualification evidence](../guides/launch-qualification.md).
 Requirement: HN-9 and existing HN-2/3/4.
 Parent: [extended qualification roadmap](../roadmap/HN-LAUNCH-QUALIFICATION.md).
 Dependency: HN-M1 through HN-M3, completed locally at

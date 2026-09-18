@@ -28,6 +28,12 @@ Cargo places them in its bin directory, normally `~/.cargo/bin`; add that direct
 to your PATH if Rustup did not. Both commands install from this checkout, **not
 crates.io**. Build/install CLI and gateway from the same revision.
 
+Both Cargo installation commands were exercised with the default release profile
+on macOS ARM64, using a fresh build directory and isolated install root. The
+installed binaries passed offline and real-model CLI/MCP smoke checks. See the
+[qualification evidence](launch-qualification.md) for the exact candidate and
+environment limits.
+
 ## Try a fresh project
 
 From the repository root, after building:
