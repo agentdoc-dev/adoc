@@ -1,6 +1,7 @@
 # HN-M2.T1: README that demonstrates local agent knowledge
 
-Status: accepted implementation scope; not yet verified.
+Status: implemented and verified for local branch delivery.
+Evidence and publication limits: [launch verification](../guides/launch-readiness.md).
 Source: [launch roadmap](../roadmap/HN-LAUNCH-READINESS.md).
 
 ## Contract

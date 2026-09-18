@@ -1,6 +1,7 @@
 # HN-M1.T2: Installable CLI and MCP, reproducible first use
 
-Status: accepted implementation scope; not yet verified.
+Status: implemented and verified for local branch delivery.
+Evidence and publication limits: [launch verification](../guides/launch-readiness.md).
 Source: [launch roadmap](../roadmap/HN-LAUNCH-READINESS.md).
 
 ## Contract

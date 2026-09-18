@@ -1,8 +1,7 @@
 # Hacker News launch-readiness roadmap
 
-Planning complete, 2026-09-18. Implementation not started.
-Accepted: full audit; local CLI/coding-agent lead story. Remediation is recommended;
-patches/publication are not approved by this planning document. No date assumed.
+Implementation authorized 2026-09-18 on `feat/hn-launch-readiness`.
+Local candidate work, automated checks, and independent review are complete. Publication remains separate. See [verification and launch boundaries](../guides/launch-readiness.md).
 
 [Requirements/domain](../product/HN-LAUNCH-READINESS.md) ·
 [Audit/evidence](../audits/2026-09-18-hn-launch-readiness.md).
@@ -12,9 +11,9 @@ This file is the roadmap index and **combined milestone handoff document**.
 
 | Milestone | User outcome | Dependencies | Status |
 |---|---|---|---|
-| [HN-M1](#hn-m1--a-trustworthy-version-a-visitor-can-run) | A trustworthy version a visitor can install/try | None | Proposed, ready to plan |
-| [HN-M2](#hn-m2--a-clear-first-visit-and-contributor-path) | Clear value and workable onboarding/contribution | M1 for final versioned examples; drafting can overlap | Proposed |
-| [HN-M3](#hn-m3--verified-public-launch-surface) | Public repository matches promised experience | M1 + M2 | Proposed |
+| [HN-M1](#hn-m1--a-trustworthy-version-a-visitor-can-run) | A trustworthy version a visitor can install/try | None | Implemented locally |
+| [HN-M2](#hn-m2--a-clear-first-visit-and-contributor-path) | Clear value and workable onboarding/contribution | M1 for final versioned examples; drafting can overlap | Implemented and verified locally |
+| [HN-M3](#hn-m3--verified-public-launch-surface) | Public repository matches promised experience | M1 + M2 | Implemented and verified locally |
 
 ## HN-M1 — A trustworthy version a visitor can run
 
@@ -122,7 +121,7 @@ remaining limitations recorded. Unresolved failures are not marked passed.
 - Scenario/boundary: GitHub link → useful About/README → correct download → demo/
   MCP → support/contribution route. HN-4/6/7/8; LA-8/10 and final LA-1-10 closure.
 - Dependencies: HN-M1.T2, HN-M2.T1, HN-M2.T2. Owner: public metadata, action-pinning
-  setting, release/docs evidence. These changes await implementation authorization.
+  setting, release/docs evidence. Metadata and policy changes were authorized and verified.
 - Acceptance: description/topics and any homepage are accurate; owner badge fixed;
   SHA-pinning policy verified; version/assets/docs agree; final CI and relevant
   real-model/MCP smoke pass; all before-launch findings closed or explicitly
@@ -139,9 +138,8 @@ remaining limitations recorded. Unresolved failures are not marked passed.
 HN-1 → M2.T1; HN-2 → M1.T2; HN-3 → M1.T2/M2.T1; HN-4 → M1/M3;
 HN-5 → M2.T2; HN-6 → M1.T1/M1.T2/M2.T2/M3; HN-7 → M2.T1/M3; HN-8 → M3.
 All LA-1 through LA-10 findings have owners above. Dependencies are acyclic.
-No proposed slice is represented as implemented.
+The local candidate is distinct from a public release.
 
-First dependency-ready slice: **HN-M1.T1**. After explicit implementation
-instruction, start a separate development run against fresh repository state
-and reuse PR #244. Local documentation drafting may run alongside candidate
-preparation once implementation is authorized.
+All five slices have accepted plans under `docs/plans/HN-*.md`. The implementation
+run is `hn-launch-implementation`; see the verification guide for evidence and the
+remaining merge/release boundaries.
