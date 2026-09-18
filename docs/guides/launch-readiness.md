@@ -39,9 +39,9 @@ Its project-status and object-lookup calls returned the draft refund claim and
 `docs/index.adoc:3:1`; it correctly reported missing semantic artifacts and
 disabled patch application for that offline project.
 
-The source build is the verified installation route. The four hosted release
-matrix legs and the optional Cargo installation alternative are not represented
-as independently qualified platform/install evidence. Windows is not a claimed
+Source build and Cargo path installation are verified on macOS ARM64; see
+[extended qualification](launch-qualification.md) for the installation evidence.
+The four hosted release matrix legs are not yet qualified platform evidence. Windows is not a claimed
 release target. Existing v0.3.4 assets are unchanged.
 
 Independent specialist and Claude reviews covered all five slices. The missing
@@ -62,4 +62,7 @@ Detailed local logs live under `.git/agentic-workflow/hn-launch-implementation/`
 No merge, release publication, HN post, or issue closure was performed. Old
 issues #21-23 remain unconfirmed against current code, not claimed repaired.
 
-Extended qualification is separately planned in the [follow-up roadmap](../roadmap/HN-LAUNCH-QUALIFICATION.md). Its security, platform, performance/accessibility, clean-OS, desktop-client and live-fork checks are not yet completed.
+Extended qualification follows the [follow-up roadmap](../roadmap/HN-LAUNCH-QUALIFICATION.md).
+The [evidence report](launch-qualification.md) records completed checks and
+remaining platform, security, performance/accessibility, clean-OS, desktop-client
+and live-fork work.
