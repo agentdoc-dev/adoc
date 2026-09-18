@@ -49,3 +49,22 @@ Local raw commands, exits, metadata, environment and digests are retained under
 These local paths are an audit trail, not downloadable release assets.
 Subsequent documentation-only planning commit `2bf8f281` does not change these
 binary inputs. Native Intel macOS, Windows and clean-OS checks are separate slices.
+
+## Intel macOS Cargo installation prerequisite
+
+The default `cargo install` path cannot obtain ONNX Runtime 1.28.0 for
+`x86_64-apple-darwin`: the resolved `ort-sys 2.0.0-rc.13` distribution has no
+Intel macOS runtime. Before installing on Intel macOS, build the pinned
+upstream source commit `da9b5e364c465de65c49d91e696cd6485270757f` with
+`scripts/qualification/build-intel-runtime.sh`, then retain its staged `lib`
+directory. Install and link dynamically with (repeat for `crates/adoc-mcp`):
+
+```sh
+ORT_LIB_LOCATION=/path/to/lib ORT_PREFER_DYNAMIC_LINK=1 \
+  RUSTFLAGS="-C link-arg=-Wl,-rpath,@executable_path/lib" \
+  cargo install --path crates/adoc-cli --locked --root "$ADOC_INSTALL_ROOT"
+```
+
+The installed executable also needs an `@executable_path/lib` runtime search
+path and the staged `libonnxruntime*.dylib` files (including symlinks) in `$ADOC_INSTALL_ROOT/bin/lib`. The release workflow performs those packaging steps; plain Cargo install
+does not. This remains unverified on a hosted Intel native build.
