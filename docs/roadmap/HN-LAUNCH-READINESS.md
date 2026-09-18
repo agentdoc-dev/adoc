@@ -143,3 +143,10 @@ The local candidate is distinct from a public release.
 All five slices have accepted plans under `docs/plans/HN-*.md`. The implementation
 run is `hn-launch-implementation`; see the verification guide for evidence and the
 remaining merge/release boundaries.
+
+## Extended qualification
+
+The user requested deeper security, performance/accessibility, platform, pristine
+installation, desktop-client and live-fork evidence after this local delivery.
+See [HN-M4 through HN-M6](HN-LAUNCH-QUALIFICATION.md); these new slices are planned,
+not included in the completed HN-M1 through HN-M3 verification claim.

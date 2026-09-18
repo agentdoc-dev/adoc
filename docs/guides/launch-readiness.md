@@ -61,3 +61,5 @@ Detailed local logs live under `.git/agentic-workflow/hn-launch-implementation/`
 
 No merge, release publication, HN post, or issue closure was performed. Old
 issues #21-23 remain unconfirmed against current code, not claimed repaired.
+
+Extended qualification is separately planned in the [follow-up roadmap](../roadmap/HN-LAUNCH-QUALIFICATION.md). Its security, platform, performance/accessibility, clean-OS, desktop-client and live-fork checks are not yet completed.

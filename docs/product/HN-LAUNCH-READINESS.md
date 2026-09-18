@@ -1,7 +1,8 @@
 # Hacker News launch readiness
 
-Planning complete, 2026-09-18. Audit scope and positioning accepted in conversation;
-remediation is recommended work, not implemented or released.
+Initial implementation completed locally on 2026-09-18 at `ce836c1c`.
+See [verified candidate](../guides/launch-readiness.md). The user subsequently
+requested the extended qualification below; those checks are planned, not passed.
 
 ## Accepted scope and outcome
 
@@ -80,10 +81,35 @@ clear recovery rather than an unexplained failed command.
 
 Accepted: full audit; local CLI/agent knowledge leads; repository quality matters.
 Recommended: close the audit's before-launch findings in the linked slice order.
-Deferred: Windows expansion, package-manager distribution, new docs site,
-exhaustive penetration testing, performance benchmarking, Cloud launch, and HN
-post drafting. Deferred fixes do not justify hiding limitations.
+Still excluded: package-manager publication, new docs site, Cloud launch, and HN
+post drafting. The follow-up below supersedes the original Windows, deeper-security,
+and performance-testing deferrals. Deferred fixes do not justify hiding limitations.
 
-No material product question remains for this planning bundle. Implementation,
-repository settings, merges, release publication, and the HN post have not occurred.
-The planning-only run ends at this handoff; development requires a separate request.
+The initial implementation and selected repository settings are complete; merges,
+release publication, and the HN post have not occurred.
+
+
+## Extended qualification requested 2026-09-18
+
+Accepted clarification: performance/accessibility means **engineering evidence and
+accessibility testing**, not formal third-party certification. The user requested
+coverage of all remaining categories. Plans distinguish qualification from adding
+support or publishing: failure must remain visible until repaired and retested.
+
+| ID | Additional acceptance | Slice |
+|---|---|---|
+| HN-9 | Actual release-profile Cargo installation of both binaries into an isolated root passes fresh-project CLI/MCP smoke; installed paths and versions recorded | HN-M4.T1 |
+| HN-10 | Native Intel macOS runtime, extracted package, citations, MCP and real embeddings are exercised at the candidate SHA | HN-M4.T2 |
+| HN-11 | Native Windows compile/install/runtime qualification records `.exe`, paths/Unicode/CRLF, process cleanup, citations and MCP behavior; failures do not become an unsupported success claim | HN-M4.T3 |
+| HN-12 | A documented pristine-OS baseline installs only declared prerequisites and completes the journey with no shared tool/model/build caches; preloaded hosted runners do not establish this | HN-M4.T4 |
+| HN-13 | Current first-party security review has a complete file/threat-surface coverage ledger; all reachable Git history is scanned and security-relevant history manually investigated; findings and inaccessible history are explicit | HN-M5.T1 |
+| HN-14 | Reproducible time/memory measurements cover compile, lexical/semantic retrieval and MCP on disclosed datasets/hardware; correctness remains checked; no invented performance SLA | HN-M5.T2 |
+| HN-15 | Generated HTML and CLI usage receive automated plus manual accessibility testing, with per-criterion evidence, limitations and reproducible findings | HN-M5.T3 |
+| HN-16 | A named desktop MCP client is configured through its actual UI and visibly completes status/retrieval with the installed binary; headless protocol success is insufficient | HN-M6.T1 |
+| HN-17 | A real human fork PR demonstrates ordinary CI and intentional privileged-review exclusion, tied to its actual head/merge SHA and permission/approval state | HN-M6.T2 |
+
+[Qualification roadmap](../roadmap/HN-LAUNCH-QUALIFICATION.md) defines sequencing,
+contracts, evidence and environmental dependencies. The next detailed plan is
+[HN-M4.T1](../plans/HN-M4.T1.md). These new checks have not been executed by writing
+this plan. Security coverage is not proof of absence of vulnerabilities, and an
+engineering accessibility report is not certification.
