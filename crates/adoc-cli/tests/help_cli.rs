@@ -3,7 +3,7 @@ mod support;
 use support::{adoc_command, fixture_path, stderr, stdout, workspace_fixture_path};
 
 #[test]
-fn version_matches_the_v0_3_4_release() {
+fn version_matches_the_source_preview() {
     let output = adoc_command()
         .arg("--version")
         .output()
@@ -12,6 +12,21 @@ fn version_matches_the_v0_3_4_release() {
     assert_eq!(output.status.code(), Some(0));
     assert_eq!(stdout(&output), "adoc 0.4.0\n");
     assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn help_starts_with_everyday_commands_before_managed_runtime_commands() {
+    let output = adoc_command().arg("--help").output().expect("help runs");
+    assert!(output.status.success());
+    let text = stdout(&output);
+    let commands = text.split("Commands:\n").nth(1).expect("command list");
+    assert!(commands.trim_start().starts_with("init "));
+    assert!(
+        commands.find("search ").expect("search listed")
+            < commands
+                .find("migration-qualify ")
+                .expect("runtime command still listed")
+    );
 }
 
 #[test]

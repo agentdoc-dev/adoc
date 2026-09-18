@@ -70,3 +70,11 @@ binding the published prose to them.
   accessor in `adoc-core` — the only code the docs-truth slice ships.
 - Counts quoted in prose (e.g. "14 tools") remain unguarded; the anchored
   lists are the canonical claim, so prose should reference, not enumerate.
+
+## Amendment: launch documentation layout (2026-09-18)
+
+HN-M2.T1 moves the README's anchored tool list to `docs/reference/cli.md`
+and its anchored kind list to `docs/reference/source.md`. The MCP gateway
+guide remains guarded. `docs_manifest_guard.rs` reads those three surfaces
+with the same exact-set comparisons and missing-anchor failures; this
+changes the document locations, not the registry contract.

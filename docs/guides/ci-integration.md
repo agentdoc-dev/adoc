@@ -21,9 +21,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - id: agentdoc
-        uses: agentdoc-dev/action@9aed946ec7c6c29edb1fbd784d04833d7383c2e1 # v1.5.1
+        uses: agentdoc-dev/action@6c48dbef32d93d7e285b0e3c1919a3b562f49b1d # v1.6.1
         with:
-          adoc-version: v0.3.1
+          adoc-version: v0.3.2
           enforcement: advisory
           propose: false
       - name: Verify assessment evidence
@@ -74,8 +74,10 @@ Keep measured workflows pinned to immutable Action and AgentDoc versions. See
 the [action's README](https://github.com/agentdoc-dev/action) for all inputs,
 outputs, fork-PR behavior, and security notes.
 
-This repository's own `.github/workflows/adoc-pr.yml` is the continuously
-tested copy of this snippet.
+This is the repository's frozen, working **legacy release-track** receipt demo:
+`.github/workflows/adoc-pr.yml` pins Action v1.6.1 and CLI v0.3.2. It is not a
+continuous-test claim for this unreleased 0.4.0 source preview, whose graph/search
+formats differ. Use this snippet only with the matching released compatibility line.
 
 ## Appendix: raw workflow (non-GitHub CI, GitHub Enterprise)
 
@@ -85,10 +87,10 @@ GitHub-specific Action receipt.
 
 ```sh
 # install a released binary (or: cargo install --path crates/adoc-cli --locked)
-curl -fsSLO https://github.com/agentdoc-dev/adoc/releases/download/v0.3.1/adoc-v0.3.1-x86_64-unknown-linux-gnu.tar.gz
-curl -fsSLO https://github.com/agentdoc-dev/adoc/releases/download/v0.3.1/adoc-v0.3.1-x86_64-unknown-linux-gnu.tar.gz.sha256
-sha256sum -c adoc-v0.3.1-x86_64-unknown-linux-gnu.tar.gz.sha256
-tar -xzf adoc-v0.3.1-x86_64-unknown-linux-gnu.tar.gz
+curl -fsSLO https://github.com/agentdoc-dev/adoc/releases/download/v0.3.4/adoc-v0.3.4-x86_64-unknown-linux-gnu.tar.gz
+curl -fsSLO https://github.com/agentdoc-dev/adoc/releases/download/v0.3.4/adoc-v0.3.4-x86_64-unknown-linux-gnu.tar.gz.sha256
+sha256sum -c adoc-v0.3.4-x86_64-unknown-linux-gnu.tar.gz.sha256
+tar -xzf adoc-v0.3.4-x86_64-unknown-linux-gnu.tar.gz
 
 # BASE_REF and HEAD_REF are CI-provided commit refs; fetch both before resolving.
 requested_base_sha="$(git rev-parse "${BASE_REF:?set BASE_REF}")"

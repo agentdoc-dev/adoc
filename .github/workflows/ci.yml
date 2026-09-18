@@ -50,7 +50,7 @@ env:
 #
 #   * A `changes`/paths-filter lane. crates/adoc-mcp/tests/docs_manifest_guard.rs
 #     and roadmap_sync_guard.rs are ADR-0041 docs-truth guards that read
-#     README.md and docs/roadmap/v10/*.md, and examples/markdown-pilot/**/*.md
+#     docs/reference/*.md and docs/roadmap/v10/*.md, and examples/markdown-pilot/**/*.md
 #     are test inputs. A `!**/*.md` filter would report green on exactly the
 #     PRs those guards exist to catch. Markdown is source in this repo.
 #
@@ -80,6 +80,11 @@ jobs:
       # No cache and no compilation — rustfmt parses, it does not build. This
       # lane exists so the formatting verdict lands in ~20s instead of behind
       # a full test compile.
+      - name: Check documentation links
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p test_doc_links.py
+          python3 scripts/check-doc-links.py
+
       - name: Check formatting
         run: cargo fmt --all --check
 
