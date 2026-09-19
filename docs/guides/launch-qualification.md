@@ -151,3 +151,32 @@ absolute `project_root` of a built example. Ask for project status, then the
 refund claim and exact citation. Tool names and arguments should come from
 server discovery. Keep patch application disabled for this read-only journey.
 See the [MCP local-server guide](https://modelcontextprotocol.io/docs/develop/connect-local-servers).
+
+## Performance and accessibility scope
+
+The [performance baseline](performance-baseline.md) provides reproducible
+100/1,000/10,000-object measurements and raw correctness-checked samples.
+A small renderer repair gives task checkboxes accessible names. The rebuilt
+sample passed 23 axe-core 4.13.0 checks with zero violations or incomplete
+results, plus keyboard link navigation and 320-pixel reflow. Further
+accessibility qualification was removed from the launch gates by the user on
+2026-09-19. No screen-reader or conformance certification is claimed.
+
+## Native platform and fork status
+
+The real human-fork [draft PR #259](https://github.com/agentdoc-dev/adoc/pull/259)
+exercises candidate workflows with a harmless quickstart documentation change.
+Its base is the launch branch. The fork belongs to a maintainer; it does not prove
+first-time-contributor approval behavior. No merge or release was performed.
+
+On fork head `8888969a41d94053a04712c862be1bed80b247ec`,
+[required CI](https://github.com/agentdoc-dev/adoc/actions/runs/35434373274) and
+[Windows installation/runtime](https://github.com/agentdoc-dev/adoc/actions/runs/35434373133)
+passed. The [native package run](https://github.com/agentdoc-dev/adoc/actions/runs/35434373210)
+passed Linux x64, Linux ARM64 and macOS ARM64. Intel macOS remains in progress.
+The optional secret-backed Claude review was skipped as designed for a fork.
+
+These results bind to the recorded head; later security repairs require a new
+candidate check. An older success is not silently relabeled as the final binary.
+See [security qualification](security-qualification.md) for review scope and
+remaining dependency/resource/terminal limits.

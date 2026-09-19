@@ -1,7 +1,15 @@
 # Extended launch qualification
 
+Scope update, 2026-09-19: further accessibility qualification is no longer a
+launch gate, per the user. Retain the verified checkbox fix and completed
+browser evidence. Do not enable VoiceOver.
+
+
 Status: all nine slices planned; implementation explicitly authorized 2026-09-18.
-HN-M4.T1 installation is running; no new slice is marked passed yet.
+Cargo installation, Ubuntu VM installation, performance measurements and the real
+Claude Desktop UI journey have passed their recorded checks. Native final-candidate
+CI remains in progress. Security review, its repair checks and the coverage/disposition
+report are complete within the documented engineering scope.
 Baseline: `ce836c1c1ba94a579d3b022f9cb3337ae06ece0a`, branch
 `feat/hn-launch-readiness`. The preceding five implementation slices are complete.
 Authority: [HN-9 through HN-17](../product/HN-LAUNCH-READINESS.md#extended-qualification-requested-2026-09-18).
@@ -12,20 +20,20 @@ machines or checks are explicit pending items, never successful substitutes.
 
 ## Sequence and dependencies
 
-| Slice | Observable outcome | Depends on | Current feasibility |
+| Slice | Observable outcome | Depends on | Recorded status, 2026-09-19 |
 |---|---|---|---|
-| [HN-M4.T1](../plans/HN-M4.T1.md) | Cargo-installed CLI/MCP completes the first-use journey | Completed M1-M3 | Ready locally on macOS ARM64 |
-| HN-M4.T2 | Native Intel macOS package runs successfully | T1; candidate available to runner | Existing release matrix includes `macos-15-intel`; hosted run pending |
-| HN-M4.T3 | Windows runtime qualification with explicit failure/support disposition | T1 | Requires native Windows runner; existing smoke needs `.exe` support |
-| HN-M4.T4 | Reproducible installation on a pristine OS | T1; target-specific fixes | Clean VM/OS image needed; local Docker is Linux ARM64, not a pristine OS |
-| HN-M5.T1 | Full current-code and reachable-history security coverage | Frozen candidate | Local review possible; tools must be selected/pinned; remote-ref inventory needed |
-| HN-M5.T2 | Reproducible performance baseline with correctness evidence | T1; freeze any security fixes | Local measurements possible; no latency/memory SLA supplied |
-| HN-M5.T3 | HTML/CLI accessibility evidence and repaired blockers | T1; representative rendered fixtures | Manual keyboard/screen-reader access required |
-| HN-M6.T1 | Real desktop MCP UI configuration and cited answer | T1 | Claude Desktop is installed; login/permission state must be inspected |
-| HN-M6.T2 | Real fork PR proves contributor CI boundaries | Candidate workflows available as PR base | GitHub admin access verified; human fork context still needed |
+| [HN-M4.T1](../plans/HN-M4.T1.md) | Cargo-installed CLI/MCP completes the first-use journey | Completed M1-M3 | Passed: isolated release-profile CLI/MCP installs and real-model smoke |
+| HN-M4.T2 | Native Intel macOS package runs successfully | T1; candidate available to runner | Running: native Intel runner compiling pinned ONNX Runtime |
+| HN-M4.T3 | Windows runtime qualification with explicit failure/support disposition | T1 | Passed: native Windows installation and runtime job 35434373133 |
+| HN-M4.T4 | Reproducible installation on a pristine OS | T1; target-specific fixes | Passed: fresh Ubuntu ARM64 VM; offline runtime checked; pristine macOS/Windows untested |
+| HN-M5.T1 | Full current-code and reachable-history security coverage | Frozen candidate | Completed engineering review: scans triaged, repairs tested, residual limits documented |
+| HN-M5.T2 | Reproducible performance baseline with correctness evidence | T1; freeze any security fixes | Passed: three corpus sizes, correctness checks and retained raw samples |
+| HN-M5.T3 | HTML/CLI accessibility evidence and repaired blockers | T1; representative rendered fixtures | Closed by user: further accessibility qualification removed; existing fix retained |
+| HN-M6.T1 | Real desktop MCP UI configuration and cited answer | T1 | Passed: Claude Desktop UI status and cited answer; temporary configuration removed |
+| HN-M6.T2 | Real fork PR proves contributor CI boundaries | Candidate workflows available as PR base | Draft PR #259 running: required CI passed, Intel qualification pending |
 
-T1 is the next executable slice. M5.T1 can run independently against the same
-frozen SHA; subsequent repairs invalidate affected qualification evidence.
+Implementation is underway. M5.T1 runs against recorded source snapshots;
+subsequent repairs invalidate affected qualification evidence.
 T2/T3 require hosted execution; T4 must not reuse a preloaded hosted-runner result
 as proof of a pristine OS. M6.T2 must target the candidate's workflows, not silently
 exercise old main. Final closure requires every row passed or visibly unresolved.
@@ -148,8 +156,9 @@ image alternatives, focus/keyboard access, zoom/reflow and contrast. Include pro
 typed objects, relation links, quarantined markup and audience-restricted output.
 Retain escaping and visibility policy through any semantic HTML change.
 
-Combine automated checking with actual keyboard navigation and a named screen
-reader/browser combination (prefer installed VoiceOver/Safari). Inspect CLI plain
+Combine automated checking with actual keyboard navigation. The user explicitly
+excluded VoiceOver on 2026-09-18; do not enable it. Screen-reader runtime testing
+is outside the accepted scope. Inspect CLI plain
 output, NO_COLOR, errors and citations separately; a CLI accessibility check is
 not a WCAG certification. Record criteria as pass/fail/not-applicable/not-tested,
 with reasons. A scanner-only pass, generated screenshot, or inaccessible screen
