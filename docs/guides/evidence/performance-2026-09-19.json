@@ -1,0 +1,2525 @@
+{
+  "configuration": {
+    "embeddings": true,
+    "samples": 5,
+    "sizes": [
+      100,
+      1000,
+      10000
+    ],
+    "timeout_seconds": 180
+  },
+  "embedding_setup": {
+    "corpus_size": 1,
+    "model_cache_file_sha256": {
+      "models--Xenova--bge-small-en-v1.5/blobs/0c4d86248983ce46dfc09a9091b6f56bb0224550": "fa73f90bf92c8cace1fbcb709626306f2bdbc9ea3e5b5f94b440df9b6aa56350",
+      "models--Xenova--bge-small-en-v1.5/blobs/0c4d86248983ce46dfc09a9091b6f56bb0224550.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "models--Xenova--bge-small-en-v1.5/blobs/37fca74771bc76a8e01178ce3a6055a0995f8093": "9261e7d79b44c8195c1cada2b453e55b00aeb81e907a6664974b4d7776172ab3",
+      "models--Xenova--bge-small-en-v1.5/blobs/37fca74771bc76a8e01178ce3a6055a0995f8093.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "models--Xenova--bge-small-en-v1.5/blobs/688882a79f44442ddc1f60d70334a7ff5df0fb47": "d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66",
+      "models--Xenova--bge-small-en-v1.5/blobs/688882a79f44442ddc1f60d70334a7ff5df0fb47.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "models--Xenova--bge-small-en-v1.5/blobs/828e1496d7fabb79cfa4dcd84fa38625c0d3d21da474a00f08db0f559940cf35": "828e1496d7fabb79cfa4dcd84fa38625c0d3d21da474a00f08db0f559940cf35",
+      "models--Xenova--bge-small-en-v1.5/blobs/828e1496d7fabb79cfa4dcd84fa38625c0d3d21da474a00f08db0f559940cf35.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "models--Xenova--bge-small-en-v1.5/blobs/a8b3208c2884c4efb86e49300fdd3dc877220cdf": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3",
+      "models--Xenova--bge-small-en-v1.5/blobs/a8b3208c2884c4efb86e49300fdd3dc877220cdf.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "models--Xenova--bge-small-en-v1.5/refs/main": "cd8fbac16f7a06191eea8f95fd13050aa8401d3244ece0455b5e6549a7e58d4e",
+      "models--Xenova--bge-small-en-v1.5/snapshots/ea104dacec62c0de699686887e3f920caeb4f3e3/config.json": "fa73f90bf92c8cace1fbcb709626306f2bdbc9ea3e5b5f94b440df9b6aa56350",
+      "models--Xenova--bge-small-en-v1.5/snapshots/ea104dacec62c0de699686887e3f920caeb4f3e3/onnx/model.onnx": "828e1496d7fabb79cfa4dcd84fa38625c0d3d21da474a00f08db0f559940cf35",
+      "models--Xenova--bge-small-en-v1.5/snapshots/ea104dacec62c0de699686887e3f920caeb4f3e3/special_tokens_map.json": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3",
+      "models--Xenova--bge-small-en-v1.5/snapshots/ea104dacec62c0de699686887e3f920caeb4f3e3/tokenizer.json": "d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66",
+      "models--Xenova--bge-small-en-v1.5/snapshots/ea104dacec62c0de699686887e3f920caeb4f3e3/tokenizer_config.json": "9261e7d79b44c8195c1cada2b453e55b00aeb81e907a6664974b4d7776172ab3"
+    },
+    "note": "Setup includes model initialization and one embedding; it is not model-download timing.",
+    "samples": [
+      {
+        "command": [
+          "$ADOC_BIN_DIR/adoc",
+          "build"
+        ],
+        "correct": true,
+        "elapsed_seconds": 5.918862040998647,
+        "exit_code": 0,
+        "peak_rss": 279363584,
+        "peak_rss_note": null,
+        "peak_rss_unit": "bytes",
+        "scenario": "embedding_model_provision",
+        "stderr_sha256": "7120afb6f401dc06fdc691de25e7097ddeb91919e99489e1f747a8516a2eaafa",
+        "stdout_sha256": "09c44f218ab4c963601377089d3b0c9717dd4805c95a0d415fd3b43da4d6f9b2",
+        "timeout_seconds": 180
+      }
+    ],
+    "source_sha256": "3dbc11da9bad87147f893b0c8b0d97105054803451801e137178128022d251d4"
+  },
+  "limitations": [
+    "No percentile, SLA, cross-host comparison, or cache-cold claim is made.",
+    "Embedding setup includes model initialization and one embedding; model download is not timed separately.",
+    "Synthetic corpus generation requires no network; embedding provisioning may require model access."
+  ],
+  "metadata": {
+    "binaries": {
+      "adoc": "a3e220af47a9ea2e1906ba3a73192ef0db3df9ae65453b3bdd18b31cf46cbeca",
+      "adoc-mcp": "96621ba2590ad57e9592ee0f20d4adad2fe008233cc6f4d3418bf4216b54d639"
+    },
+    "binary_source_revision": "working-tree:19f7888b03eee2e8f9aaee23b19da0e2fe37979ef411e31abba1ab762c72b66a",
+    "cpu": "arm",
+    "harness_revision": "f04f55a3a82ff526fccc563b92136df6dc6790a7",
+    "logical_cpu_count": 8,
+    "machine": "arm64",
+    "platform": "macOS-27.0-arm64-arm-64bit",
+    "python": "3.11.6 (v3.11.6:8b6ee5ba3b, Oct  2 2023, 11:18:21) [Clang 13.0.0 (clang-1300.0.29.30)]",
+    "harness_sha256": "56b3f1a92b7cc9f43c10317c533323197d30de9787048371fa640de7057b3860",
+    "path_redaction": "Disposable installation and corpus prefixes replaced with placeholders; raw observations unchanged."
+  },
+  "runs": [
+    {
+      "embedding_model": {
+        "dim": 384,
+        "id": "bge-small-en-v1.5",
+        "provider": "fastembed"
+      },
+      "samples": [
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "init"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.6976734999916516,
+          "exit_code": 0,
+          "peak_rss": 10240000,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "setup_init",
+          "stderr_sha256": "aed5f1a356d67f9e44bdadb0715966db5a6d84925059220242bcc5ec1902ba7f",
+          "stdout_sha256": "24b0bc292d02c6680d9084f0d02a87873b343f8422396a4ff3a4ce8969461566",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "check"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.01615395798580721,
+          "exit_code": 0,
+          "peak_rss": 14254080,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "check",
+          "stderr_sha256": "2a7f603f28d145773126148feb69595a70e415907453cf7dad922262aeda9c42",
+          "stdout_sha256": "14010cd5eacf87dd3f8533757328cbe369f0d803991ab127a7fe95dd400ce94b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build",
+            "--no-embeddings"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.01633050001692027,
+          "exit_code": 0,
+          "peak_rss": 14352384,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_no_embeddings",
+          "stderr_sha256": "eab0b25ec407d7b7d3b7ab6b479bde33a4c1129ed15b575e9b30ba1bba1e68cd",
+          "stdout_sha256": "ac2754ca74f1f2792cfb92d218cab83e6ab3de6bb62b07d8f29121fcfc05ce7b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--lexical",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.01684058300452307,
+          "exit_code": 0,
+          "peak_rss": 14303232,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_lexical",
+          "stderr_sha256": "5a8632eb99f316cbec515e6c2439957b911558d524c3e167967b75add49f3d99",
+          "stdout_sha256": "66fa7dc4b0d47dbeda040c3e68a7cc53240a7add91c312fef000f5906367be00",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "check"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.015215583000099286,
+          "exit_code": 0,
+          "peak_rss": 14368768,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "check",
+          "stderr_sha256": "f2225b094de3135a0d6d1e85e2510581cc1854e2f9e06829fb095b32d65840cc",
+          "stdout_sha256": "14010cd5eacf87dd3f8533757328cbe369f0d803991ab127a7fe95dd400ce94b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build",
+            "--no-embeddings"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.016082874994026497,
+          "exit_code": 0,
+          "peak_rss": 14565376,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_no_embeddings",
+          "stderr_sha256": "3bafe20ac9a77e015925e53a696bf15e2c80997df8533ec0f93902507181e89f",
+          "stdout_sha256": "ac2754ca74f1f2792cfb92d218cab83e6ab3de6bb62b07d8f29121fcfc05ce7b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--lexical",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.014752958988538012,
+          "exit_code": 0,
+          "peak_rss": 14237696,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_lexical",
+          "stderr_sha256": "b36f11c536f6f815fea8c570aae00cfc52b8840fe93afa0f8989f6c5848075d9",
+          "stdout_sha256": "66fa7dc4b0d47dbeda040c3e68a7cc53240a7add91c312fef000f5906367be00",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "check"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.015083208010764793,
+          "exit_code": 0,
+          "peak_rss": 14319616,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "check",
+          "stderr_sha256": "efe0c9a278c1a23d41813eb0057f40048846df88f94895ccadc08fc6c2e35a61",
+          "stdout_sha256": "14010cd5eacf87dd3f8533757328cbe369f0d803991ab127a7fe95dd400ce94b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build",
+            "--no-embeddings"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.016145083005540073,
+          "exit_code": 0,
+          "peak_rss": 14467072,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_no_embeddings",
+          "stderr_sha256": "a8eb5f85e1e493692942c9768090a7503b6f7c66946634f0483199ee1980c557",
+          "stdout_sha256": "ac2754ca74f1f2792cfb92d218cab83e6ab3de6bb62b07d8f29121fcfc05ce7b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--lexical",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.015553624980384484,
+          "exit_code": 0,
+          "peak_rss": 14319616,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_lexical",
+          "stderr_sha256": "1a75d3bf05a5b9c349a13834378cf7eb02f772f77ec259de19db42b168dec48c",
+          "stdout_sha256": "66fa7dc4b0d47dbeda040c3e68a7cc53240a7add91c312fef000f5906367be00",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "check"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.01715612501720898,
+          "exit_code": 0,
+          "peak_rss": 14368768,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "check",
+          "stderr_sha256": "5b7a1e8a741133e9640987dab865a8f0ef4848e36a51a27ebde0d9e409c43dfd",
+          "stdout_sha256": "14010cd5eacf87dd3f8533757328cbe369f0d803991ab127a7fe95dd400ce94b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build",
+            "--no-embeddings"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.015946458996040747,
+          "exit_code": 0,
+          "peak_rss": 14467072,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_no_embeddings",
+          "stderr_sha256": "8e23b83d7dc42653b63bfdadb00809a3bfdf2969ba5000bfd3db9af063ecd84c",
+          "stdout_sha256": "ac2754ca74f1f2792cfb92d218cab83e6ab3de6bb62b07d8f29121fcfc05ce7b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--lexical",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.015331582981161773,
+          "exit_code": 0,
+          "peak_rss": 14319616,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_lexical",
+          "stderr_sha256": "d114c7845c7bbbb99b6ee245dda63b15a590dc9ae406ac6b4ee5ab9017b3deb1",
+          "stdout_sha256": "66fa7dc4b0d47dbeda040c3e68a7cc53240a7add91c312fef000f5906367be00",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "check"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.017750041995896026,
+          "exit_code": 0,
+          "peak_rss": 14204928,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "check",
+          "stderr_sha256": "6aea28911d5ccdb81b5ac94bc849c2afdf6be34af202d6bce55137cab2cf3794",
+          "stdout_sha256": "14010cd5eacf87dd3f8533757328cbe369f0d803991ab127a7fe95dd400ce94b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build",
+            "--no-embeddings"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.016656249994412065,
+          "exit_code": 0,
+          "peak_rss": 14467072,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_no_embeddings",
+          "stderr_sha256": "9bdef6301edc8756c7ecacc8697724f3dafe69399fd0b3012938736475f6b94e",
+          "stdout_sha256": "ac2754ca74f1f2792cfb92d218cab83e6ab3de6bb62b07d8f29121fcfc05ce7b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--lexical",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.014738082973053679,
+          "exit_code": 0,
+          "peak_rss": 14286848,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_lexical",
+          "stderr_sha256": "c6f3c23a204e0d0fcde84a586c32a53a587b12e766f3c9a17c0c792569945cc6",
+          "stdout_sha256": "66fa7dc4b0d47dbeda040c3e68a7cc53240a7add91c312fef000f5906367be00",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.7400958340149373,
+          "exit_code": 0,
+          "peak_rss": 348143616,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_embeddings_first_computed",
+          "stderr_sha256": "2f238b9e12cb1196436fca783a56932add8252a6c086372ebe85ed8f3368e87a",
+          "stdout_sha256": "ccf7efbcd1a45e34ec314aab77b975fcbca5fec71c5e47556ea6669d15893fb6",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.20032800000626594,
+          "exit_code": 0,
+          "peak_rss": 278151168,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_embeddings_cached",
+          "stderr_sha256": "a5fc85d7b2c620e71e9b4e81c240134aedcdab203b01ce202f6fdf0c2fcc8ce5",
+          "stdout_sha256": "cae0af2055ad24cecc4c84dfb6a092b0f71ff391dde0ba3766558d9ef1f5bfaa",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--semantic",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.19407079101074487,
+          "exit_code": 0,
+          "peak_rss": 281329664,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_semantic",
+          "stderr_sha256": "ddbcb110e5e46889bda8760e7240f3d9c39a03d4d138133f9804cff780ae3162",
+          "stdout_sha256": "731f60fe429e2af392d03421a4c15636a52a20dea5f24c92da417664215e4c89",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.20334612499573268,
+          "exit_code": 0,
+          "peak_rss": 279281664,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_hybrid",
+          "stderr_sha256": "c92071818dfed7f2769f56e9a8a39d026e9656c468fdf4dc0cbe0d09c5a8c8b7",
+          "stdout_sha256": "845fd363802b5726dd0b689e171783e4e9c18441b5cf56b04e09fff400f91313",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.19024912497843616,
+          "exit_code": 0,
+          "peak_rss": 275218432,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_embeddings_cached",
+          "stderr_sha256": "165943fe232d8bb9924f4b47f12c8ff8f55ef590b719198ef60a6f124df91c21",
+          "stdout_sha256": "cae0af2055ad24cecc4c84dfb6a092b0f71ff391dde0ba3766558d9ef1f5bfaa",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--semantic",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.20407104201149195,
+          "exit_code": 0,
+          "peak_rss": 279199744,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_semantic",
+          "stderr_sha256": "4b1db32e3f9321f3087316403ec9f23b1385e1fe79f7f10fc1928312cd511433",
+          "stdout_sha256": "731f60fe429e2af392d03421a4c15636a52a20dea5f24c92da417664215e4c89",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.19530791699071415,
+          "exit_code": 0,
+          "peak_rss": 282394624,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_hybrid",
+          "stderr_sha256": "77b6722cffc57192caa54f71d1f82a9d91afbce3ab1634f429fbfe25b1b4c3b4",
+          "stdout_sha256": "845fd363802b5726dd0b689e171783e4e9c18441b5cf56b04e09fff400f91313",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.19069083401700482,
+          "exit_code": 0,
+          "peak_rss": 273039360,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_embeddings_cached",
+          "stderr_sha256": "25f4aba0df7704ec77a024df80bc48da60bf2f46c8637031d2d36f2cd212e0b1",
+          "stdout_sha256": "cae0af2055ad24cecc4c84dfb6a092b0f71ff391dde0ba3766558d9ef1f5bfaa",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--semantic",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.19475041702389717,
+          "exit_code": 0,
+          "peak_rss": 275283968,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_semantic",
+          "stderr_sha256": "b31f59c784a74d10b5172c59b5432b1bb4d5fa42fa5c14d7c774e342bd90fca0",
+          "stdout_sha256": "731f60fe429e2af392d03421a4c15636a52a20dea5f24c92da417664215e4c89",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.19944287498947233,
+          "exit_code": 0,
+          "peak_rss": 280215552,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_hybrid",
+          "stderr_sha256": "9684364c22d3e58a23b067051d4ac7fa6f0312bb7d106d47f74778c49098a6fc",
+          "stdout_sha256": "845fd363802b5726dd0b689e171783e4e9c18441b5cf56b04e09fff400f91313",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.19755174999590963,
+          "exit_code": 0,
+          "peak_rss": 284344320,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_embeddings_cached",
+          "stderr_sha256": "31437cf33c06bb024b57d3cfb79ddec492f9877fe683cca43db7e3c097c1bd76",
+          "stdout_sha256": "cae0af2055ad24cecc4c84dfb6a092b0f71ff391dde0ba3766558d9ef1f5bfaa",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--semantic",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.21936041698791087,
+          "exit_code": 0,
+          "peak_rss": 271335424,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_semantic",
+          "stderr_sha256": "a6ed3e12cdaccafedf704cd0b39ee4518a1193df93e336df3e8bb4c2115ac506",
+          "stdout_sha256": "731f60fe429e2af392d03421a4c15636a52a20dea5f24c92da417664215e4c89",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.2010250829916913,
+          "exit_code": 0,
+          "peak_rss": 289669120,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_hybrid",
+          "stderr_sha256": "67d86e9cb4d0dc7aeef478646b03ad329c1fc7209555adad011418d1fcef33be",
+          "stdout_sha256": "845fd363802b5726dd0b689e171783e4e9c18441b5cf56b04e09fff400f91313",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.1895073330088053,
+          "exit_code": 0,
+          "peak_rss": 273973248,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_embeddings_cached",
+          "stderr_sha256": "86ab0fc5628ac668198fb6eb8fa58243a5ef88483df53a69a2ee3bfdd161f4b6",
+          "stdout_sha256": "cae0af2055ad24cecc4c84dfb6a092b0f71ff391dde0ba3766558d9ef1f5bfaa",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--semantic",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.1922961660020519,
+          "exit_code": 0,
+          "peak_rss": 271335424,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_semantic",
+          "stderr_sha256": "4d08544ec38de9580b2f3291272b54433804d4e3f800b34ae03e7e7500bf2578",
+          "stdout_sha256": "731f60fe429e2af392d03421a4c15636a52a20dea5f24c92da417664215e4c89",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.19705158300348558,
+          "exit_code": 0,
+          "peak_rss": 275398656,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_hybrid",
+          "stderr_sha256": "086527d48317e74fc8059464aa5bdcc098656368c2dee74aa87ce4d6a87d4740",
+          "stdout_sha256": "845fd363802b5726dd0b689e171783e4e9c18441b5cf56b04e09fff400f91313",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc-mcp"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.642538375017466,
+          "interaction": "initialize, notifications/initialized, tools/list",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d5f8b3c5bec6660a9e811c8ca572a158cad34d88e1fb839be0da648bd25c719c",
+          "scenario": "mcp_startup",
+          "timeout_seconds": 30
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc-mcp"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.015579083992633969,
+          "interaction": "initialize, notifications/initialized, tools/list",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d5f8b3c5bec6660a9e811c8ca572a158cad34d88e1fb839be0da648bd25c719c",
+          "scenario": "mcp_startup",
+          "timeout_seconds": 30
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc-mcp"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.012520791991846636,
+          "interaction": "initialize, notifications/initialized, tools/list",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d5f8b3c5bec6660a9e811c8ca572a158cad34d88e1fb839be0da648bd25c719c",
+          "scenario": "mcp_startup",
+          "timeout_seconds": 30
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc-mcp"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.011009000008925796,
+          "interaction": "initialize, notifications/initialized, tools/list",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d5f8b3c5bec6660a9e811c8ca572a158cad34d88e1fb839be0da648bd25c719c",
+          "scenario": "mcp_startup",
+          "timeout_seconds": 30
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc-mcp"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.011645791004411876,
+          "interaction": "initialize, notifications/initialized, tools/list",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d5f8b3c5bec6660a9e811c8ca572a158cad34d88e1fb839be0da648bd25c719c",
+          "scenario": "mcp_startup",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.04398024998954497,
+          "interaction": "tools/call adoc_project_status",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "2ab15cf47c8f5db7d4e42c807d210e95f16c76ab60939340056f9e4eac4fc767",
+          "scenario": "mcp_status",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.0015814579965081066,
+          "interaction": "tools/call adoc_why",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d15fcd4f81ae2484a3332c41cae19342fd57b22c10e288eb175d6ca13ff8e592",
+          "scenario": "mcp_why",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.045085833000484854,
+          "interaction": "tools/call adoc_project_status",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "2ab15cf47c8f5db7d4e42c807d210e95f16c76ab60939340056f9e4eac4fc767",
+          "scenario": "mcp_status",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.001494875003118068,
+          "interaction": "tools/call adoc_why",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d15fcd4f81ae2484a3332c41cae19342fd57b22c10e288eb175d6ca13ff8e592",
+          "scenario": "mcp_why",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.044260916009079665,
+          "interaction": "tools/call adoc_project_status",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "2ab15cf47c8f5db7d4e42c807d210e95f16c76ab60939340056f9e4eac4fc767",
+          "scenario": "mcp_status",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.0015648750122636557,
+          "interaction": "tools/call adoc_why",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d15fcd4f81ae2484a3332c41cae19342fd57b22c10e288eb175d6ca13ff8e592",
+          "scenario": "mcp_why",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.04388433397980407,
+          "interaction": "tools/call adoc_project_status",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "2ab15cf47c8f5db7d4e42c807d210e95f16c76ab60939340056f9e4eac4fc767",
+          "scenario": "mcp_status",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.0016076250176411122,
+          "interaction": "tools/call adoc_why",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d15fcd4f81ae2484a3332c41cae19342fd57b22c10e288eb175d6ca13ff8e592",
+          "scenario": "mcp_why",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.041711958998348564,
+          "interaction": "tools/call adoc_project_status",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "2ab15cf47c8f5db7d4e42c807d210e95f16c76ab60939340056f9e4eac4fc767",
+          "scenario": "mcp_status",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.0016695419908501208,
+          "interaction": "tools/call adoc_why",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d15fcd4f81ae2484a3332c41cae19342fd57b22c10e288eb175d6ca13ff8e592",
+          "scenario": "mcp_why",
+          "timeout_seconds": 30
+        }
+      ],
+      "size": 100,
+      "source_sha256": "fca530f128e1aba9cc1d43de31ebc1f0af184efd63d66228954969075ff37f0a",
+      "summary": {
+        "build_embeddings_cached": {
+          "maximum_seconds": 0.20032800000626594,
+          "median_seconds": 0.19069083401700482,
+          "minimum_seconds": 0.1895073330088053,
+          "sample_count": 5
+        },
+        "build_embeddings_first_computed": {
+          "maximum_seconds": 0.7400958340149373,
+          "median_seconds": 0.7400958340149373,
+          "minimum_seconds": 0.7400958340149373,
+          "sample_count": 1
+        },
+        "build_no_embeddings": {
+          "maximum_seconds": 0.016656249994412065,
+          "median_seconds": 0.016145083005540073,
+          "minimum_seconds": 0.015946458996040747,
+          "sample_count": 5
+        },
+        "check": {
+          "maximum_seconds": 0.017750041995896026,
+          "median_seconds": 0.01615395798580721,
+          "minimum_seconds": 0.015083208010764793,
+          "sample_count": 5
+        },
+        "mcp_startup": {
+          "maximum_seconds": 0.642538375017466,
+          "median_seconds": 0.012520791991846636,
+          "minimum_seconds": 0.011009000008925796,
+          "sample_count": 5
+        },
+        "mcp_status": {
+          "maximum_seconds": 0.045085833000484854,
+          "median_seconds": 0.04398024998954497,
+          "minimum_seconds": 0.041711958998348564,
+          "sample_count": 5
+        },
+        "mcp_why": {
+          "maximum_seconds": 0.0016695419908501208,
+          "median_seconds": 0.0015814579965081066,
+          "minimum_seconds": 0.001494875003118068,
+          "sample_count": 5
+        },
+        "search_hybrid": {
+          "maximum_seconds": 0.20334612499573268,
+          "median_seconds": 0.19944287498947233,
+          "minimum_seconds": 0.19530791699071415,
+          "sample_count": 5
+        },
+        "search_lexical": {
+          "maximum_seconds": 0.01684058300452307,
+          "median_seconds": 0.015331582981161773,
+          "minimum_seconds": 0.014738082973053679,
+          "sample_count": 5
+        },
+        "search_semantic": {
+          "maximum_seconds": 0.21936041698791087,
+          "median_seconds": 0.19475041702389717,
+          "minimum_seconds": 0.1922961660020519,
+          "sample_count": 5
+        },
+        "setup_init": {
+          "maximum_seconds": 0.6976734999916516,
+          "median_seconds": 0.6976734999916516,
+          "minimum_seconds": 0.6976734999916516,
+          "sample_count": 1
+        }
+      }
+    },
+    {
+      "embedding_model": {
+        "dim": 384,
+        "id": "bge-small-en-v1.5",
+        "provider": "fastembed"
+      },
+      "samples": [
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "check"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.027803874982055277,
+          "exit_code": 0,
+          "peak_rss": 21250048,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "check",
+          "stderr_sha256": "f16d136191cfd30d17ab68ed5dfd4675a7bf825c92ae53d0db4de0bf681713ee",
+          "stdout_sha256": "14010cd5eacf87dd3f8533757328cbe369f0d803991ab127a7fe95dd400ce94b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build",
+            "--no-embeddings"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.02551825001137331,
+          "exit_code": 0,
+          "peak_rss": 22626304,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_no_embeddings",
+          "stderr_sha256": "5dfb1da5e17d73d934512e5041c9380235f6aa1f7278d5d8c0d7622535ab783b",
+          "stdout_sha256": "ac2754ca74f1f2792cfb92d218cab83e6ab3de6bb62b07d8f29121fcfc05ce7b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--lexical",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.026078957977006212,
+          "exit_code": 0,
+          "peak_rss": 25051136,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_lexical",
+          "stderr_sha256": "5a8c28c1dd80314b1fe6c2bae65e604ad2792a7076c9de128d28e6cce0c5679c",
+          "stdout_sha256": "66fa7dc4b0d47dbeda040c3e68a7cc53240a7add91c312fef000f5906367be00",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "check"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.02696404099697247,
+          "exit_code": 0,
+          "peak_rss": 21561344,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "check",
+          "stderr_sha256": "bece61441ead377493e498e2fb544a42f4ba3d2fccb9380c31ea9c64794872a6",
+          "stdout_sha256": "14010cd5eacf87dd3f8533757328cbe369f0d803991ab127a7fe95dd400ce94b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build",
+            "--no-embeddings"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.028937334020156413,
+          "exit_code": 0,
+          "peak_rss": 22806528,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_no_embeddings",
+          "stderr_sha256": "124f5ad7a1f76cd549650f50f7333815b7881835e94e6728cef009ef072e1b49",
+          "stdout_sha256": "ac2754ca74f1f2792cfb92d218cab83e6ab3de6bb62b07d8f29121fcfc05ce7b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--lexical",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.026710999984061345,
+          "exit_code": 0,
+          "peak_rss": 25034752,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_lexical",
+          "stderr_sha256": "edf649b719264dc11c4989a96d60498a4bfa015727b69bc9296584ebc7e1a3d5",
+          "stdout_sha256": "66fa7dc4b0d47dbeda040c3e68a7cc53240a7add91c312fef000f5906367be00",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "check"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.026668582984711975,
+          "exit_code": 0,
+          "peak_rss": 21299200,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "check",
+          "stderr_sha256": "bf8706457a67d9fb2a4660e3e6560709513537fa0efc86ce7ce4d7d2a8069678",
+          "stdout_sha256": "14010cd5eacf87dd3f8533757328cbe369f0d803991ab127a7fe95dd400ce94b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build",
+            "--no-embeddings"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.02923049998935312,
+          "exit_code": 0,
+          "peak_rss": 22626304,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_no_embeddings",
+          "stderr_sha256": "84b84e94166e935cb94b82f27c9dbb72096946afe3c80ddde8a5a6cbb5f96589",
+          "stdout_sha256": "ac2754ca74f1f2792cfb92d218cab83e6ab3de6bb62b07d8f29121fcfc05ce7b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--lexical",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.025989582994952798,
+          "exit_code": 0,
+          "peak_rss": 25296896,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_lexical",
+          "stderr_sha256": "b1bbe3b5a1369a8a6d06b2ea09800bafb8c1bf17beec7a94c25bf7c190758eb0",
+          "stdout_sha256": "66fa7dc4b0d47dbeda040c3e68a7cc53240a7add91c312fef000f5906367be00",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "check"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.024320291995536536,
+          "exit_code": 0,
+          "peak_rss": 21495808,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "check",
+          "stderr_sha256": "296b5bce7c4e9b6819e72df95ce2e0ad31bf6ef989a5e770b3502084524804fc",
+          "stdout_sha256": "14010cd5eacf87dd3f8533757328cbe369f0d803991ab127a7fe95dd400ce94b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build",
+            "--no-embeddings"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.02934616699349135,
+          "exit_code": 0,
+          "peak_rss": 22773760,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_no_embeddings",
+          "stderr_sha256": "63e54de5a3263d9fb7e4bd5abd2dc7f69904326ffa1cb8b87fbfdbb979bedd75",
+          "stdout_sha256": "ac2754ca74f1f2792cfb92d218cab83e6ab3de6bb62b07d8f29121fcfc05ce7b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--lexical",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.027181292010936886,
+          "exit_code": 0,
+          "peak_rss": 25083904,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_lexical",
+          "stderr_sha256": "083cb37dd560ff17799df3f6467d05cee347971ff9f9933d953abb4ec399ce45",
+          "stdout_sha256": "66fa7dc4b0d47dbeda040c3e68a7cc53240a7add91c312fef000f5906367be00",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "check"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.028599249984836206,
+          "exit_code": 0,
+          "peak_rss": 21266432,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "check",
+          "stderr_sha256": "e521d84e98297714f556a783ea9e5e64724c9af2731e4101c7f372563598b240",
+          "stdout_sha256": "14010cd5eacf87dd3f8533757328cbe369f0d803991ab127a7fe95dd400ce94b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build",
+            "--no-embeddings"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.03105374998995103,
+          "exit_code": 0,
+          "peak_rss": 23363584,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_no_embeddings",
+          "stderr_sha256": "cc0ec6ada70e20b4d58ed9825cd50893b10051def32bf42cf0f0f60c966d6fa4",
+          "stdout_sha256": "ac2754ca74f1f2792cfb92d218cab83e6ab3de6bb62b07d8f29121fcfc05ce7b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--lexical",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.02734295799746178,
+          "exit_code": 0,
+          "peak_rss": 25362432,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_lexical",
+          "stderr_sha256": "0741dd9111a775ec23efd5db565bc197c51051ec5b4a6ec1869f6fb23192f7ad",
+          "stdout_sha256": "66fa7dc4b0d47dbeda040c3e68a7cc53240a7add91c312fef000f5906367be00",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build"
+          ],
+          "correct": true,
+          "elapsed_seconds": 6.429381791997002,
+          "exit_code": 0,
+          "peak_rss": 678264832,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_embeddings_first_computed",
+          "stderr_sha256": "ac04ded0d4be50455b3d2c364a894d6231fff8f48ee32954e241097076b97032",
+          "stdout_sha256": "585d91c6ee79b4f2eaaa60f50b4cd31875553ab6fb9620987891230c99c49b3a",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.26621854200493544,
+          "exit_code": 0,
+          "peak_rss": 304906240,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_embeddings_cached",
+          "stderr_sha256": "f851cd72784e0e865790c62a19a3d082c6f710f52a032e33bcd604389033bdf5",
+          "stdout_sha256": "0fc9d671491894028798be61dc7372f306b0c5a06cabc1f3726bbd0b006288c2",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--semantic",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.23071720800362527,
+          "exit_code": 0,
+          "peak_rss": 294567936,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_semantic",
+          "stderr_sha256": "cbbe7551409c3208bb1b5e928fee72321cdd7fcf30c3776cdce9ae45c24013a2",
+          "stdout_sha256": "f8a3d5075adcc32e8f964da750405bd93ae2721c0c2fb7c733058f0aa8f920ea",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.23042620799969882,
+          "exit_code": 0,
+          "peak_rss": 289865728,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_hybrid",
+          "stderr_sha256": "56e53ff75af0a1f7c989287328960937c1f25ebd1e9f562bb5c401d1522cdb2d",
+          "stdout_sha256": "9a33b7e48b134262bff9f347f19804758fd3aaa47ce371f268755a487e9ffb79",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.2766146670037415,
+          "exit_code": 0,
+          "peak_rss": 301498368,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_embeddings_cached",
+          "stderr_sha256": "4e8dacb4f29f52455636891faa8d527496f5f705fca45bdf885f4e8cfa2fede8",
+          "stdout_sha256": "0fc9d671491894028798be61dc7372f306b0c5a06cabc1f3726bbd0b006288c2",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--semantic",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.2295201660017483,
+          "exit_code": 0,
+          "peak_rss": 295895040,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_semantic",
+          "stderr_sha256": "711a2ceef05a235d85199ff2392bd139eaa779b00e52e4cb13456aaf78cf78a0",
+          "stdout_sha256": "f8a3d5075adcc32e8f964da750405bd93ae2721c0c2fb7c733058f0aa8f920ea",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.24748224997892976,
+          "exit_code": 0,
+          "peak_rss": 290668544,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_hybrid",
+          "stderr_sha256": "fc8fcbe0919da97154c075afad65ae934f7c16364f85a2a0b21438291186da0d",
+          "stdout_sha256": "9a33b7e48b134262bff9f347f19804758fd3aaa47ce371f268755a487e9ffb79",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.28792295799939893,
+          "exit_code": 0,
+          "peak_rss": 298942464,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_embeddings_cached",
+          "stderr_sha256": "1d290c540e53fd2004822036d88a572028cc7abe25b2ee850d4b2f873b2193ac",
+          "stdout_sha256": "0fc9d671491894028798be61dc7372f306b0c5a06cabc1f3726bbd0b006288c2",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--semantic",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.5835425830155145,
+          "exit_code": 0,
+          "peak_rss": 290177024,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_semantic",
+          "stderr_sha256": "875dc212476b710bdac9829f121b8661df5a8564bdb24d1c5ca58851213245c2",
+          "stdout_sha256": "f8a3d5075adcc32e8f964da750405bd93ae2721c0c2fb7c733058f0aa8f920ea",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.29618362500332296,
+          "exit_code": 0,
+          "peak_rss": 295583744,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_hybrid",
+          "stderr_sha256": "a15e87a757e49d303b7231165d60203c6ca8b41d632a686fdc5a3b585894019a",
+          "stdout_sha256": "9a33b7e48b134262bff9f347f19804758fd3aaa47ce371f268755a487e9ffb79",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.29595637499005534,
+          "exit_code": 0,
+          "peak_rss": 298975232,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_embeddings_cached",
+          "stderr_sha256": "0bcd0bc5eecae90f8c53ed0a2814612d7fdc00ec41c2bcd88522c245f838a9f6",
+          "stdout_sha256": "0fc9d671491894028798be61dc7372f306b0c5a06cabc1f3726bbd0b006288c2",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--semantic",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.24466600001323968,
+          "exit_code": 0,
+          "peak_rss": 289292288,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_semantic",
+          "stderr_sha256": "98a0082298e98b721d6bc2d55074fb12467c35c5c7672c03e0103bb73e0259cd",
+          "stdout_sha256": "f8a3d5075adcc32e8f964da750405bd93ae2721c0c2fb7c733058f0aa8f920ea",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.26044741601799615,
+          "exit_code": 0,
+          "peak_rss": 289439744,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_hybrid",
+          "stderr_sha256": "a06be9e52d20451ca60d9aefc8416477300f435126a2f60628bd92a84b87d2d6",
+          "stdout_sha256": "9a33b7e48b134262bff9f347f19804758fd3aaa47ce371f268755a487e9ffb79",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.2712676659866702,
+          "exit_code": 0,
+          "peak_rss": 303382528,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_embeddings_cached",
+          "stderr_sha256": "03406c16ddd50c3f1b74c4f4beb08a278aa5918a8035e42477fe1e3e75eb7d1a",
+          "stdout_sha256": "0fc9d671491894028798be61dc7372f306b0c5a06cabc1f3726bbd0b006288c2",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--semantic",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.23554908300866373,
+          "exit_code": 0,
+          "peak_rss": 292667392,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_semantic",
+          "stderr_sha256": "d06a08445e049b7d7184cb3fc233b2187346bc7fc7068de56d2e8908a3241d61",
+          "stdout_sha256": "f8a3d5075adcc32e8f964da750405bd93ae2721c0c2fb7c733058f0aa8f920ea",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.23050029098521918,
+          "exit_code": 0,
+          "peak_rss": 289619968,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_hybrid",
+          "stderr_sha256": "b5db60baa7779b19913cba8b44b3780b6bb14a114bd987e6d9caf5596f16d2fc",
+          "stdout_sha256": "9a33b7e48b134262bff9f347f19804758fd3aaa47ce371f268755a487e9ffb79",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc-mcp"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.011915624985704198,
+          "interaction": "initialize, notifications/initialized, tools/list",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d5f8b3c5bec6660a9e811c8ca572a158cad34d88e1fb839be0da648bd25c719c",
+          "scenario": "mcp_startup",
+          "timeout_seconds": 30
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc-mcp"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.01954783301334828,
+          "interaction": "initialize, notifications/initialized, tools/list",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d5f8b3c5bec6660a9e811c8ca572a158cad34d88e1fb839be0da648bd25c719c",
+          "scenario": "mcp_startup",
+          "timeout_seconds": 30
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc-mcp"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.013109499996062368,
+          "interaction": "initialize, notifications/initialized, tools/list",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d5f8b3c5bec6660a9e811c8ca572a158cad34d88e1fb839be0da648bd25c719c",
+          "scenario": "mcp_startup",
+          "timeout_seconds": 30
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc-mcp"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.011877332988660783,
+          "interaction": "initialize, notifications/initialized, tools/list",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d5f8b3c5bec6660a9e811c8ca572a158cad34d88e1fb839be0da648bd25c719c",
+          "scenario": "mcp_startup",
+          "timeout_seconds": 30
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc-mcp"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.01146058301674202,
+          "interaction": "initialize, notifications/initialized, tools/list",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d5f8b3c5bec6660a9e811c8ca572a158cad34d88e1fb839be0da648bd25c719c",
+          "scenario": "mcp_startup",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.09804287500446662,
+          "interaction": "tools/call adoc_project_status",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "3ee171bb8a9506a1ac084c412eabd02bd4c5cdd61cf800ae8732d7b203bc05f7",
+          "scenario": "mcp_status",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.011035875009838492,
+          "interaction": "tools/call adoc_why",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d15fcd4f81ae2484a3332c41cae19342fd57b22c10e288eb175d6ca13ff8e592",
+          "scenario": "mcp_why",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.1002770839841105,
+          "interaction": "tools/call adoc_project_status",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "3ee171bb8a9506a1ac084c412eabd02bd4c5cdd61cf800ae8732d7b203bc05f7",
+          "scenario": "mcp_status",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.01123795798048377,
+          "interaction": "tools/call adoc_why",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d15fcd4f81ae2484a3332c41cae19342fd57b22c10e288eb175d6ca13ff8e592",
+          "scenario": "mcp_why",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.0977698749920819,
+          "interaction": "tools/call adoc_project_status",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "3ee171bb8a9506a1ac084c412eabd02bd4c5cdd61cf800ae8732d7b203bc05f7",
+          "scenario": "mcp_status",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.011347917024977505,
+          "interaction": "tools/call adoc_why",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d15fcd4f81ae2484a3332c41cae19342fd57b22c10e288eb175d6ca13ff8e592",
+          "scenario": "mcp_why",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.09593608300201595,
+          "interaction": "tools/call adoc_project_status",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "3ee171bb8a9506a1ac084c412eabd02bd4c5cdd61cf800ae8732d7b203bc05f7",
+          "scenario": "mcp_status",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.01133220799965784,
+          "interaction": "tools/call adoc_why",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d15fcd4f81ae2484a3332c41cae19342fd57b22c10e288eb175d6ca13ff8e592",
+          "scenario": "mcp_why",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.10316725002485327,
+          "interaction": "tools/call adoc_project_status",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "3ee171bb8a9506a1ac084c412eabd02bd4c5cdd61cf800ae8732d7b203bc05f7",
+          "scenario": "mcp_status",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.011585500004002824,
+          "interaction": "tools/call adoc_why",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d15fcd4f81ae2484a3332c41cae19342fd57b22c10e288eb175d6ca13ff8e592",
+          "scenario": "mcp_why",
+          "timeout_seconds": 30
+        }
+      ],
+      "size": 1000,
+      "source_sha256": "f8ec1993cc0ac8df75884bbe4f777de4dd45fc3c059a587fbb1fbe701e348a8a",
+      "summary": {
+        "build_embeddings_cached": {
+          "maximum_seconds": 0.29595637499005534,
+          "median_seconds": 0.2766146670037415,
+          "minimum_seconds": 0.26621854200493544,
+          "sample_count": 5
+        },
+        "build_embeddings_first_computed": {
+          "maximum_seconds": 6.429381791997002,
+          "median_seconds": 6.429381791997002,
+          "minimum_seconds": 6.429381791997002,
+          "sample_count": 1
+        },
+        "build_no_embeddings": {
+          "maximum_seconds": 0.03105374998995103,
+          "median_seconds": 0.02923049998935312,
+          "minimum_seconds": 0.02551825001137331,
+          "sample_count": 5
+        },
+        "check": {
+          "maximum_seconds": 0.028599249984836206,
+          "median_seconds": 0.02696404099697247,
+          "minimum_seconds": 0.024320291995536536,
+          "sample_count": 5
+        },
+        "mcp_startup": {
+          "maximum_seconds": 0.01954783301334828,
+          "median_seconds": 0.011915624985704198,
+          "minimum_seconds": 0.01146058301674202,
+          "sample_count": 5
+        },
+        "mcp_status": {
+          "maximum_seconds": 0.10316725002485327,
+          "median_seconds": 0.09804287500446662,
+          "minimum_seconds": 0.09593608300201595,
+          "sample_count": 5
+        },
+        "mcp_why": {
+          "maximum_seconds": 0.011585500004002824,
+          "median_seconds": 0.01133220799965784,
+          "minimum_seconds": 0.011035875009838492,
+          "sample_count": 5
+        },
+        "search_hybrid": {
+          "maximum_seconds": 0.29618362500332296,
+          "median_seconds": 0.24748224997892976,
+          "minimum_seconds": 0.23042620799969882,
+          "sample_count": 5
+        },
+        "search_lexical": {
+          "maximum_seconds": 0.02734295799746178,
+          "median_seconds": 0.026710999984061345,
+          "minimum_seconds": 0.025989582994952798,
+          "sample_count": 5
+        },
+        "search_semantic": {
+          "maximum_seconds": 0.5835425830155145,
+          "median_seconds": 0.23554908300866373,
+          "minimum_seconds": 0.2295201660017483,
+          "sample_count": 5
+        }
+      }
+    },
+    {
+      "embedding_model": {
+        "dim": 384,
+        "id": "bge-small-en-v1.5",
+        "provider": "fastembed"
+      },
+      "samples": [
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "check"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.1329567499924451,
+          "exit_code": 0,
+          "peak_rss": 94240768,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "check",
+          "stderr_sha256": "74d619b76aadbf5ff958874801906094bbba27c829a9fe8e93d923044f1f3afd",
+          "stdout_sha256": "14010cd5eacf87dd3f8533757328cbe369f0d803991ab127a7fe95dd400ce94b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build",
+            "--no-embeddings"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.15234891598811373,
+          "exit_code": 0,
+          "peak_rss": 101859328,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_no_embeddings",
+          "stderr_sha256": "05f78063a2eb4e0d399480016a046a3e54a7d7eb364b90fc3af94f87955ab535",
+          "stdout_sha256": "ac2754ca74f1f2792cfb92d218cab83e6ab3de6bb62b07d8f29121fcfc05ce7b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--lexical",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.14562079100869596,
+          "exit_code": 0,
+          "peak_rss": 123879424,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_lexical",
+          "stderr_sha256": "d211647c23c52c06fc2f771393c3e5b692e7958817c2f074b44f820108c47d29",
+          "stdout_sha256": "66fa7dc4b0d47dbeda040c3e68a7cc53240a7add91c312fef000f5906367be00",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "check"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.13787554201553576,
+          "exit_code": 0,
+          "peak_rss": 92110848,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "check",
+          "stderr_sha256": "07544398425fe0545aef2c3cbf7a7138f52c45f261c87b2fbd05049ea202c9d5",
+          "stdout_sha256": "14010cd5eacf87dd3f8533757328cbe369f0d803991ab127a7fe95dd400ce94b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build",
+            "--no-embeddings"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.2598551249830052,
+          "exit_code": 0,
+          "peak_rss": 101367808,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_no_embeddings",
+          "stderr_sha256": "38db2ca51ab2a0818c483161fbd5d4358cd0468ba2cb8c874666bdd6cfb2185c",
+          "stdout_sha256": "ac2754ca74f1f2792cfb92d218cab83e6ab3de6bb62b07d8f29121fcfc05ce7b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--lexical",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.14599779198761098,
+          "exit_code": 0,
+          "peak_rss": 123600896,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_lexical",
+          "stderr_sha256": "c5089def184f220b08f091352e3fd07641dc9e4ba5e7f60a4811cd2835cf1f64",
+          "stdout_sha256": "66fa7dc4b0d47dbeda040c3e68a7cc53240a7add91c312fef000f5906367be00",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "check"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.1374408750270959,
+          "exit_code": 0,
+          "peak_rss": 94158848,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "check",
+          "stderr_sha256": "5a5d6e9ac7923e82d541c20fbd2e1d2065fef2b4f339b05b5c17df37ab722a1f",
+          "stdout_sha256": "14010cd5eacf87dd3f8533757328cbe369f0d803991ab127a7fe95dd400ce94b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build",
+            "--no-embeddings"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.20549162500537932,
+          "exit_code": 0,
+          "peak_rss": 100106240,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_no_embeddings",
+          "stderr_sha256": "ab35ab55d4ad0bfe7cec53a7ddebc8ca41364f3e89542c415086fd5212d3c731",
+          "stdout_sha256": "ac2754ca74f1f2792cfb92d218cab83e6ab3de6bb62b07d8f29121fcfc05ce7b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--lexical",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.14944995800033212,
+          "exit_code": 0,
+          "peak_rss": 121470976,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_lexical",
+          "stderr_sha256": "c4c765fe81023f91b7b48a1a8217a66c148bca0aaa569b8e1c971bf3a9f289ae",
+          "stdout_sha256": "66fa7dc4b0d47dbeda040c3e68a7cc53240a7add91c312fef000f5906367be00",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "check"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.13550275002489798,
+          "exit_code": 0,
+          "peak_rss": 94617600,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "check",
+          "stderr_sha256": "ad524baca2fc76a8b704674c3beccd2668205dd913b40e2a2400a227687ef727",
+          "stdout_sha256": "14010cd5eacf87dd3f8533757328cbe369f0d803991ab127a7fe95dd400ce94b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build",
+            "--no-embeddings"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.29767187498509884,
+          "exit_code": 0,
+          "peak_rss": 101826560,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_no_embeddings",
+          "stderr_sha256": "7f90ddfbf6b6510ea7ab6632466f5502727a180339f6fa16848d02ba6e416f5e",
+          "stdout_sha256": "ac2754ca74f1f2792cfb92d218cab83e6ab3de6bb62b07d8f29121fcfc05ce7b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--lexical",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.150754541013157,
+          "exit_code": 0,
+          "peak_rss": 124026880,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_lexical",
+          "stderr_sha256": "91aed1ed3f081a996df91e88c8684a214e673ed71b8f4bf8329dc8fadcd4abaf",
+          "stdout_sha256": "66fa7dc4b0d47dbeda040c3e68a7cc53240a7add91c312fef000f5906367be00",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "check"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.13302433397620916,
+          "exit_code": 0,
+          "peak_rss": 92323840,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "check",
+          "stderr_sha256": "3817b5aaa191e737f21788bde49b7ca367e672f0faffb33e9193df0db51d3c53",
+          "stdout_sha256": "14010cd5eacf87dd3f8533757328cbe369f0d803991ab127a7fe95dd400ce94b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build",
+            "--no-embeddings"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.20543079200433567,
+          "exit_code": 0,
+          "peak_rss": 99598336,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_no_embeddings",
+          "stderr_sha256": "71b096fad4f0095aaa2b9d7806b8cc7f6c9a0a28d2faf729e33569fbffced934",
+          "stdout_sha256": "ac2754ca74f1f2792cfb92d218cab83e6ab3de6bb62b07d8f29121fcfc05ce7b",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--lexical",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.1439356670016423,
+          "exit_code": 0,
+          "peak_rss": 122093568,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_lexical",
+          "stderr_sha256": "76d5a42516d387a96b6f7a2d2ca73abe4b880d03afa1bbd235eebc4d58f3f42c",
+          "stdout_sha256": "66fa7dc4b0d47dbeda040c3e68a7cc53240a7add91c312fef000f5906367be00",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build"
+          ],
+          "correct": true,
+          "elapsed_seconds": 61.65622400000575,
+          "exit_code": 0,
+          "peak_rss": 1336721408,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_embeddings_first_computed",
+          "stderr_sha256": "be3b76143f7ce03642324e4859dcc78b61124307f5a8f83afdbd6abe537b398b",
+          "stdout_sha256": "07dd9b0c815568159a1983165c558164ac9a94688c7ace4f93953f8428bcc691",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build"
+          ],
+          "correct": true,
+          "elapsed_seconds": 1.7345558329834603,
+          "exit_code": 0,
+          "peak_rss": 569966592,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_embeddings_cached",
+          "stderr_sha256": "75f158cf8ce0216f7230ac24dac662e9c3514cae5bba1a71878669aecde5d8aa",
+          "stdout_sha256": "ee3f6af88b12af4af80b4fc2ee123c1c0703cdc0cd8c881e7c75bc0a5f799534",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--semantic",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.5211935840197839,
+          "exit_code": 0,
+          "peak_rss": 437665792,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_semantic",
+          "stderr_sha256": "3e90713b2cb5dc7c2c057753fa64d2db2e658cc36e9e234830c3387a353d7457",
+          "stdout_sha256": "bf41912be6fb2b0483599e62c86cf46af4e76140ed290b84336004deac8c836d",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.5327779579965863,
+          "exit_code": 0,
+          "peak_rss": 440270848,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_hybrid",
+          "stderr_sha256": "e357055c72046906c6a4c5eef810064f15612ce6fbe0806ccb349c4e2fd5ae11",
+          "stdout_sha256": "acf0c3f0185322dcb8f2e72a19e6d8145e60dbb1b295e5d8feca2a2c57337323",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.9597535420034546,
+          "exit_code": 0,
+          "peak_rss": 568868864,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_embeddings_cached",
+          "stderr_sha256": "c818b48b568fc1a7ed124ddd0914b0d62c7ca6c26571a9614cf392c0be983d20",
+          "stdout_sha256": "ee3f6af88b12af4af80b4fc2ee123c1c0703cdc0cd8c881e7c75bc0a5f799534",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--semantic",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.5306467500049621,
+          "exit_code": 0,
+          "peak_rss": 443351040,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_semantic",
+          "stderr_sha256": "5c18c0160b3974794079c6627639faf8cd6079423c08069685edaaf786c5423b",
+          "stdout_sha256": "bf41912be6fb2b0483599e62c86cf46af4e76140ed290b84336004deac8c836d",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.5461433749878779,
+          "exit_code": 0,
+          "peak_rss": 438845440,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_hybrid",
+          "stderr_sha256": "c204378415e5da0eb5e2be220cbe46924b6d26226286de944d7c8eecd3e849ba",
+          "stdout_sha256": "acf0c3f0185322dcb8f2e72a19e6d8145e60dbb1b295e5d8feca2a2c57337323",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.9110029169823974,
+          "exit_code": 0,
+          "peak_rss": 569212928,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_embeddings_cached",
+          "stderr_sha256": "8f06b404e33d153a8292fcb20bd452a427a9d750acbed3765df9870a78a4da03",
+          "stdout_sha256": "ee3f6af88b12af4af80b4fc2ee123c1c0703cdc0cd8c881e7c75bc0a5f799534",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--semantic",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.5245123330096249,
+          "exit_code": 0,
+          "peak_rss": 433455104,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_semantic",
+          "stderr_sha256": "d45e80d236c35aec6af4af615fa9d8b1438184b278cd4ab10220fabc3dbc4e7a",
+          "stdout_sha256": "bf41912be6fb2b0483599e62c86cf46af4e76140ed290b84336004deac8c836d",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.5459400829859078,
+          "exit_code": 0,
+          "peak_rss": 453509120,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_hybrid",
+          "stderr_sha256": "a21fc1cb51501801303e57530b0a3f1264b620b6fa63513c2065c844a86090c9",
+          "stdout_sha256": "acf0c3f0185322dcb8f2e72a19e6d8145e60dbb1b295e5d8feca2a2c57337323",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.9162651250080671,
+          "exit_code": 0,
+          "peak_rss": 570212352,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_embeddings_cached",
+          "stderr_sha256": "d582c6803b994dcc6538951d428d4e94d1a1cd31f9917ef79bd3c35e7fd19e3e",
+          "stdout_sha256": "ee3f6af88b12af4af80b4fc2ee123c1c0703cdc0cd8c881e7c75bc0a5f799534",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--semantic",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.5273220420058351,
+          "exit_code": 0,
+          "peak_rss": 455491584,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_semantic",
+          "stderr_sha256": "e1f6ce3c87131981aa444f44010b22b692c1de3a7427e2ae914ad56473ebdade",
+          "stdout_sha256": "bf41912be6fb2b0483599e62c86cf46af4e76140ed290b84336004deac8c836d",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.5401135839929339,
+          "exit_code": 0,
+          "peak_rss": 449953792,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_hybrid",
+          "stderr_sha256": "c6dc3f062350e09913d72abc1117a1e4445b79cfbbffeb46c82864fc2a10fe3e",
+          "stdout_sha256": "acf0c3f0185322dcb8f2e72a19e6d8145e60dbb1b295e5d8feca2a2c57337323",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "build"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.912981834000675,
+          "exit_code": 0,
+          "peak_rss": 574373888,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "build_embeddings_cached",
+          "stderr_sha256": "0e32acd11546dc73da48b107ad2cc6b761794d33e2fb0f01c3fbaa1d299b76ed",
+          "stdout_sha256": "ee3f6af88b12af4af80b4fc2ee123c1c0703cdc0cd8c881e7c75bc0a5f799534",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--semantic",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.5248875000106636,
+          "exit_code": 0,
+          "peak_rss": 437387264,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_semantic",
+          "stderr_sha256": "bee238d3059f4df11b1efb41db3b5518f931de5b66bd3721488c5b541d279776",
+          "stdout_sha256": "bf41912be6fb2b0483599e62c86cf46af4e76140ed290b84336004deac8c836d",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc",
+            "search",
+            "refund",
+            "--format",
+            "json"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.556268332991749,
+          "exit_code": 0,
+          "peak_rss": 448266240,
+          "peak_rss_note": null,
+          "peak_rss_unit": "bytes",
+          "scenario": "search_hybrid",
+          "stderr_sha256": "1b1fa12451346761c7fce2b07cfb69569d4278f9d65352c63585a7034543a33a",
+          "stdout_sha256": "acf0c3f0185322dcb8f2e72a19e6d8145e60dbb1b295e5d8feca2a2c57337323",
+          "timeout_seconds": 180
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc-mcp"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.21302629201090895,
+          "interaction": "initialize, notifications/initialized, tools/list",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d5f8b3c5bec6660a9e811c8ca572a158cad34d88e1fb839be0da648bd25c719c",
+          "scenario": "mcp_startup",
+          "timeout_seconds": 30
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc-mcp"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.012990749994060025,
+          "interaction": "initialize, notifications/initialized, tools/list",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d5f8b3c5bec6660a9e811c8ca572a158cad34d88e1fb839be0da648bd25c719c",
+          "scenario": "mcp_startup",
+          "timeout_seconds": 30
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc-mcp"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.01642420800635591,
+          "interaction": "initialize, notifications/initialized, tools/list",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d5f8b3c5bec6660a9e811c8ca572a158cad34d88e1fb839be0da648bd25c719c",
+          "scenario": "mcp_startup",
+          "timeout_seconds": 30
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc-mcp"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.012204458005726337,
+          "interaction": "initialize, notifications/initialized, tools/list",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d5f8b3c5bec6660a9e811c8ca572a158cad34d88e1fb839be0da648bd25c719c",
+          "scenario": "mcp_startup",
+          "timeout_seconds": 30
+        },
+        {
+          "command": [
+            "$ADOC_BIN_DIR/adoc-mcp"
+          ],
+          "correct": true,
+          "elapsed_seconds": 0.012590750004164875,
+          "interaction": "initialize, notifications/initialized, tools/list",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d5f8b3c5bec6660a9e811c8ca572a158cad34d88e1fb839be0da648bd25c719c",
+          "scenario": "mcp_startup",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.6713092499994673,
+          "interaction": "tools/call adoc_project_status",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "255799a952f0a1daabd1821754423be45ecf497da7f3b08a2ebde6a3713e3478",
+          "scenario": "mcp_status",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.11433995800325647,
+          "interaction": "tools/call adoc_why",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d15fcd4f81ae2484a3332c41cae19342fd57b22c10e288eb175d6ca13ff8e592",
+          "scenario": "mcp_why",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.6337182080023922,
+          "interaction": "tools/call adoc_project_status",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "255799a952f0a1daabd1821754423be45ecf497da7f3b08a2ebde6a3713e3478",
+          "scenario": "mcp_status",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.11408529200707562,
+          "interaction": "tools/call adoc_why",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d15fcd4f81ae2484a3332c41cae19342fd57b22c10e288eb175d6ca13ff8e592",
+          "scenario": "mcp_why",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.6223939999763388,
+          "interaction": "tools/call adoc_project_status",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "255799a952f0a1daabd1821754423be45ecf497da7f3b08a2ebde6a3713e3478",
+          "scenario": "mcp_status",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.11296950001269579,
+          "interaction": "tools/call adoc_why",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d15fcd4f81ae2484a3332c41cae19342fd57b22c10e288eb175d6ca13ff8e592",
+          "scenario": "mcp_why",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.6534900830010884,
+          "interaction": "tools/call adoc_project_status",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "255799a952f0a1daabd1821754423be45ecf497da7f3b08a2ebde6a3713e3478",
+          "scenario": "mcp_status",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.1126249170047231,
+          "interaction": "tools/call adoc_why",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d15fcd4f81ae2484a3332c41cae19342fd57b22c10e288eb175d6ca13ff8e592",
+          "scenario": "mcp_why",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.6360837079992052,
+          "interaction": "tools/call adoc_project_status",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "255799a952f0a1daabd1821754423be45ecf497da7f3b08a2ebde6a3713e3478",
+          "scenario": "mcp_status",
+          "timeout_seconds": 30
+        },
+        {
+          "correct": true,
+          "elapsed_seconds": 0.11345924998749979,
+          "interaction": "tools/call adoc_why",
+          "peak_rss": null,
+          "peak_rss_note": "persistent MCP child RSS is not measured by stdlib",
+          "peak_rss_unit": "unavailable",
+          "result_sha256": "d15fcd4f81ae2484a3332c41cae19342fd57b22c10e288eb175d6ca13ff8e592",
+          "scenario": "mcp_why",
+          "timeout_seconds": 30
+        }
+      ],
+      "size": 10000,
+      "source_sha256": "56fd51e3c6683a858f4af3cfd55f6dd0acf0b90ac363856f7b540725f6f2c722",
+      "summary": {
+        "build_embeddings_cached": {
+          "maximum_seconds": 1.7345558329834603,
+          "median_seconds": 0.9162651250080671,
+          "minimum_seconds": 0.9110029169823974,
+          "sample_count": 5
+        },
+        "build_embeddings_first_computed": {
+          "maximum_seconds": 61.65622400000575,
+          "median_seconds": 61.65622400000575,
+          "minimum_seconds": 61.65622400000575,
+          "sample_count": 1
+        },
+        "build_no_embeddings": {
+          "maximum_seconds": 0.29767187498509884,
+          "median_seconds": 0.20549162500537932,
+          "minimum_seconds": 0.15234891598811373,
+          "sample_count": 5
+        },
+        "check": {
+          "maximum_seconds": 0.13787554201553576,
+          "median_seconds": 0.13550275002489798,
+          "minimum_seconds": 0.1329567499924451,
+          "sample_count": 5
+        },
+        "mcp_startup": {
+          "maximum_seconds": 0.21302629201090895,
+          "median_seconds": 0.012990749994060025,
+          "minimum_seconds": 0.012204458005726337,
+          "sample_count": 5
+        },
+        "mcp_status": {
+          "maximum_seconds": 0.6713092499994673,
+          "median_seconds": 0.6360837079992052,
+          "minimum_seconds": 0.6223939999763388,
+          "sample_count": 5
+        },
+        "mcp_why": {
+          "maximum_seconds": 0.11433995800325647,
+          "median_seconds": 0.11345924998749979,
+          "minimum_seconds": 0.1126249170047231,
+          "sample_count": 5
+        },
+        "search_hybrid": {
+          "maximum_seconds": 0.556268332991749,
+          "median_seconds": 0.5459400829859078,
+          "minimum_seconds": 0.5327779579965863,
+          "sample_count": 5
+        },
+        "search_lexical": {
+          "maximum_seconds": 0.150754541013157,
+          "median_seconds": 0.14599779198761098,
+          "minimum_seconds": 0.1439356670016423,
+          "sample_count": 5
+        },
+        "search_semantic": {
+          "maximum_seconds": 0.5306467500049621,
+          "median_seconds": 0.5248875000106636,
+          "minimum_seconds": 0.5211935840197839,
+          "sample_count": 5
+        }
+      }
+    }
+  ],
+  "schema_version": "adoc.performance.v1"
+}
