@@ -3,6 +3,9 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
+
 /// Remove a stale output so a failed run never leaves a previous artifact
 /// behind for a consumer to mistake for this run's result.
 pub(crate) fn remove_stale(path: &Path) -> Result<(), String> {
@@ -31,12 +34,30 @@ pub(crate) fn write_atomic(path: &Path, contents: &[u8]) -> Result<(), String> {
         name.to_string_lossy(),
         std::process::id()
     ));
-    let mut file = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
+    #[cfg(unix)]
+    let permissions = match fs::metadata(path) {
+        Ok(metadata) => Some(metadata.permissions()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(format!("could not write {}: {error}", path.display())),
+    };
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+    let mut file = options
         .open(&temp)
         .map_err(|error| format!("could not write {}: {error}", path.display()))?;
     if let Err(error) = file.write_all(contents).and_then(|()| file.sync_all()) {
+        let _ = fs::remove_file(&temp);
+        return Err(format!("could not write {}: {error}", path.display()));
+    }
+    #[cfg(unix)]
+    if let Some(permissions) = permissions
+        && let Err(error) = file
+            .set_permissions(permissions)
+            .and_then(|()| file.sync_all())
+    {
+        drop(file);
         let _ = fs::remove_file(&temp);
         return Err(format!("could not write {}: {error}", path.display()));
     }
@@ -108,6 +129,66 @@ mod tests {
             fs::read_dir(&directory).expect("lists directory").count(),
             1
         );
+        fs::remove_dir_all(directory).expect("cleans test directory");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn atomic_write_preserves_existing_permissions() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock is after epoch")
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "adoc-artifact-permissions-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir(&directory).expect("creates test directory");
+
+        for mode in [0o600, 0o640, 0o444] {
+            let path = directory.join(format!("receipt-{mode:o}.json"));
+            fs::write(&path, b"old").expect("writes old artifact");
+            fs::set_permissions(&path, fs::Permissions::from_mode(mode))
+                .expect("sets artifact permissions");
+
+            write_atomic(&path, b"new\n").expect("replaces artifact");
+
+            assert_eq!(
+                fs::metadata(&path)
+                    .expect("stats artifact")
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                mode
+            );
+        }
+
+        let target = directory.join("target.json");
+        let link = directory.join("receipt-link.json");
+        fs::write(&target, b"old").expect("writes symlink target");
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o600))
+            .expect("sets target permissions");
+        symlink(&target, &link).expect("creates artifact symlink");
+
+        write_atomic(&link, b"new\n").expect("replaces symlink");
+
+        assert!(
+            !fs::symlink_metadata(&link)
+                .expect("stats replacement")
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(
+            fs::metadata(&link)
+                .expect("stats replacement")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+
         fs::remove_dir_all(directory).expect("cleans test directory");
     }
 

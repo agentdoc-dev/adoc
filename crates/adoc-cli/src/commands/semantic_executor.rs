@@ -30,8 +30,8 @@ pub(crate) fn semantic_context(input: PathBuf, out: PathBuf) -> i32 {
         Ok(json) => json,
         Err(error) => return fail(&error.to_string()),
     };
-    if let Err(error) = fs::write(&out, &json) {
-        return fail(&format!("could not write {}: {error}", out.display()));
+    if let Err(error) = write_atomic(&out, json.as_bytes()) {
+        return fail(&error);
     }
     print!("{json}");
     0

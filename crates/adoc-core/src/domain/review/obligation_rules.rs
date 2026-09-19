@@ -290,9 +290,12 @@ fn trust_is_upgrade(before: &Option<String>, after: &Option<String>) -> bool {
 
 fn present_evidence_fields(node: &GraphKnowledgeObjectNode) -> Vec<String> {
     // V5.8: evidence is in node.evidence, keyed by EvidenceKind string.
+    // Object references count as present evidence too; preserve first-seen kind order.
+    let mut seen = std::collections::BTreeSet::new();
     node.evidence
         .iter()
-        .filter(|entry| entry.value.is_some())
+        .filter(|entry| entry.value.is_some() || entry.reference.is_some())
+        .filter(|entry| seen.insert(entry.kind.as_str()))
         .map(|entry| entry.kind.clone())
         .collect()
 }
@@ -445,6 +448,44 @@ mod tests {
 
         assert_eq!(obligations.len(), 1);
         // V5.8: EvidenceKind strings.
+        assert_eq!(
+            obligations[0].required_evidence,
+            vec!["source_code", "human_review"]
+        );
+    }
+
+    #[test]
+    fn body_change_deduplicates_evidence_kinds_in_first_seen_order() {
+        let mut head = verified_claim("billing.credits");
+        head.evidence.push(GraphEvidence::object_ref(
+            EvidenceKind::SourceCode.as_str(),
+            "billing.ledger",
+        ));
+        head.evidence.push(GraphEvidence::inline(
+            EvidenceKind::HumanReview.as_str(),
+            "team-billing",
+        ));
+        head.evidence.push(GraphEvidence::object_ref(
+            EvidenceKind::SourceCode.as_str(),
+            "billing.second-ledger",
+        ));
+        head.evidence.push(GraphEvidence::inline(
+            EvidenceKind::SourceCode.as_str(),
+            "ledger excerpt",
+        ));
+        let change = changed_with(
+            "billing.credits",
+            verified_claim("billing.credits"),
+            head,
+            vec![FieldChange::Body {
+                before: "old".to_string(),
+                after: "new".to_string(),
+            }],
+        );
+
+        let obligations = obligations_for_change(&change);
+
+        assert_eq!(obligations.len(), 1);
         assert_eq!(
             obligations[0].required_evidence,
             vec!["source_code", "human_review"]

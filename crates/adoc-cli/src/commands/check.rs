@@ -6,6 +6,7 @@ use adoc_local::{CheckInput, CheckReceiptInput, LocalContext, UnrestrictedPathPo
 use crate::error::CliError;
 use crate::presentation::{CheckStyle, MarkdownReviewPresenter, ResolvedFormat};
 
+use super::artifact_paths::{ensure_distinct_paths, write_atomic};
 use super::{current_dir, eprint_diagnostics, print_diagnostics, print_summary, report};
 
 pub(crate) fn check(
@@ -68,6 +69,25 @@ pub(crate) fn check_receipt(
         Err(error) => return report(error),
     };
 
+    for input in [
+        path.as_deref(),
+        source_invocation.as_deref(),
+        context_artifact.as_deref(),
+        semantic_context.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if let Err(message) = ensure_distinct_paths(&[input, &receipt_path]) {
+            return report(
+                adoc_local::LocalError::WriteFailed {
+                    path: receipt_path,
+                    source: io::Error::other(message),
+                }
+                .into(),
+            );
+        }
+    }
     let context = LocalContext::new(config_start, UnrestrictedPathPolicy);
     let outcome = match context.check_receipt(CheckReceiptInput {
         path,
@@ -82,11 +102,25 @@ pub(crate) fn check_receipt(
         Ok(outcome) => outcome,
         Err(error) => return report(error.into()),
     };
-    if let Err(source) = std::fs::write(&receipt_path, outcome.receipt.to_canonical_json()) {
+    for input in &outcome.input_paths {
+        if let Err(message) = ensure_distinct_paths(&[input, &receipt_path]) {
+            return report(
+                adoc_local::LocalError::WriteFailed {
+                    path: receipt_path,
+                    source: io::Error::other(message),
+                }
+                .into(),
+            );
+        }
+    }
+    if let Err(source) = write_atomic(
+        &receipt_path,
+        outcome.receipt.to_canonical_json().as_bytes(),
+    ) {
         return report(
             adoc_local::LocalError::WriteFailed {
                 path: receipt_path,
-                source,
+                source: io::Error::other(source),
             }
             .into(),
         );

@@ -232,6 +232,12 @@ impl SemanticAssessment {
         Ok(serialized)
     }
 
+    pub(crate) fn matches_context(&self, context: &SemanticContext) -> bool {
+        self.context_digest == context.context_digest()
+            && &self.base_revision == context.base_revision()
+            && &self.head_revision == context.head_revision()
+    }
+
     pub fn identity(&self) -> &SemanticExecutorIdentity {
         &self.identity
     }

@@ -157,3 +157,12 @@ Zero or multiple merge bases are typed comparison-base failures and emit `assess
 The local binary becomes the sole owner of deterministic assessment semantics. The Action can consume one artifact without parsing human text or rebuilding policy. Existing commands and envelopes remain compatible, while users who add the optional configuration require a V9.2.1-capable binary because older strict config parsers will reject the new key.
 
 The deliberately mechanical exact-path model leaves semantic inference, globs, language parsing, runtime policy, managed knowledge, and an assessment MCP tool for later evidence-backed slices.
+
+## Launch qualification amendment (2026-09-19)
+
+The experimental v0 policy-change discriminator now also permits `docs_path`.
+Moving the documentation root changes source classification and therefore requires
+the existing assessment-policy human-review obligation. Base/head source union
+semantics remain unchanged. The policy digest includes the documentation root;
+no envelope fields are added. Consumers validating against the earlier closed
+enum must update their bundled schema to accept this additional value.

@@ -322,7 +322,7 @@
       "properties": {
         "status": { "$ref": "#/$defs/availability" },
         "changed": { "type": "boolean" },
-        "changed_fields": { "type": "array", "items": { "enum": ["exclude_paths", "generated_outputs"] }, "uniqueItems": true }
+        "changed_fields": { "type": "array", "items": { "enum": ["docs_path", "exclude_paths", "generated_outputs"] }, "uniqueItems": true }
       }
     },
     "reviewer": {

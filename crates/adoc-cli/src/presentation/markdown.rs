@@ -211,12 +211,12 @@ fn render_check_compact(output: &mut String, diagnostics: &[Diagnostic], base: &
     writeln!(output).expect("writing to String cannot fail");
     for diagnostic in diagnostics {
         let icon = check_icon(diagnostic.severity);
-        // Multi-line messages stay indented inside the list item.
-        let message = diagnostic.message.replace('\n', "\n  ");
+        let message = markdown_literal(&diagnostic.message);
         match check_location(diagnostic, base) {
             Some(location) => writeln!(
                 output,
-                "- {icon} `{location}` `{}` — {message}",
+                "- {icon} `{}` `{}` — {message}",
+                markdown_literal(&location),
                 diagnostic.code
             ),
             None => writeln!(output, "- {icon} `{}` — {message}", diagnostic.code),
@@ -225,9 +225,23 @@ fn render_check_compact(output: &mut String, diagnostics: &[Diagnostic], base: &
     }
 }
 
-/// GFM table cells cannot hold raw `|` or newlines.
-fn check_table_cell(text: &str) -> String {
-    text.replace('|', "\\|").replace('\n', "<br>")
+/// Encodes dynamic diagnostic text so it stays literal in GFM tables, inline
+/// code, and details blocks. Entities keep delimiters inert; inside code spans they are an explicit escaped
+/// representation. Diagnostic text may contain source-controlled fragments.
+fn markdown_literal(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('`', "&#96;")
+        .replace('[', "&#91;")
+        .replace(']', "&#93;")
+        .replace('\\', "&#92;")
+        .replace('*', "&#42;")
+        .replace('_', "&#95;")
+        .replace('~', "&#126;")
+        .replace('|', "&#124;")
+        .replace('\r', "&#13;")
+        .replace('\n', "&#10;")
 }
 
 fn render_check_table(output: &mut String, diagnostics: &[Diagnostic], base: &std::path::Path) {
@@ -236,13 +250,15 @@ fn render_check_table(output: &mut String, diagnostics: &[Diagnostic], base: &st
     writeln!(output, "|----|----------|------|---------|").expect("writing to String cannot fail");
     for diagnostic in diagnostics {
         let icon = check_icon(diagnostic.severity);
-        let location = check_location(diagnostic, base)
-            .map_or_else(|| "—".to_string(), |location| format!("`{location}`"));
+        let location = check_location(diagnostic, base).map_or_else(
+            || "—".to_string(),
+            |location| format!("`{}`", markdown_literal(&location)),
+        );
         writeln!(
             output,
             "| {icon} | {location} | `{}` | {} |",
             diagnostic.code,
-            check_table_cell(&diagnostic.message)
+            markdown_literal(&diagnostic.message)
         )
         .expect("writing to String cannot fail");
     }
@@ -279,8 +295,13 @@ fn render_check_help(output: &mut String, diagnostics: &[Diagnostic], base: &std
     .expect("writing to String cannot fail");
     writeln!(output).expect("writing to String cannot fail");
     for (anchor, help) in entries {
-        let help = help.replace('\n', "\n  ");
-        writeln!(output, "- `{anchor}` — {help}").expect("writing to String cannot fail");
+        writeln!(
+            output,
+            "- `{}` — {}",
+            markdown_literal(&anchor),
+            markdown_literal(help)
+        )
+        .expect("writing to String cannot fail");
     }
     writeln!(output).expect("writing to String cannot fail");
     writeln!(output, "</details>").expect("writing to String cannot fail");
@@ -304,7 +325,11 @@ fn render_check_detailed(output: &mut String, diagnostics: &[Diagnostic], base: 
             Some(path) => writeln!(
                 output,
                 "**`{}`**",
-                super::relativize_path(path, Some(base)).display()
+                markdown_literal(
+                    &super::relativize_path(path, Some(base))
+                        .display()
+                        .to_string()
+                )
             ),
             None => writeln!(output, "**_(no source span)_**"),
         }
@@ -312,8 +337,7 @@ fn render_check_detailed(output: &mut String, diagnostics: &[Diagnostic], base: 
         writeln!(output).expect("writing to String cannot fail");
         for diagnostic in entries {
             let icon = check_icon(diagnostic.severity);
-            // Multi-line messages stay indented inside the list item.
-            let message = diagnostic.message.replace('\n', "\n  ");
+            let message = markdown_literal(&diagnostic.message);
             match diagnostic.span.as_ref() {
                 Some(span) => writeln!(
                     output,
@@ -324,12 +348,12 @@ fn render_check_detailed(output: &mut String, diagnostics: &[Diagnostic], base: 
             }
             .expect("writing to String cannot fail");
             if let Some(object_id) = &diagnostic.object_id {
-                writeln!(output, "  - object_id: `{object_id}`")
+                writeln!(output, "  - object_id: `{}`", markdown_literal(object_id))
                     .expect("writing to String cannot fail");
             }
             if let Some(help) = &diagnostic.help {
-                let help = help.replace('\n', "\n    ");
-                writeln!(output, "  - help: {help}").expect("writing to String cannot fail");
+                writeln!(output, "  - help: {}", markdown_literal(help))
+                    .expect("writing to String cannot fail");
             }
         }
     }

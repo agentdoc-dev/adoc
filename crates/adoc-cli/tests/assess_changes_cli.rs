@@ -440,6 +440,74 @@ fn same_pr_exclusion_is_prospective_and_cannot_hide_code() {
 }
 
 #[test]
+fn changing_docs_path_requires_policy_review() {
+    let workspace = repo();
+    workspace.write(
+        "agentdoc.config.yaml",
+        "version: 1\nmode: strict\ndocs_path: knowledge\noutputs:\n  dir: dist\nembeddings:\n  provider: none\n",
+    );
+    workspace.write(
+        "knowledge/billing.adoc",
+        "# Billing @doc(team.billing)\n\n::claim billing.credits\nstatus: verified\nowner: billing-platform\nverified_at: 2026-07-01\nsource: src/billing.rs\nimpacts: [src/billing.rs]\n--\nCredits settle after payment.\n::\n",
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["assess-changes", "--base", "HEAD", "--format", "json"])
+        .output()
+        .expect("adoc assess-changes runs");
+    assert!(output.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("assessment JSON");
+    assert_eq!(value["policy_changes"]["changed"], true);
+    assert!(
+        value["policy_changes"]["changed_fields"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!("docs_path"))
+    );
+    assert!(
+        value["proof_obligations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|obligation| {
+                obligation["object_id"] == "agentdoc.config.yaml"
+                    && obligation["kind"] == "assessment_policy"
+            })
+    );
+}
+
+#[test]
+fn object_id_matching_config_path_keeps_object_and_policy_obligations() {
+    let workspace = repo();
+    workspace.write(
+        "docs/billing.adoc",
+        "# Billing @doc(team.billing)\n\n::claim agentdoc.config.yaml\nstatus: verified\nowner: billing-platform\nverified_at: 2026-07-01\nsource: src/billing.rs\nimpacts: [src/billing.rs]\n--\nCredits settle after payment.\n::\n",
+    );
+    workspace.write(
+        "agentdoc.config.yaml",
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: none\nassessment:\n  exclude_paths: [generated/]\n",
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["assess-changes", "--base", "HEAD", "--format", "json"])
+        .output()
+        .expect("adoc assess-changes runs");
+    assert!(output.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("assessment JSON");
+    let obligations = value["proof_obligations"].as_array().unwrap();
+    assert!(obligations.iter().any(
+        |obligation| obligation["object_id"] == "agentdoc.config.yaml"
+            && obligation["kind"] == "claim"
+    ));
+    assert!(obligations.iter().any(
+        |obligation| obligation["object_id"] == "agentdoc.config.yaml"
+            && obligation["kind"] == "assessment_policy"
+    ));
+}
+
+#[test]
 fn unresolved_base_emits_error_not_evaluated_envelope_and_exits_two() {
     let workspace = repo();
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))

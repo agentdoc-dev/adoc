@@ -3545,3 +3545,75 @@ fn check_receipt_rejects_schema_valid_domain_invalid_context_artifact() {
         "expected the typed drift code in the check output, got:\n{diagnostics}"
     );
 }
+
+#[test]
+fn check_receipt_refuses_to_overwrite_its_source_invocation() {
+    let workspace = TestWorkspace::new("receipt-input-alias");
+    let invocation = workspace.root.join("invocation.json");
+    fs::write(&invocation, b"{}").unwrap();
+    let output = adoc_command()
+        .current_dir(validation_runtime_path("fixture"))
+        .args([
+            "check",
+            "--as-of",
+            "2026-01-01",
+            "--runtime-binary-digest",
+            GOLDEN_RUNTIME_DIGEST,
+        ])
+        .arg("--receipt")
+        .arg(&invocation)
+        .arg("--source-invocation")
+        .arg(&invocation)
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert_eq!(fs::read(&invocation).unwrap(), b"{}");
+    assert!(stderr(&output).contains("distinct"));
+}
+
+#[test]
+fn check_receipt_preserves_discovered_config_and_nested_sources() {
+    for (target, explicit, subdir) in [
+        ("docs/index.adoc", true, false),
+        ("agentdoc.config.yaml", false, false),
+        ("docs/index.adoc", false, true),
+    ] {
+        let workspace = TestWorkspace::new("receipt-resolved-input-alias");
+        workspace.write(
+            "agentdoc.config.yaml",
+            "version: 1\nmode: strict\ndocs_path: docs\nembeddings:\n  provider: none\n",
+        );
+        workspace.write(
+            "docs/index.adoc",
+            "# Guide @doc(team.guide)\n\nPlain source.\n",
+        );
+        let cwd = if subdir {
+            fs::write(workspace.root.join(target), [0xff]).unwrap();
+            let child = workspace.root.join("child");
+            fs::create_dir(&child).unwrap();
+            child
+        } else {
+            workspace.root.clone()
+        };
+        let before = fs::read(workspace.root.join(target)).unwrap();
+        let mut command = adoc_command();
+        command.current_dir(&cwd).arg("check");
+        if explicit {
+            command.arg(".");
+        }
+        let output = command
+            .args([
+                "--receipt",
+                workspace.root.join(target).to_str().unwrap(),
+                "--as-of",
+                "2026-01-01",
+                "--runtime-binary-digest",
+                GOLDEN_RUNTIME_DIGEST,
+            ])
+            .output()
+            .unwrap();
+        assert!(!output.status.success(), "target={target}");
+        assert_eq!(fs::read(workspace.root.join(target)).unwrap(), before);
+        assert!(stderr(&output).contains("distinct"));
+    }
+}

@@ -12,10 +12,13 @@ use crate::domain::values::trim_ascii_edges;
 
 /// A review interval with constructor-asserted validity.
 ///
-/// Once constructed the inner string satisfies the grammar `[0-9]+d` and is
-/// stored in its trimmed form.
+/// Once constructed the token satisfies the grammar `[0-9]+d`, is stored in
+/// its trimmed form, and its numeric value is known to fit in `u32`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ReviewInterval(String);
+pub(crate) struct ReviewInterval {
+    token: String,
+    days: u32,
+}
 
 /// Why a review interval string failed to parse.
 #[non_exhaustive]
@@ -37,33 +40,28 @@ impl ReviewInterval {
         if trimmed.is_empty() {
             return Err(ReviewIntervalError::Missing);
         }
-        if Self::is_valid_grammar(trimmed) {
-            Ok(Self(trimmed.to_string()))
-        } else {
-            Err(ReviewIntervalError::Invalid(trimmed.to_string()))
+        if !Self::is_valid_grammar(trimmed) {
+            return Err(ReviewIntervalError::Invalid(trimmed.to_string()));
         }
+
+        let days = trimmed[..trimmed.len() - 1]
+            .parse()
+            .map_err(|_| ReviewIntervalError::Invalid(trimmed.to_string()))?;
+        Ok(Self {
+            token: trimmed.to_string(),
+            days,
+        })
     }
 
     /// The validated review interval token string.
     pub(crate) fn as_str(&self) -> &str {
-        &self.0
+        &self.token
     }
 
     /// The number of days encoded by this interval.
     ///
-    /// The constructor guarantees the inner string matches `[0-9]+d`, so the
-    /// digit prefix always parses as a valid `u32`. The `.expect` is therefore
-    /// unreachable in well-formed code; it documents the invariant rather than
-    /// silently propagating a logic error.
     pub(crate) fn days(&self) -> u32 {
-        // Safety of expect: `try_new` rejects any string that does not match
-        // `[0-9]+d`. The prefix before the trailing `d` is therefore a
-        // non-empty run of ASCII digits, which `u32::from_str` can never fail
-        // to parse (overflow aside — `u32::MAX` is ~4 billion days, far beyond
-        // any plausible review interval).
-        self.0[..self.0.len() - 1]
-            .parse::<u32>()
-            .expect("ReviewInterval inner string always ends with 'd' after non-empty digits")
+        self.days
     }
 
     /// Validates the grammar `[0-9]+d`: one or more ASCII digits then exactly
@@ -175,5 +173,20 @@ mod tests {
         assert_eq!(ReviewInterval::try_new("90d").expect("valid").days(), 90);
         assert_eq!(ReviewInterval::try_new("1d").expect("valid").days(), 1);
         assert_eq!(ReviewInterval::try_new("365d").expect("valid").days(), 365);
+    }
+
+    #[test]
+    fn review_interval_rejects_u32_overflow() {
+        assert_eq!(
+            ReviewInterval::try_new("4294967296d"),
+            Err(ReviewIntervalError::Invalid("4294967296d".to_string()))
+        );
+    }
+
+    #[test]
+    fn review_interval_accepts_u32_maximum() {
+        let interval = ReviewInterval::try_new("4294967295d").expect("valid u32 maximum");
+        assert_eq!(interval.as_str(), "4294967295d");
+        assert_eq!(interval.days(), u32::MAX);
     }
 }

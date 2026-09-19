@@ -15,6 +15,7 @@ use crate::domain::ports::changed_files::{ChangedFilesError, ChangedFilesProvide
 use crate::domain::ports::snapshot_workspace::{
     SnapshotError, SnapshotSelector, SnapshotWorkspaceProvider,
 };
+use crate::domain::ports::source_provider::SourceProvider;
 use crate::domain::project_config::{
     EmbeddingsProvider, ParsedProjectConfig, ProjectConfigDocumentError, parse_project_config,
 };
@@ -1131,7 +1132,7 @@ fn review_requirements(
                 .insert(object.id.clone());
         }
         obligations.insert(
-            object.id.clone(),
+            (object.id.clone(), false),
             obligation(&object.id, &object.kind, "impacted"),
         );
     }
@@ -1149,13 +1150,13 @@ fn review_requirements(
                 .insert(change.id.clone());
         }
         obligations.insert(
-            change.id.clone(),
+            (change.id.clone(), false),
             obligation(&change.id, &change.kind, &change.reason),
         );
     }
     if policy_changed {
         obligations.insert(
-            CONFIG_PATH.to_string(),
+            (CONFIG_PATH.to_string(), true),
             AssessmentObligation {
                 object_id: CONFIG_PATH.to_string(),
                 kind: "assessment_policy".to_string(),
@@ -1249,6 +1250,7 @@ fn snapshot_config(config: &LoadedConfig) -> SnapshotConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 struct PolicyDigest {
+    docs_path: String,
     exclude_paths: Vec<String>,
     generated_outputs: Vec<String>,
 }
@@ -1259,10 +1261,12 @@ fn policy_projection(
 ) -> (PolicyDigest, PolicyDigest) {
     (
         PolicyDigest {
+            docs_path: path_string(&base.docs_path),
             exclude_paths: base.assessment_exclude_paths.clone(),
             generated_outputs: configured_outputs(base),
         },
         PolicyDigest {
+            docs_path: path_string(&head.docs_path),
             exclude_paths: head.assessment_exclude_paths.clone(),
             generated_outputs: configured_outputs(head),
         },
@@ -1271,6 +1275,9 @@ fn policy_projection(
 
 fn policy_fields(base: &PolicyDigest, head: &PolicyDigest) -> Vec<String> {
     let mut fields = Vec::new();
+    if base.docs_path != head.docs_path {
+        fields.push("docs_path".to_string());
+    }
     if base.exclude_paths != head.exclude_paths {
         fields.push("exclude_paths".to_string());
     }
@@ -1319,29 +1326,12 @@ fn portable_output(path: &Path, directory: bool) -> Option<String> {
 
 fn source_inventory(root: &Path, docs_path: &Path) -> BTreeSet<String> {
     let docs_root = root.join(docs_path);
-    let mut result = BTreeSet::new();
-    collect_sources(root, &docs_root, &mut result);
-    result
-}
-
-fn collect_sources(project_root: &Path, current: &Path, result: &mut BTreeSet<String>) {
-    let Ok(entries) = fs::read_dir(current) else {
-        return;
-    };
-    let mut entries = entries.filter_map(Result::ok).collect::<Vec<_>>();
-    entries.sort_by_key(|entry| entry.file_name());
-    for entry in entries {
-        let path = entry.path();
-        if path.is_dir() {
-            collect_sources(project_root, &path, result);
-        } else if matches!(
-            path.extension().and_then(|value| value.to_str()),
-            Some("adoc" | "md")
-        ) && let Ok(relative) = path.strip_prefix(project_root)
-        {
-            result.insert(path_string(relative));
-        }
-    }
+    FsSourceProvider::for_project(docs_root.clone(), root.to_path_buf(), docs_root)
+        .load_sources()
+        .into_iter()
+        .filter_map(Result::ok)
+        .map(|source| path_string(&source.logical_path))
+        .collect()
 }
 
 fn path_matches_exclusion(path: &str, exclusion: &str) -> bool {
@@ -1791,13 +1781,50 @@ fn compact_json<T: Serialize>(value: &T) -> Result<Vec<u8>, serde_json::Error> {
 mod tests {
     use super::{
         authority_promotions, compact_json, graph_schema_version, is_authoritative_subject,
-        lifecycle_signals, object_set_json, path_matches_exclusion, reviewers_of,
+        lifecycle_signals, object_set_json, path_matches_exclusion, reviewers_of, source_inventory,
     };
+    use crate::domain::ports::source_provider::SourceProvider;
     use crate::domain::review::object_diff::ObjectDiff;
     use crate::domain::review::object_diff::test_support::test_node;
+    use crate::infrastructure::source::fs::FsSourceProvider;
     use serde::ser::Error as _;
 
     struct SerializationFailure;
+
+    #[test]
+    #[cfg(unix)]
+    fn source_inventory_uses_provider_canonical_paths_for_links() {
+        let workspace = tempfile::tempdir().unwrap();
+        let docs = workspace.path().join("docs");
+        std::fs::create_dir(&docs).unwrap();
+        std::fs::write(docs.join("billing.adoc"), "# Billing\n").unwrap();
+        std::os::unix::fs::symlink(".", docs.join("self")).unwrap();
+        std::os::unix::fs::symlink("../outside", docs.join("escape")).unwrap();
+        std::fs::create_dir(workspace.path().join("outside")).unwrap();
+        std::fs::write(workspace.path().join("outside/hidden.adoc"), "# Hidden\n").unwrap();
+
+        let provider =
+            FsSourceProvider::for_project(docs.clone(), workspace.path().to_path_buf(), docs);
+        let loaded = provider.load_sources();
+        let expected = loaded
+            .iter()
+            .filter_map(|source| source.as_ref().ok())
+            .map(|source| super::path_string(&source.logical_path))
+            .collect::<std::collections::BTreeSet<_>>();
+
+        assert_eq!(
+            source_inventory(workspace.path(), std::path::Path::new("docs")),
+            expected
+        );
+        assert_eq!(
+            expected,
+            std::collections::BTreeSet::from(["docs/billing.adoc".to_string()])
+        );
+        assert!(
+            loaded.iter().any(Result::is_err),
+            "escaping link is reported by provider"
+        );
+    }
 
     #[test]
     fn retrieval_authority_is_bound_without_changing_legacy_config_bytes() {

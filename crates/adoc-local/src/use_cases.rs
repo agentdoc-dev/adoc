@@ -93,6 +93,7 @@ pub struct CheckReceiptInput {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CheckReceiptOutcome {
+    pub input_paths: Vec<PathBuf>,
     pub receipt: adoc_core::ValidationReceipt,
     pub diagnostics: Vec<Diagnostic>,
     pub exit_code: i32,
@@ -706,6 +707,7 @@ where
     };
 
     Ok(CheckReceiptOutcome {
+        input_paths: outcome.input_paths,
         receipt: outcome.receipt,
         diagnostics: outcome.diagnostics,
         exit_code,

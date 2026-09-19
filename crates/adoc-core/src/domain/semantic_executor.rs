@@ -329,6 +329,9 @@ pub fn complete_semantic_execution(
     if assessment_json.len() > MAX_ASSESSMENT_BYTES {
         return Err(invalid("assessment exceeds 1 MiB"));
     }
+    if !assessment.matches_context(request.context()) {
+        return Err(invalid("assessment does not match the request context"));
+    }
     let SemanticExecutorIdentity { provider, model } = assessment.identity();
     if provider != &request.adapter.provider || model != &request.adapter.model {
         return Err(SemanticExecutorError::IdentityMismatch);

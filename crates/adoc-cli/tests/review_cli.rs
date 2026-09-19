@@ -1385,3 +1385,44 @@ fn impacted_by_markdown_renders_header_and_obligation_task_list() {
         "proof obligations must render as a GitHub task list; got:\n{stdout}"
     );
 }
+
+#[test]
+fn removing_referenced_evidence_requires_re_evidence() {
+    let workspace = TestWorkspace::new("review-evidence-reference-removal");
+    run_git(&workspace, &["init", "--initial-branch=main"]);
+    run_git(&workspace, &["config", "user.email", "test@adoc.dev"]);
+    run_git(&workspace, &["config", "user.name", "adoc tests"]);
+    run_git(&workspace, &["config", "commit.gpgsign", "false"]);
+    workspace.write(
+        "agentdoc.config.yaml",
+        "version: 1\nmode: strict\ndocs_path: docs\n",
+    );
+    let base = "# Billing @doc(team.billing)\n\n::source billing.schema\nkind: api_schema\npath: schema.yaml\n--\nBilling schema.\n::\n\n::claim billing.refunds\nstatus: verified\nowner: billing\nverified_at: 2026-05-05\nreviewed_by: billing\nevidence_ref: billing.schema\n--\nRefunds take 30 days.\n::\n";
+    workspace.write("docs/billing.adoc", base);
+    workspace.write("schema.yaml", "openapi: 3.1.0\n");
+    run_git(&workspace, &["add", "-A"]);
+    run_git(&workspace, &["commit", "-m", "base"]);
+    run_git(&workspace, &["checkout", "-b", "feature"]);
+    workspace.write(
+        "docs/billing.adoc",
+        &base.replace("evidence_ref: billing.schema\n", ""),
+    );
+    run_git(&workspace, &["add", "-A"]);
+    run_git(&workspace, &["commit", "-m", "remove reference"]);
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["review", "main", "--format", "json"])
+        .output()
+        .expect("review runs");
+    assert!(output.status.success(), "{}", stderr(&output));
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("review JSON");
+    assert!(
+        value["proof_obligations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|obligation| obligation["object_id"] == "billing.refunds"
+                && obligation["reason"] == "re-evidence: api_schema"),
+        "{value}"
+    );
+}
