@@ -1,0 +1,81 @@
+name: Native build
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - runner: macos-15
+            target: aarch64-apple-darwin
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: ./.github/actions/rust-setup
+        with:
+          cache-key: release-${{ matrix.target }}
+          save: false
+      - name: Verify native host and candidate
+        env:
+          EXPECTED_TARGET: ${{ matrix.target }}
+        run: |
+          test "$(rustc -vV | sed -n 's/^host: //p')" = "$EXPECTED_TARGET"
+          uname -sm
+          git rev-parse HEAD
+      - name: Build CLI and MCP gateway
+        run: cargo build --release --locked -p adoc-cli -p adoc-mcp
+      - name: Identify the candidate version
+        id: version
+        run: echo "version=v$(./target/release/adoc --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+      - name: Verify release tag matches the binary
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        run: test "$GITHUB_REF_NAME" = "v$(./target/release/adoc --version | awk '{print $2}')"
+      - name: Smoke-check binary against example project
+        run: ./target/release/adoc check examples/expanded-pilot
+      - name: Package tarball with checksum
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          ARCHIVE="adoc-${VERSION}-${{ matrix.target }}.tar.gz"
+          tar -czf "$ARCHIVE" -C target/release adoc adoc-mcp -C "$GITHUB_WORKSPACE" LICENSE
+          case "${{ matrix.target }}" in
+            aarch64-apple-darwin) EXPECTED_ARCH='Mach-O 64-bit executable arm64' ;;
+            x86_64-unknown-linux-gnu) EXPECTED_ARCH='ELF 64-bit LSB.*x86-64' ;;
+            aarch64-unknown-linux-gnu) EXPECTED_ARCH='ELF 64-bit LSB.*ARM aarch64' ;;
+            *) exit 1 ;;
+          esac
+          for binary in target/release/adoc target/release/adoc-mcp; do file "$binary"; file "$binary" | grep -Eq "$EXPECTED_ARCH"; done
+          shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256"
+          shasum -a 256 -c "$ARCHIVE.sha256"
+          mkdir unpacked
+          tar -xzf "$ARCHIVE" -C unpacked
+      - name: Verify the packaged first-use journey
+        run: python3 scripts/smoke-test.py --bin-dir unpacked --embeddings
+      - name: Upload build output
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist-${{ matrix.target }}
+          path: |
+            adoc-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz
+            adoc-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 1

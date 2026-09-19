@@ -1,8 +1,9 @@
 # HN-M6.T2: Live human fork PR qualification
 
-Status: planned; implementation explicitly authorized on 2026-09-18.
+Status: historical implementation record; fork PR #259 exercised the required
+core CI boundary. Native package and Windows checks now run at merge-queue entry.
 Requirements: HN-17; HN-5/6.
-Dependencies: Candidate workflows published on base branch; M4.T2/T3 qualification jobs ready.
+Dependencies: Candidate workflows published on base branch; core CI available.
 Parent: [qualification roadmap](../roadmap/HN-LAUNCH-QUALIFICATION.md).
 
 ## Acceptance and exclusions
@@ -19,11 +20,11 @@ source repairs require affected earlier checks to be rerun.
 
 ## Implementation order
 
-Inspect existing fork/PR before creating duplicates. Publish reviewed candidate branch needed as base; create/reuse alex-bako fork and uniquely named validation branch. Prepare a harmless useful example README change that matches release validation paths, then open clearly labeled draft PR against candidate base. Explicit live-fork request authorizes this PR and its normal workflow activity. Do not grant fork secrets/write tokens or alter policy. Wait for required ci plus native qualification/release jobs; check Claude review skip and other expected reviews. Reconcile findings against current head. Account is existing maintainer; cannot claim first-time contributor approval behavior. Leave PR clearly labeled with exact outcome; no auto merge or fork deletion.
+Inspect existing fork/PR before creating duplicates. Publish reviewed candidate branch needed as base; create/reuse alex-bako fork and uniquely named validation branch. Prepare a harmless useful example README change that matches release validation paths, then open clearly labeled draft PR against candidate base. Explicit live-fork request authorizes this PR and its normal workflow activity. Do not grant fork secrets/write tokens or alter policy. Wait for required `ci`; native package and Windows qualification run at merge-queue entry, not on the fork PR. Check Claude review skip and other expected reviews. Reconcile findings against current head. Account is existing maintainer; cannot claim first-time contributor approval behavior. Leave PR clearly labeled with exact outcome; no auto merge or fork deletion.
 
 ## Required checks
 
-Actual fork head repository differs from base; trigger pull_request; base contains candidate workflows; required ci green; Claude review job skipped by fork gate; native jobs completed with logs; complete expected review inbox; exact final head unchanged; no released assets/tags created.
+Actual fork head repository differs from base; trigger pull_request; base contains candidate workflows; required `ci` green; Claude review job skipped by fork gate; complete expected review inbox; exact final head unchanged; no released assets/tags created.
 Record each actual command/interaction and result in the slice evidence ledger;
 these are acceptance checks, not a claim that any has already executed.
 

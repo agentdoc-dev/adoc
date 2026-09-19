@@ -37,3 +37,10 @@ on 2026-09-18, but its attestation lookup returned HTTP 404.
 
 Do not treat current workflow code, passing main CI, or a roadmap completion as
 proof that an older downloadable archive was built with those checks.
+
+## Release qualification
+
+Pull requests run core CI. Merge-queue candidates additionally build and smoke
+Linux x64/ARM64 and Apple Silicon macOS packages and run Windows source-install
+qualification against the candidate SHA. Manual native workflows remain available.
+Only version-tag pushes publish release assets. Intel macOS is deferred for launch.

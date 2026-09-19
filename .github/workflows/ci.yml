@@ -13,6 +13,8 @@ on:
   # not a substitute: its check runs land on the head SHA but GitHub keeps them
   # out of the PR's check rollup, which is what the required-check gate reads.
   pull_request:
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
     inputs:
       fastembed:
@@ -83,6 +85,7 @@ jobs:
       - name: Check documentation links
         run: |
           PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p test_doc_links.py
+          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p test_ci_gate.py
           python3 scripts/check-doc-links.py
 
       - name: Check formatting
@@ -214,6 +217,14 @@ jobs:
       - name: Check licenses, bans and sources
         run: cargo deny check licenses bans sources
 
+  native:
+    if: github.event_name == 'merge_group'
+    uses: ./.github/workflows/native-build.yml
+
+  windows:
+    if: github.event_name == 'merge_group'
+    uses: ./.github/workflows/qualification.yml
+
   # The one required status check. Required checks are matched by context name
   # and GitHub waits indefinitely for a context that never reports, so gating
   # on the individual lanes would mean re-editing branch protection every time
@@ -225,31 +236,20 @@ jobs:
       - test
       - check
       - deny
-    # NOT `always()`: that also fires when the RUN is cancelled, and
-    # cancel-in-progress above makes cancellation the normal end of any
-    # superseded PR push. The gate would then read `cancelled` from its
-    # upstreams, find it outside ("success", "skipped") and report the
-    # superseded commit RED instead of grey. `!cancelled()` keeps everything
-    # the script below relies on — a skipped dependency still passes, a
-    # failed one still reds.
-    if: ${{ !cancelled() }}
+      - native
+      - windows
+    # Queue candidates must aggregate cancelled dependencies so the required
+    # status fails closed. Superseded PR runs keep their normal cancellation
+    # behavior and do not emit a replacement gate result.
+    if: ${{ always() && (github.event_name == 'merge_group' || !cancelled()) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Require every gate to have passed
         env:
+          EVENT_NAME: ${{ github.event_name }}
           NEEDS: ${{ toJSON(needs) }}
-        run: |
-          python3 - <<'PY'
-          import json, os, sys
-          needs = json.loads(os.environ["NEEDS"])
-          # `skipped` passes: a job that did not need to run is not a failure,
-          # and a job skipped because its dependency failed is caught by that
-          # dependency's own entry here.
-          bad = {name: job["result"] for name, job in sorted(needs.items())
-                 if job["result"] not in ("success", "skipped")}
-          for name, result in bad.items():
-              print(f"{name}: {result}")
-          print(f"{len(needs) - len(bad)}/{len(needs)} gates passed")
-          sys.exit(1 if bad else 0)
-          PY
+        run: python3 scripts/check-ci-gate.py

@@ -99,7 +99,7 @@ support or publishing: failure must remain visible until repaired and retested.
 | ID | Additional acceptance | Slice |
 |---|---|---|
 | HN-9 | Actual release-profile Cargo installation of both binaries into an isolated root passes fresh-project CLI/MCP smoke; installed paths and versions recorded | HN-M4.T1 |
-| HN-10 | Native Intel macOS runtime, extracted package, citations, MCP and real embeddings are exercised at the candidate SHA | HN-M4.T2 |
+| HN-10 | Native Intel macOS runtime qualification | HN-M4.T2 (deferred for launch; historical attempted evidence retained) |
 | HN-11 | Native Windows compile/install/runtime qualification records `.exe`, paths/Unicode/CRLF, process cleanup, citations and MCP behavior; failures do not become an unsupported success claim | HN-M4.T3 |
 | HN-12 | A documented pristine-OS baseline installs only declared prerequisites and completes the journey with no shared tool/model/build caches; preloaded hosted runners do not establish this | HN-M4.T4 |
 | HN-13 | Current first-party security review has a complete file/threat-surface coverage ledger; all reachable Git history is scanned and security-relevant history manually investigated; findings and inaccessible history are explicit | HN-M5.T1 |

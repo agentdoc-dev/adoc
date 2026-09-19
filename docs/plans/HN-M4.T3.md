@@ -1,6 +1,7 @@
 # HN-M4.T3: Native Windows compatibility
 
-Status: planned; implementation explicitly authorized on 2026-09-18.
+Status: historical implementation record; Windows qualification is now reusable
+for merge-group candidates and manual dispatch, not pull requests.
 Requirements: HN-11; HN-2/3/4.
 Dependencies: HN-M4.T1; hosted Windows runner.
 Parent: [qualification roadmap](../roadmap/HN-LAUNCH-QUALIFICATION.md).
@@ -19,7 +20,11 @@ source repairs require affected earlier checks to be rerun.
 
 ## Implementation order
 
-First add a failing executable-path regression for Windows .exe names while preserving POSIX names; smallest shared resolver in existing smoke. Add a read-only pull_request/manual qualification job with pinned checkout, explicit target host verification and generous bounded timeout. Exercise Unicode/spaced work directories, CRLF input, citation paths and process cleanup. Reuse current fixtures and binary assertions. Fix only reproduced platform failures at their responsible layer, with regression checks.
+The implemented path added a failing executable-path regression for Windows `.exe`
+names while preserving POSIX names, then a read-only reusable/manual qualification
+job with pinned checkout, host verification and bounded timeout. Merge-group
+candidates invoke it; pull requests run core CI only. Historical exercise and
+repair requirements remain evidence, not pending PR-trigger instructions.
 
 ## Required checks
 

@@ -1,25 +1,11 @@
 name: Native qualification
 
 on:
-  pull_request:
-    paths:
-      - .github/workflows/qualification.yml
-      - .github/actions/rust-setup/action.yml
-      - Cargo.lock
-      - Cargo.toml
-      - rust-toolchain.toml
-      - crates/**
-      - examples/quickstart/**
-      - scripts/smoke-test.py
-      - scripts/test_smoke_test.py
+  workflow_call:
   workflow_dispatch:
 
 permissions:
   contents: read
-
-concurrency:
-  group: qualification-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   windows:
@@ -30,7 +16,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
 
       - name: Install pinned Rust toolchain
         shell: pwsh

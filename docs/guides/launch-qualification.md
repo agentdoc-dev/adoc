@@ -50,14 +50,15 @@ These local paths are an audit trail, not downloadable release assets.
 Subsequent documentation-only planning commit `2bf8f281` does not change these
 binary inputs. Native Intel macOS, Windows and clean-OS checks are separate slices.
 
-## Intel macOS Cargo installation prerequisite
+## Intel macOS Cargo installation prerequisite (historical, deferred)
 
-The default `cargo install` path cannot obtain ONNX Runtime 1.28.0 for
+The default `cargo install` path could not obtain ONNX Runtime 1.28.0 for
 `x86_64-apple-darwin`: the resolved `ort-sys 2.0.0-rc.13` distribution has no
-Intel macOS runtime. Before installing on Intel macOS, build the pinned
-upstream source commit `da9b5e364c465de65c49d91e696cd6485270757f` with
-`scripts/qualification/build-intel-runtime.sh`, then retain its staged `lib`
-directory. Install and link dynamically with (repeat for `crates/adoc-mcp`):
+Intel macOS runtime. The prior candidate branch used pinned upstream source
+commit `da9b5e364c465de65c49d91e696cd6485270757f` and
+`scripts/qualification/build-intel-runtime.sh` to stage its `lib` directory.
+That script/path has been removed with the launch deferral. The attempted
+dynamic-link invocation was:
 
 ```sh
 ORT_LIB_LOCATION=/path/to/lib ORT_PREFER_DYNAMIC_LINK=1 \
@@ -65,9 +66,10 @@ ORT_LIB_LOCATION=/path/to/lib ORT_PREFER_DYNAMIC_LINK=1 \
   cargo install --path crates/adoc-cli --locked --root "$ADOC_INSTALL_ROOT"
 ```
 
-The installed executable also needs an `@executable_path/lib` runtime search
-path and the staged `libonnxruntime*.dylib` files (including symlinks) in `$ADOC_INSTALL_ROOT/bin/lib`. The release workflow performs those packaging steps; plain Cargo install
-does not. This remains unverified on a hosted Intel native build.
+The installed executable needed an `@executable_path/lib` runtime search path and
+staged `libonnxruntime*.dylib` files (including symlinks) in
+`$ADOC_INSTALL_ROOT/bin/lib`. This remains unverified on a hosted Intel native
+build. Intel macOS is deferred for launch; this evidence is not a supported recipe.
 
 
 ## Pristine Ubuntu installation (HN-M4.T4)
@@ -173,7 +175,8 @@ On fork head `8888969a41d94053a04712c862be1bed80b247ec`,
 [required CI](https://github.com/agentdoc-dev/adoc/actions/runs/35434373274) and
 [Windows installation/runtime](https://github.com/agentdoc-dev/adoc/actions/runs/35434373133)
 passed. The [native package run](https://github.com/agentdoc-dev/adoc/actions/runs/35434373210)
-passed Linux x64, Linux ARM64 and macOS ARM64. Intel macOS remains in progress.
+passed Linux x64, Linux ARM64 and macOS ARM64. Intel macOS was attempted and is
+now deferred for launch.
 The optional secret-backed Claude review was skipped as designed for a fork.
 
 These results bind to the recorded head; later security repairs require a new

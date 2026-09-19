@@ -78,9 +78,9 @@ rerun `check`; failed validation does not make the source valid by skipping buil
 | Platform | Current path | Packaging |
 |---|---|---|
 | macOS Apple Silicon | Source build; locally exercised CLI/MCP | Next release workflow builds an arm64 archive |
-| macOS Intel | Source build; not locally qualified by this launch audit | Next release workflow builds an x86_64 archive and runs its smoke check |
+| macOS Intel | Deferred for this launch | No supported source-build or release-archive path |
 | Linux x86_64 / arm64 | Source build, or published 0.3.4 CLI with its own docs | Release workflow runs natively for each architecture |
-| Windows | No supported launch installation path yet | No release artifact; compatibility unverified |
+| Windows | Source build qualification only | No release artifact |
 
 The matrix describes build/release routes, not a claim that a future archive has
 already been published. [Version compatibility](releases.md) separates the 0.4.0
