@@ -108,3 +108,46 @@ installation and smoke commands above. Use an empty HOME/model cache initially;
 disable networking only after dependency installation and model provisioning.
 The official image, checksum, boot arguments, bootstrap/install transcripts and
 network-off result are retained in the local qualification audit trail.
+
+## Claude Desktop client journey (HN-M6.T1)
+
+On 2026-09-19, Claude Desktop 2.2553.1 completed the real Chat UI journey using
+the Cargo-installed MCP executable from HN-M4.T1 and a synthetic public-only
+fixture in a path containing spaces and Unicode. The temporary server entry was
+added alongside the existing servers, then the client was restarted. Its local
+server connected and exposed the advertised tools.
+
+The Chat UI requested permission for `adoc_project_status` and `adoc_why`;
+both were allowed once. The visible completed answer confirmed:
+
+- Graph `adoc.graph.v6` and search `adoc.search.v2`, one object each, readable.
+- Retrieval, semantic search and patch validation ready; review unavailable in
+  the fixture, and `patch_apply_enabled: false`.
+- `billing.refund-window`: "Customers can request a refund within 30 days of
+  purchase.", status `draft`, source `docs/index.adoc:3:1`.
+
+Both actual tool calls were also recorded by the local server. The temporary
+configuration entry was then removed while preserving all existing servers. A draft claim is
+not verified evidence; the test checks retrieval and citation fidelity. No patch
+was applied. This is a named desktop-client UI pass, not a headless substitute.
+
+For a permanent setup, install `adoc-mcp` in a stable location. In Claude
+Desktop's Settings > Developer > Edit Config, merge this entry into
+`mcpServers`, preserving existing entries (replace the example absolute path):
+
+```json
+{
+  "mcpServers": {
+    "adoc": {
+      "command": "/absolute/path/to/adoc-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+Restart Claude, open Chat, and ask it to use the local adoc tools with the
+absolute `project_root` of a built example. Ask for project status, then the
+refund claim and exact citation. Tool names and arguments should come from
+server discovery. Keep patch application disabled for this read-only journey.
+See the [MCP local-server guide](https://modelcontextprotocol.io/docs/develop/connect-local-servers).
