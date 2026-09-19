@@ -326,11 +326,19 @@ fn render_block(
             for item in &list.items {
                 html.push_str("<li>");
                 if let Some(checked) = item.task_state {
+                    let label = crate::domain::inline::plain_text(&item.inlines);
+                    let label = if label.trim().is_empty() {
+                        "Task without a description"
+                    } else {
+                        &label
+                    };
                     html.push_str("<input type=\"checkbox\" disabled");
                     if checked {
                         html.push_str(" checked");
                     }
-                    html.push_str(" /> ");
+                    html.push_str(" aria-label=\"");
+                    html.push_str(&escape_html(label));
+                    html.push_str("\" /> ");
                 }
                 render_inlines(&item.inlines, html);
                 for child in &item.content {
@@ -1602,6 +1610,54 @@ mod tests {
                 source_digest: String::new(),
                 blocks,
             }],
+        }
+    }
+
+    #[test]
+    fn task_checkbox_has_an_accessible_label() {
+        use crate::domain::ast::{ListAst, ListItem, ListKind};
+        let mut html = String::new();
+        render_block(
+            &BlockAst::List(ListAst {
+                kind: ListKind::Unordered,
+                span: dummy_span(),
+                items: vec![ListItem {
+                    inlines: vec![InlineSegment::Text("Read <policy>".into())],
+                    span: dummy_span(),
+                    content: vec![],
+                    task_state: Some(true),
+                }],
+            }),
+            None,
+            &RenderContext::default(),
+            &mut html,
+        );
+        assert!(html.contains(
+            "<input type=\"checkbox\" disabled checked aria-label=\"Read &lt;policy&gt;\" /> Read &lt;policy&gt;"
+        ));
+    }
+
+    #[test]
+    fn empty_task_checkbox_has_an_accessible_label() {
+        use crate::domain::ast::{ListAst, ListItem, ListKind};
+        for inlines in [vec![], vec![InlineSegment::Text(" ".into())]] {
+            let mut html = String::new();
+            render_block(
+                &BlockAst::List(ListAst {
+                    kind: ListKind::Unordered,
+                    span: dummy_span(),
+                    items: vec![ListItem {
+                        inlines,
+                        span: dummy_span(),
+                        content: vec![],
+                        task_state: Some(false),
+                    }],
+                }),
+                None,
+                &RenderContext::default(),
+                &mut html,
+            );
+            assert!(html.contains("aria-label=\"Task without a description\""));
         }
     }
 
