@@ -229,7 +229,8 @@ fn review_overdue_record(node: &GraphKnowledgeObjectNode, today: NaiveDate) -> O
     let effective_at =
         NaiveDate::parse_from_str(node.fields.get("effective_at")?, "%Y-%m-%d").ok()?;
     let interval = ReviewInterval::try_new(node.fields.get("review_interval")?).ok()?;
-    let next_review = effective_at + chrono::Duration::days(i64::from(interval.days()));
+    let next_review =
+        effective_at.checked_add_days(chrono::Days::new(u64::from(interval.days())))?;
 
     if next_review >= today {
         return None;
@@ -822,6 +823,26 @@ mod tests {
         assert!(
             records.is_empty(),
             "none of these may produce a review_overdue record: {records:#?}"
+        );
+    }
+
+    #[test]
+    fn review_overdue_ignores_unrepresentable_due_date() {
+        let session = session_with(vec![ko_node(
+            "policy.max-date",
+            "policy",
+            Some("active"),
+            &[
+                ("effective_at", "9999-12-31"),
+                ("review_interval", "4294967295d"),
+            ],
+        )]);
+
+        let records = evaluate_stale_for_date(&session, None, NaiveDate::MAX);
+
+        assert!(
+            records.is_empty(),
+            "unrepresentable due date must not be overdue"
         );
     }
 

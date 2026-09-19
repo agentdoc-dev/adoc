@@ -40,8 +40,13 @@ impl ValidationRule for PolicyReviewDrift {
                 continue;
             };
 
-            let next_review =
-                policy.effective_at().date() + chrono::Duration::days(i64::from(interval.days()));
+            let Some(next_review) = policy
+                .effective_at()
+                .date()
+                .checked_add_days(chrono::Days::new(u64::from(interval.days())))
+            else {
+                continue;
+            };
 
             if next_review < self.today {
                 sink.push(
@@ -199,6 +204,19 @@ mod tests {
         let page = page(vec![policy_block("active", "2026-05-04", Some("30d"))]);
 
         let diagnostics = check(&page, TODAY);
+
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn unrepresentable_next_review_emits_no_diagnostic() {
+        let page = page(vec![policy_block(
+            "active",
+            "9999-12-31",
+            Some("4294967295d"),
+        )]);
+
+        let diagnostics = check(&page, NaiveDate::MAX);
 
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
     }

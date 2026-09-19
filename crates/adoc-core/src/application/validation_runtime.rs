@@ -109,6 +109,9 @@ pub struct ValidationRuntimeInput {
 /// receipt is computed over exactly this array's canonical serialization.
 #[derive(Debug, Clone)]
 pub struct ValidationRuntimeOutcome {
+    /// Source and context paths selected by this run, including failed source reads.
+    /// Output writers must not replace these paths. Not part of receipt serialization.
+    pub input_paths: Vec<PathBuf>,
     pub receipt: ValidationReceipt,
     pub diagnostics: Vec<Diagnostic>,
     pub(crate) graph_artifact: Option<String>,
@@ -299,6 +302,27 @@ fn run_with_context_bytes<P: SourceProvider>(
 
     // ONE source read serves both the digests and the compile below.
     let sources = provider.load_sources();
+    let input_paths = sources
+        .iter()
+        .map(|source| match source {
+            Ok(source) => source.physical_path.clone(),
+            Err(error) => input.project.as_ref().map_or_else(
+                || error.path.clone(),
+                |project| project.project_root.join(&error.path),
+            ),
+        })
+        .chain(
+            [
+                input.config_path.as_ref(),
+                input.source_invocation.as_ref(),
+                input.context_artifact.as_ref(),
+                input.semantic_context.as_ref(),
+            ]
+            .into_iter()
+            .flatten()
+            .cloned(),
+        )
+        .collect();
     let inputs = source_input_digests(&sources);
     let mut context = Vec::new();
     if let Some(config_path) = &input.config_path {
@@ -448,6 +472,7 @@ fn run_with_context_bytes<P: SourceProvider>(
     };
 
     Ok(ValidationRuntimeOutcome {
+        input_paths,
         receipt,
         diagnostics,
         graph_artifact: compiled.artifacts.map(|artifacts| artifacts.graph_json),

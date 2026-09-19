@@ -521,3 +521,32 @@ fn human_adapter_rejects_a_provider_controlled_identity_kind() {
     )
     .expect_err("human status comes from the closed adapter contract");
 }
+
+#[test]
+fn completion_rejects_assessment_validated_for_another_context() {
+    let request = validate_semantic_executor_request(
+        &serde_json::to_vec(&request("codex", "codex", "gpt-5.6-codex")).unwrap(),
+    )
+    .unwrap();
+    let mut other_input = context_input();
+    other_input["items"][0]["content"]["diff"] = json!("+ unrelated change");
+    let other_context =
+        build_semantic_context_from_document(&serde_json::to_vec(&other_input).unwrap()).unwrap();
+    assert_ne!(
+        request.context().context_digest(),
+        other_context.context_digest()
+    );
+    let assessment = validate_semantic_assessment(
+        &serde_json::to_vec(&assessment(
+            other_context.context_digest(),
+            "codex",
+            "gpt-5.6-codex",
+        ))
+        .unwrap(),
+        &other_context,
+    )
+    .unwrap();
+    let error = complete_semantic_execution(&request, &assessment, None)
+        .expect_err("an assessment validated for another context must not complete this request");
+    assert!(error.to_string().contains("context"));
+}

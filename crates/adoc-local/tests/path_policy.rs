@@ -94,3 +94,27 @@ fn project_root_policy_rejects_symlink_escape_for_writes() {
     assert!(error.to_string().contains("path_outside_project"));
     assert!(!outside.path().join("output.json").exists());
 }
+
+#[test]
+#[cfg(unix)]
+fn project_root_policy_rejects_dangling_symlink_output() {
+    let workspace = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    std::os::unix::fs::symlink(
+        outside.path().join("missing.html"),
+        workspace.path().join("output.html"),
+    )
+    .unwrap();
+    let policy = ProjectRootPathPolicy::new(workspace.path()).unwrap();
+    assert!(policy.resolve_write_path(Path::new("output.html")).is_err());
+    assert!(
+        policy
+            .resolve_write_path(Path::new("output.html/child"))
+            .is_err()
+    );
+    assert!(
+        policy
+            .resolve_write_path(Path::new("new/normal.html"))
+            .is_ok()
+    );
+}
