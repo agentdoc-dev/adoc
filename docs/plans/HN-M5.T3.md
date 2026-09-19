@@ -1,5 +1,10 @@
 # HN-M5.T3: Accessibility engineering evaluation
 
+Scope update, 2026-09-19: further accessibility qualification is no longer a
+launch gate, per the user. Retain the verified checkbox fix and completed
+browser evidence. Do not enable VoiceOver.
+
+
 Status: planned; implementation explicitly authorized on 2026-09-18.
 Requirements: HN-15.
 Dependencies: HN-M4.T1; generated representative HTML.
@@ -19,11 +24,11 @@ source repairs require affected earlier checks to be rerun.
 
 ## Implementation order
 
-Generate public fixture covering prose, headings, links, lists/tables/images, typed objects, quarantined markup, restricted/excluded content. Use permitted browser/native app control to inspect rendering, keyboard navigation, focus, zoom/reflow, and VoiceOver/Safari when available. Use a pinned accessibility engine when available without adding production dependencies; reconcile findings manually. CLI: NO_COLOR/plain mode, readable errors, citations and screen-reader operation. Preserve renderer escaping/visibility invariants. For each defect, red regression, minimal semantic fix, targeted renderer/policy tests then broader gates if code changed.
+Generate public fixture covering prose, headings, links, lists/tables/images, typed objects, quarantined markup, restricted/excluded content. Use permitted browser/native app control to inspect rendering, keyboard navigation, focus and zoom/reflow. User explicitly excluded VoiceOver on 2026-09-18; do not enable or use it. Use a pinned accessibility engine when available without adding production dependencies; reconcile findings manually. CLI: NO_COLOR/plain mode, readable errors and citations. Preserve renderer escaping/visibility invariants. For each defect, red regression, minimal semantic fix, targeted renderer/policy tests then broader gates if code changed.
 
 ## Required checks
 
-Fixture build and source/citation correctness; automated accessibility scan; keyboard focus/link traversal; zoom/reflow/contrast; actual named screen-reader pass; per-criterion evidence table; CLI plain/NO_COLOR; renderer/policy and full gates for Rust changes.
+Fixture build and source/citation correctness; automated accessibility scan; keyboard focus/link traversal; zoom/reflow/contrast; screen-reader testing excluded by user instruction; per-criterion evidence table; CLI plain/NO_COLOR; renderer/policy and full gates for Rust changes.
 Record each actual command/interaction and result in the slice evidence ledger;
 these are acceptance checks, not a claim that any has already executed.
 
