@@ -68,3 +68,43 @@ ORT_LIB_LOCATION=/path/to/lib ORT_PREFER_DYNAMIC_LINK=1 \
 The installed executable also needs an `@executable_path/lib` runtime search
 path and the staged `libonnxruntime*.dylib` files (including symlinks) in `$ADOC_INSTALL_ROOT/bin/lib`. The release workflow performs those packaging steps; plain Cargo install
 does not. This remains unverified on a hosted Intel native build.
+
+
+## Pristine Ubuntu installation (HN-M4.T4)
+
+On 2026-09-18, a fresh QEMU VM booted the official Ubuntu 24.04.5 ARM64 cloud
+image (kernel 6.8.0-139-generic). Image SHA-256:
+`7b682958a67ff5de068e36de6af8b75fa645d296af5a70d6500527f6a33781db`.
+It had four virtual CPUs, 8 GiB RAM and a fresh 35 GB copy-on-write disk.
+No host directory, Cargo cache, model cache or host credentials were mounted.
+An ephemeral SSH key was used only to administer this disposable VM.
+
+Source was `2bf8f2819e0ed6ea16274a6d24fe5f5fa8afe229` with the reviewed
+Cargo.lock overlay (SHA-256
+`8691ad8218e4a398be7cb5844006b298693a8bb2b71ffb4a3bb4c16d243488c5`).
+Bootstrap installed `build-essential pkg-config libssl-dev curl ca-certificates
+git python3`, then Rust 1.95.0 minimal from the official rustup installer.
+Both default release-profile Cargo path installations succeeded.
+
+The first combined harness run failed because an upstream model warning on
+stderr was incorrectly included in JSON parsing. After the smoke harness was
+corrected to parse stdout only, both the ordinary and real-embedding journeys
+passed. With network disabled at the VM's virtual network device, the ordinary
+CLI/MCP journey passed again. Network was then restored.
+
+| Installed executable | SHA-256 |
+|---|---|
+| adoc | `561087b6bb8e9c023bdbe9300d62aa900269e06969a517e68ffc2855a81eb9a2` |
+| adoc-mcp | `ad71772521d658e598b6aa48a17359f068971a5a6aafbecf8b99eb7ae9e73acc` |
+
+This proves a pristine Ubuntu ARM64 installation for that source/lockfile pair.
+It does not establish pristine macOS or Windows setup. A subsequent installation
+of the repaired candidate in the same VM is a warm regression check; its cached
+compiler/model state must not be presented as another pristine installation.
+
+To reproduce the install inside a newly created Ubuntu VM, install the listed
+packages and Rust toolchain, copy the selected checkout, and run the two Cargo
+installation and smoke commands above. Use an empty HOME/model cache initially;
+disable networking only after dependency installation and model provisioning.
+The official image, checksum, boot arguments, bootstrap/install transcripts and
+network-off result are retained in the local qualification audit trail.
