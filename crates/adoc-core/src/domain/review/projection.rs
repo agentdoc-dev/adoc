@@ -636,6 +636,34 @@ mod tests {
     }
 
     #[test]
+    fn object_reference_evidence_removed_emits_re_evidence_field_change() {
+        let mut base = baseline("x");
+        base.evidence
+            .push(GraphEvidence::object_ref("test", "billing.integration"));
+        let head = baseline("x");
+
+        assert_eq!(
+            project_changed(&changed_from(base, head)),
+            vec![FieldChange::EvidenceRemoved {
+                field: "test".to_string(),
+                value: "billing.integration".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn inline_and_object_reference_evidence_of_same_kind_emit_no_field_change() {
+        let mut base = baseline("x");
+        base.evidence
+            .push(GraphEvidence::inline("source_code", "ledger-v1"));
+        let mut head = baseline("x");
+        head.evidence
+            .push(GraphEvidence::object_ref("source_code", "billing.ledger"));
+
+        assert!(project_changed(&changed_from(base, head)).is_empty());
+    }
+
+    #[test]
     fn evidence_value_only_change_emits_no_field_change() {
         // Strict presence/absence semantics: source_code: A -> source_code: B is
         // not an EvidenceAdded/Removed and not an "EvidenceChanged"

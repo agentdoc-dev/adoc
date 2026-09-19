@@ -50,7 +50,9 @@ impl ProjectRootPathPolicy {
             normalize_path(&self.project_root.join(path))
         };
         let resolved = resolve_through_nearest_existing_ancestor(&candidate);
-        if resolved.starts_with(&self.project_root) {
+        if let Ok(resolved) = resolved
+            && resolved.starts_with(&self.project_root)
+        {
             Ok(resolved)
         } else {
             Err(LocalError::PathOutsideProject {
@@ -91,11 +93,16 @@ fn has_parent_component(path: &Path) -> bool {
         .any(|component| component == Component::ParentDir)
 }
 
-fn resolve_through_nearest_existing_ancestor(path: &Path) -> PathBuf {
+fn resolve_through_nearest_existing_ancestor(path: &Path) -> std::io::Result<PathBuf> {
     let mut ancestor = path.to_path_buf();
     let mut missing_suffix = Vec::new();
 
-    while !ancestor.exists() {
+    loop {
+        match std::fs::symlink_metadata(&ancestor) {
+            Ok(_) => break,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
         let Some(name) = ancestor.file_name().map(|name| name.to_os_string()) else {
             break;
         };
@@ -105,11 +112,11 @@ fn resolve_through_nearest_existing_ancestor(path: &Path) -> PathBuf {
         }
     }
 
-    let mut resolved = std::fs::canonicalize(&ancestor).unwrap_or(ancestor);
+    let mut resolved = std::fs::canonicalize(&ancestor)?;
     for segment in missing_suffix.iter().rev() {
         resolved.push(segment);
     }
-    resolved
+    Ok(resolved)
 }
 
 fn normalize_path(path: &Path) -> PathBuf {

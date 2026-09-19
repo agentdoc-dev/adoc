@@ -2132,6 +2132,30 @@ fn validates_complete_and_error_change_assessments_and_rejects_illegal_tuples() 
     .expect("complete envelope serializes");
     assert_eq!(complete["authority_promotions"]["status"], "available");
     assert_valid("adoc.change_assessment.v0.schema.json", &complete);
+    write(
+        &root.join("agentdoc.config.yaml"),
+        "version: 1\nmode: strict\ndocs_path: .\nembeddings:\n  provider: none\n",
+    );
+    let moved_docs = serde_json::to_value(
+        context
+            .assess_changes(AssessmentInput {
+                base_ref: "HEAD".to_string(),
+                head_ref: None,
+                as_of: None,
+            })
+            .expect("docs path assessment runs")
+            .envelope,
+    )
+    .expect("assessment serializes");
+    assert_eq!(
+        moved_docs["policy_changes"]["changed_fields"],
+        json!(["docs_path"])
+    );
+    assert_valid("adoc.change_assessment.v0.schema.json", &moved_docs);
+    write(
+        &root.join("agentdoc.config.yaml"),
+        "version: 1\nmode: strict\ndocs_path: docs\nembeddings:\n  provider: none\n",
+    );
     let mut prior_shape = complete.clone();
     prior_shape
         .as_object_mut()

@@ -23,7 +23,7 @@ pub(crate) struct KnowledgeObjectMetadata<'a> {
     pub(crate) owner: Option<&'a str>,
     pub(crate) verified_at: Option<&'a str>,
     /// `(kind_str, value_str)` pairs, one per evidence entry.
-    /// `value_str` is `None` only for future TB2 `ObjectRef` entries.
+    /// `value_str` is the inline value or object-reference target.
     pub(crate) evidence: Vec<(&'a str, Option<&'a str>)>,
 }
 
@@ -32,7 +32,12 @@ impl<'a> KnowledgeObjectMetadata<'a> {
         let evidence = node
             .evidence
             .iter()
-            .map(|entry| (entry.kind.as_str(), entry.value.as_deref()))
+            .map(|entry| {
+                (
+                    entry.kind.as_str(),
+                    entry.value.as_deref().or(entry.reference.as_deref()),
+                )
+            })
             .collect();
         Self {
             owner: node.fields.get(OWNER_FIELD).map(String::as_str),
@@ -122,6 +127,18 @@ mod tests {
         assert_eq!(meta.evidence.len(), 2);
         assert_eq!(meta.evidence[0], ("source_code", Some("ledger")));
         assert_eq!(meta.evidence[1], ("human_review", Some("team-billing")));
+    }
+
+    #[test]
+    fn from_node_reports_object_reference_as_evidence_value() {
+        let node = node(
+            BTreeMap::new(),
+            vec![GraphEvidence::object_ref("source_code", "billing.ledger")],
+        );
+
+        let meta = KnowledgeObjectMetadata::from_node(&node);
+
+        assert_eq!(meta.evidence, vec![("source_code", Some("billing.ledger"))]);
     }
 
     #[test]

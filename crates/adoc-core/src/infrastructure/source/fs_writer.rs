@@ -4,8 +4,8 @@
 //! fsync, re-hash the target immediately before rename (TOCTOU guard, which
 //! also refuses a target that became a symlink since containment resolved
 //! it), then rename over the target and best-effort fsync the parent
-//! directory so the rename itself is durable. The target is never touched on
-//! any error path and never reverted after the rename. Containment mirrors `adoc-local`'s
+//! directory so the rename itself is durable. The target is never touched before
+//! the rename and never reverted after it. Containment mirrors `adoc-local`'s
 //! `ProjectRootPathPolicy` (which lives downstream and cannot be reused here):
 //! `..` components are rejected and the resolved path must stay under the
 //! sandbox root.
@@ -13,6 +13,9 @@
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 
 use crate::domain::hashing::sha256_prefixed;
 use crate::domain::ports::workspace_writer::{WorkspaceWriteError, WorkspaceWriter};
@@ -89,9 +92,14 @@ impl WorkspaceWriter for FsWorkspaceWriter {
             .unwrap_or(0);
         let temp_path = directory.join(format!(".{file_name}.{}.{nanos}.tmp", std::process::id()));
 
-        let mut temp_file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
+        let mut temp_options = std::fs::OpenOptions::new();
+        temp_options.write(true).create_new(true);
+        // Keep replacement bytes private from the first open. In particular,
+        // do not rely on the process umask while a secret source file may be
+        // staged in a visible sibling temp path.
+        #[cfg(unix)]
+        temp_options.mode(0o600);
+        let mut temp_file = temp_options
             .open(&temp_path)
             .map_err(|error| io_error(&temp_path, error))?;
 
@@ -99,21 +107,23 @@ impl WorkspaceWriter for FsWorkspaceWriter {
             .write_all(contents.as_bytes())
             .and_then(|()| temp_file.sync_all());
         if let Err(error) = write_result {
+            drop(temp_file);
             let _ = std::fs::remove_file(&temp_path);
             return Err(io_error(&temp_path, error));
         }
-        drop(temp_file);
 
         // TOCTOU guard: the on-disk file must still match the bytes the edit
         // plan was computed against, immediately before the rename.
         let current = match std::fs::read(&resolved) {
             Ok(bytes) => bytes,
             Err(error) => {
+                drop(temp_file);
                 let _ = std::fs::remove_file(&temp_path);
                 return Err(io_error(&resolved, error));
             }
         };
         if sha256_prefixed(&current) != expected_current_hash {
+            drop(temp_file);
             let _ = std::fs::remove_file(&temp_path);
             return Err(WorkspaceWriteError::ConcurrentModification { path: resolved });
         }
@@ -124,16 +134,29 @@ impl WorkspaceWriter for FsWorkspaceWriter {
         // itself, orphaning the linked file. Refuse when observed. This
         // guards a race window no deterministic test can open; the residual
         // instant before `rename(2)` is accepted (see the port docs).
-        match std::fs::symlink_metadata(&resolved) {
+        let target_permissions = match std::fs::symlink_metadata(&resolved) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
+                drop(temp_file);
                 let _ = std::fs::remove_file(&temp_path);
                 return Err(WorkspaceWriteError::ConcurrentModification { path: resolved });
             }
-            Ok(_) => {}
+            Ok(metadata) => metadata.permissions(),
             Err(error) => {
+                drop(temp_file);
                 let _ = std::fs::remove_file(&temp_path);
                 return Err(io_error(&resolved, error));
             }
+        };
+
+        // Restore the target's permissions through the open file handle before
+        // replacement, so a metadata failure leaves the original bytes intact.
+        let permissions_result = temp_file
+            .set_permissions(target_permissions)
+            .and_then(|()| temp_file.sync_all());
+        drop(temp_file);
+        if let Err(error) = permissions_result {
+            let _ = std::fs::remove_file(&temp_path);
+            return Err(io_error(&temp_path, error));
         }
 
         std::fs::rename(&temp_path, &resolved).map_err(|error| {
@@ -221,6 +244,35 @@ mod tests {
             .filter(|entry| entry.file_name().to_string_lossy().ends_with(".tmp"))
             .collect();
         assert!(leftovers.is_empty(), "temp file must be cleaned up");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn write_atomic_preserves_existing_unix_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = temp_dir("preserve-permissions");
+        for mode in [0o600, 0o640, 0o444] {
+            let target = root.join(format!("permissions-{mode:o}.adoc"));
+            std::fs::write(&target, "before").expect("seed");
+            std::fs::set_permissions(&target, std::fs::Permissions::from_mode(mode))
+                .expect("make target private");
+            let writer = FsWorkspaceWriter::new(&root);
+
+            writer
+                .write_atomic(&target, "after", &sha256_prefixed(b"before"))
+                .expect("writes");
+
+            assert_eq!(
+                std::fs::metadata(&target)
+                    .expect("stat target")
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                mode
+            );
+        }
         std::fs::remove_dir_all(&root).ok();
     }
 
