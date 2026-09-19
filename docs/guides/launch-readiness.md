@@ -10,7 +10,7 @@ See the [original audit](../audits/2026-09-18-hn-launch-readiness.md) and
 | Finding | Candidate result | Remaining publication boundary |
 |---|---|---|
 | LA-1: Release mismatch | README/install/release guides explicitly distinguish source 0.4.0 (graph v6/search v2) from published Linux CLI 0.3.4 | Merge before advertising the new README; publish a matching release before promising these features in downloads |
-| LA-2: Installation | Documented source build includes CLI and MCP; offline/real-model smoke and actual Claude Code status/retrieval pass | Linux x64/ARM64 and ARM64 macOS package journeys passed on the recorded fork candidate; Intel macOS remains pending |
+| LA-2: Installation | Documented source build includes CLI and MCP; offline/real-model smoke and actual Claude Code status/retrieval pass | Linux x64/ARM64 and ARM64 macOS package journeys passed on the recorded fork candidate; Intel macOS is deferred for launch |
 | LA-3: First impression | README leads with an actual policy, command, output, and citation; references retain detailed behavior | GitHub Markdown rendering succeeded; browser visual inspection was unavailable because local-file navigation was blocked |
 | LA-4: Dependency advisory | Adopted PR #244's exact OpenSSL lockfile update; Linux dependency closure selects openssl 0.10.81 | Default-branch alert is not claimed closed; merge and publish separately |
 | LA-5: Private reporting | SECURITY.md defines a private GitHub reporting route; API confirms enabled | Policy becomes visible after merge |
@@ -42,7 +42,7 @@ disabled patch application for that offline project.
 Source build and Cargo path installation are verified on macOS ARM64; see
 [extended qualification](launch-qualification.md) for the installation evidence.
 Windows runtime checks and three native release-package legs subsequently passed;
-the Intel macOS source build remains pending. Windows is not advertised as a
+Intel macOS support is deferred for launch. Windows is not advertised as a
 published release asset. Existing v0.3.4 assets are unchanged.
 
 Independent specialist and Claude reviews covered all five slices. The missing
@@ -56,7 +56,7 @@ Detailed local logs live under `.git/agentic-workflow/hn-launch-implementation/`
 ## Before posting
 
 1. Publish this branch for normal CI/review and merge the accepted changes.
-2. If offering binaries, run and verify all intended release targets; verify
+2. If offering binaries, run and verify Linux x64/ARM64 and Apple Silicon macOS; verify
    archive checksums, both binaries, licensing, and GitHub attestations.
 3. Recheck the default-branch advisory state and the public README, installation,
    contribution, and security links after merge.

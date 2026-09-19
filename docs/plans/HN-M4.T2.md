@@ -1,13 +1,16 @@
-# HN-M4.T2: Native Intel macOS runtime
+# HN-M4.T2: Native Intel macOS runtime (historical, deferred)
 
-Status: planned; implementation explicitly authorized on 2026-09-18.
+Status: deferred for launch. This preserves the prior acceptance and attempted
+path; it does not authorize current Intel macOS work or support claims.
 Requirements: HN-10; HN-2/3/4.
 Dependencies: HN-M4.T1; candidate uploaded to a branch accessible to the runner.
 Parent: [qualification roadmap](../roadmap/HN-LAUNCH-QUALIFICATION.md).
 
 ## Acceptance and exclusions
 
-Reuse macos-15-intel in the existing four-target release matrix. Verify native host and executable architecture, package/extract both binaries plus LICENSE, verify checksum, run existing smoke with real embeddings. Save exact runner image, source SHA, artifact identity and run URL. No tag push/publication.
+The prior acceptance was to reuse `macos-15-intel` in the four-target release
+matrix and verify native package smoke. Intel is no longer in the release or
+queue matrix; no tag push/publication occurred.
 
 ## Ownership and existing interfaces
 
@@ -19,13 +22,16 @@ source repairs require affected earlier checks to be rerun.
 
 ## Implementation order
 
-Use the requested live fork validation PR to trigger the candidate release workflow through a relevant example/smoke change. Keep publish gated to tag pushes. Confirm x86_64-apple-darwin from rustc and x86_64 binary metadata; ARM cross-build or Rosetta evidence is insufficient. Investigate actual packaging/model/runtime failures before touching dependency versions.
+The prior candidate used a live fork validation path. Retain its evidence and
+failure limits, but do not trigger an Intel workflow or restore the deleted
+runtime path. Any future Intel work needs separately accepted scope and fresh
+native evidence.
 
 ## Required checks
 
-actionlint .github/workflows/release.yml; native release build; tar contents/checksum; installed/extracted smoke offline and --embeddings; spaced/Unicode path and child cleanup checks; GitHub exact-head job conclusion.
-Record each actual command/interaction and result in the slice evidence ledger;
-these are acceptance checks, not a claim that any has already executed.
+Historical acceptance required release actionlint, native package build,
+tar/checksum, offline/embedding smoke, and exact-head logs. These checks remain
+unverified for Intel macOS and are not current launch requirements.
 
 ## Risks, failures and rollback
 

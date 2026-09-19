@@ -23,14 +23,14 @@ machines or checks are explicit pending items, never successful substitutes.
 | Slice | Observable outcome | Depends on | Recorded status, 2026-09-19 |
 |---|---|---|---|
 | [HN-M4.T1](../plans/HN-M4.T1.md) | Cargo-installed CLI/MCP completes the first-use journey | Completed M1-M3 | Passed: isolated release-profile CLI/MCP installs and real-model smoke |
-| HN-M4.T2 | Native Intel macOS package runs successfully | T1; candidate available to runner | Running: native Intel runner compiling pinned ONNX Runtime |
+| HN-M4.T2 | Native Intel macOS package runs successfully | T1; candidate available to runner | Deferred for launch; historical native build attempt retained |
 | HN-M4.T3 | Windows runtime qualification with explicit failure/support disposition | T1 | Passed: native Windows installation and runtime job 35434373133 |
 | HN-M4.T4 | Reproducible installation on a pristine OS | T1; target-specific fixes | Passed: fresh Ubuntu ARM64 VM; offline runtime checked; pristine macOS/Windows untested |
 | HN-M5.T1 | Full current-code and reachable-history security coverage | Frozen candidate | Completed engineering review: scans triaged, repairs tested, residual limits documented |
 | HN-M5.T2 | Reproducible performance baseline with correctness evidence | T1; freeze any security fixes | Passed: three corpus sizes, correctness checks and retained raw samples |
 | HN-M5.T3 | HTML/CLI accessibility evidence and repaired blockers | T1; representative rendered fixtures | Closed by user: further accessibility qualification removed; existing fix retained |
 | HN-M6.T1 | Real desktop MCP UI configuration and cited answer | T1 | Passed: Claude Desktop UI status and cited answer; temporary configuration removed |
-| HN-M6.T2 | Real fork PR proves contributor CI boundaries | Candidate workflows available as PR base | Draft PR #259 running: required CI passed, Intel qualification pending |
+| HN-M6.T2 | Real fork PR proves contributor CI boundaries | Candidate workflows available as PR base | Draft PR #259 running: required CI passed; Intel macOS is deferred for launch |
 
 Implementation is underway. M5.T1 runs against recorded source snapshots;
 subsequent repairs invalidate affected qualification evidence.
@@ -48,9 +48,10 @@ fresh compilation directory; exercise the installed paths, not target/debug or
 an existing PATH entry. Record default release profile and real-model behavior.
 No global install, package-registry publication or new dependency required.
 
-### HN-M4.T2: Native Intel macOS runtime
+### HN-M4.T2: Native Intel macOS runtime (deferred for launch)
 
-HN-10. Own `.github/workflows/release.yml`, installation matrix and evidence only.
+HN-10. Historical plan. Intel macOS is deferred for launch; do not treat this as
+current supported-release work. The historical acceptance and attempted evidence remain below.
 Reuse its existing native matrix and `scripts/smoke-test.py --embeddings` against
 extracted CLI/MCP archives. Record candidate SHA, runner image/version, native
 `rustc -vV` host, CPU architecture, binary architecture, checksum, modes and logs.
