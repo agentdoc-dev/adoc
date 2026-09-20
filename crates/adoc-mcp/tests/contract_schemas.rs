@@ -505,6 +505,7 @@ fn cloud_operation_contracts_round_trip_and_reject_the_registered_unknown_versio
         "agentdoc.cloud.proposal_command.v0",
         "agentdoc.cloud.approval_command.v0",
         "agentdoc.cloud.migration_request.v0",
+        "agentdoc.cloud.migration_http_operation.v0",
         "agentdoc.cloud.migration_receipt.v0",
         "agentdoc.cloud.egress_policy.v0",
     ] {
@@ -524,7 +525,18 @@ fn cloud_operation_contracts_round_trip_and_reject_the_registered_unknown_versio
         } else {
             json!({ "fixture": "round-trip" })
         };
-        let fixture = json!({ "schema_version": id, "payload": payload });
+        let fixture = if id == "agentdoc.cloud.migration_http_operation.v0" {
+            json!({
+                "schema_version": id,
+                "operation_id": "10000000-0000-0000-0000-000000000001",
+                "migration_id": "20000000-0000-0000-0000-000000000001",
+                "operation": "prepare",
+                "status": "queued",
+                "status_url": "/api/v1/workspaces/30000000-0000-0000-0000-000000000001/migrations/20000000-0000-0000-0000-000000000001?operation_id=10000000-0000-0000-0000-000000000001"
+            })
+        } else {
+            json!({ "schema_version": id, "payload": payload })
+        };
         let bytes = serde_json::to_vec(&fixture).expect("fixture serializes");
         let round_trip: serde_json::Value =
             serde_json::from_slice(&bytes).expect("fixture deserializes");
@@ -657,9 +669,112 @@ fn cloud_migration_source_registration_payload_is_closed_and_version_exact() {
         name,
         &json!({
             "schema_version": "agentdoc.cloud.migration_request.v0",
-            "payload": { "operation": "prepare" }
+            "payload": { "operation": "future_operation" }
         }),
     );
+}
+
+#[test]
+fn cloud_migration_prepare_payload_and_operation_projection_are_closed() {
+    let request_name = "agentdoc.cloud.migration_request.v0.schema.json";
+    let prepare = json!({
+        "schema_version": "agentdoc.cloud.migration_request.v0",
+        "payload": {
+            "operation": "prepare",
+            "repository_id": "10000000-0000-0000-0000-000000000001",
+            "connector_id": "20000000-0000-0000-0000-000000000001",
+            "source_container_id": "github:installation:41",
+            "ref": "refs/heads/main",
+            "revision": "a".repeat(40),
+            "previous_preview_id": null
+        }
+    });
+    assert_valid(request_name, &prepare);
+    let mut prior_preview = prepare.clone();
+    prior_preview["payload"]["previous_preview_id"] = json!("30000000-0000-0000-0000-000000000001");
+    assert_valid(request_name, &prior_preview);
+    for (field, value) in [
+        ("repository_id", json!("UPPERCASE")),
+        ("source_container_id", json!(" source")),
+        ("ref", json!("main")),
+        ("revision", json!("A".repeat(40))),
+        ("revision", json!("a".repeat(39))),
+        ("revision", json!("0".repeat(40))),
+        ("previous_preview_id", json!("not-a-uuid")),
+        ("extra", json!(true)),
+    ] {
+        let mut invalid = prepare.clone();
+        invalid["payload"][field] = value;
+        assert!(
+            !schema_accepts(request_name, &invalid),
+            "accepted invalid {field}"
+        );
+    }
+    let mut missing = prepare.clone();
+    missing["payload"]
+        .as_object_mut()
+        .unwrap()
+        .remove("revision");
+    assert!(!schema_accepts(request_name, &missing));
+    for field in [
+        "operation",
+        "repository_id",
+        "connector_id",
+        "source_container_id",
+        "ref",
+        "revision",
+        "previous_preview_id",
+    ] {
+        let mut invalid = prepare.clone();
+        invalid["payload"].as_object_mut().unwrap().remove(field);
+        if field == "operation" {
+            assert_valid(request_name, &invalid);
+        } else {
+            assert!(
+                !schema_accepts(request_name, &invalid),
+                "accepted missing {field}"
+            );
+        }
+    }
+
+    let operation_name = "agentdoc.cloud.migration_http_operation.v0.schema.json";
+    let operation = json!({
+        "schema_version": "agentdoc.cloud.migration_http_operation.v0",
+        "operation_id": "10000000-0000-0000-0000-000000000001",
+        "migration_id": "20000000-0000-0000-0000-000000000001",
+        "operation": "prepare",
+        "status": "queued",
+        "status_url": "/api/v1/workspaces/30000000-0000-0000-0000-000000000001/migrations/20000000-0000-0000-0000-000000000001?operation_id=10000000-0000-0000-0000-000000000001"
+    });
+    assert_valid(operation_name, &operation);
+    for (field, value) in [
+        ("operation", json!("rollback")),
+        ("status", json!("running")),
+        ("status_url", json!("https://example.test")),
+        ("extra", json!(true)),
+    ] {
+        let mut invalid = operation.clone();
+        invalid[field] = value;
+        assert!(
+            !schema_accepts(operation_name, &invalid),
+            "accepted invalid {field}"
+        );
+    }
+    for field in [
+        "schema_version",
+        "operation_id",
+        "migration_id",
+        "operation",
+        "status",
+        "status_url",
+    ] {
+        let mut invalid = operation.clone();
+        invalid.as_object_mut().unwrap().remove(field);
+        assert!(
+            !schema_accepts(operation_name, &invalid),
+            "accepted missing {field}"
+        );
+    }
 }
 
 #[test]

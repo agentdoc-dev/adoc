@@ -448,6 +448,7 @@ fn lists_and_reads_all_stable_agent_resources() {
         "adoc://agent/v0/schema/adoc.migration_receipt.v0.schema.json",
         "adoc://agent/v0/schema/agentdoc.cloud.migration_receipt.v0.schema.json",
         "adoc://agent/v0/schema/agentdoc.cloud.migration_request.v0.schema.json",
+        "adoc://agent/v0/schema/agentdoc.cloud.migration_http_operation.v0.schema.json",
         "adoc://agent/v0/schema/agentdoc.cloud.proposal_command.v0.schema.json",
         "adoc://agent/v0/schema/agentdoc.cloud.repository_config.v0.schema.json",
         "adoc://agent/v0/schema/agentdoc.cloud.work_request.v0.schema.json",
