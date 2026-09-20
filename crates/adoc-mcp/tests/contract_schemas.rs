@@ -507,6 +507,8 @@ fn cloud_operation_contracts_round_trip_and_reject_the_registered_unknown_versio
         "agentdoc.cloud.migration_request.v0",
         "agentdoc.cloud.migration_http_operation.v0",
         "agentdoc.cloud.migration_http_operation_result.v0",
+        "agentdoc.cloud.migration_http_cutover_operation.v0",
+        "agentdoc.cloud.migration_http_cutover_result.v0",
         "agentdoc.cloud.migration_receipt.v0",
         "agentdoc.cloud.egress_policy.v0",
     ] {
@@ -537,6 +539,10 @@ fn cloud_operation_contracts_round_trip_and_reject_the_registered_unknown_versio
             })
         } else if id == "agentdoc.cloud.migration_http_operation_result.v0" {
             migration_http_operation_result_fixture()
+        } else if id == "agentdoc.cloud.migration_http_cutover_operation.v0" {
+            migration_http_cutover_operation_fixture()
+        } else if id == "agentdoc.cloud.migration_http_cutover_result.v0" {
+            migration_http_cutover_result_fixture()
         } else {
             json!({ "schema_version": id, "payload": payload })
         };
@@ -582,6 +588,34 @@ fn migration_http_operation_result_fixture() -> serde_json::Value {
     })
 }
 
+fn migration_http_cutover_operation_fixture() -> serde_json::Value {
+    json!({
+        "schema_version": "agentdoc.cloud.migration_http_cutover_operation.v0",
+        "operation_id": "10000000-0000-0000-0000-000000000001",
+        "migration_id": "20000000-0000-0000-0000-000000000001",
+        "operation": "cutover",
+        "status": "queued",
+        "status_url": "/api/v1/workspaces/30000000-0000-0000-0000-000000000001/migrations/20000000-0000-0000-0000-000000000001?operation_id=10000000-0000-0000-0000-000000000001"
+    })
+}
+
+fn migration_http_cutover_result_fixture() -> serde_json::Value {
+    json!({
+        "schema_version": "agentdoc.cloud.migration_http_cutover_result.v0",
+        "operation_id": "10000000-0000-0000-0000-000000000001",
+        "migration_id": "20000000-0000-0000-0000-000000000001",
+        "operation": "cutover",
+        "delivery_status": "succeeded",
+        "status_url": "/api/v1/workspaces/30000000-0000-0000-0000-000000000001/migrations/20000000-0000-0000-0000-000000000001?operation_id=10000000-0000-0000-0000-000000000001",
+        "blocked_reason": null,
+        "cutover_receipt": {
+            "schema_version": "agentdoc.cloud.migration_cutover_result.v0",
+            "receipt_bytes_base64": "e30K",
+            "receipt_digest": format!("sha256:{}", "a".repeat(64))
+        }
+    })
+}
+
 #[test]
 fn cloud_migration_http_operation_result_is_closed_and_preserves_preview_invariants() {
     let name = "agentdoc.cloud.migration_http_operation_result.v0.schema.json";
@@ -593,6 +627,9 @@ fn cloud_migration_http_operation_result_is_closed_and_preserves_preview_invaria
     blocked["blocked_reason"] = json!("migration.worker_not_qualified");
     blocked["preview"] = serde_json::Value::Null;
     assert_valid(name, &blocked);
+    let mut unnamed_blocked = blocked.clone();
+    unnamed_blocked["blocked_reason"] = serde_json::Value::Null;
+    assert!(!schema_accepts(name, &unnamed_blocked));
 
     let mut flagged = result.clone();
     flagged["preview"]["qualification_outcome"] = json!("flagged_source_evidence");
@@ -632,6 +669,25 @@ fn cloud_migration_http_operation_result_is_closed_and_preserves_preview_invaria
         .expect("preview object")
         .remove("qualification_envelope_digest");
     assert!(!schema_accepts(name, &missing_digest));
+    for field in [
+        "preview_id",
+        "revision",
+        "runtime_digest",
+        "candidate_bundle_digest",
+        "qualification_id",
+        "qualification_outcome",
+        "qualification_envelope_digest",
+        "qualification_receipt_digest",
+        "candidate_count",
+        "source_count",
+    ] {
+        let mut invalid = result.clone();
+        invalid["preview"].as_object_mut().unwrap().remove(field);
+        assert!(
+            !schema_accepts(name, &invalid),
+            "accepted missing preview {field}"
+        );
+    }
     let mut invalid_flagged = flagged.clone();
     invalid_flagged["preview"]["candidate_count"] = json!(1);
     assert!(!schema_accepts(name, &invalid_flagged));
@@ -644,6 +700,183 @@ fn cloud_migration_http_operation_result_is_closed_and_preserves_preview_invaria
     let mut extra = result.clone();
     extra["preview"]["diagnostics"] = json!("secret");
     assert!(!schema_accepts(name, &extra));
+    let mut extra_result = result.clone();
+    extra_result["target"] = json!("forged");
+    assert!(!schema_accepts(name, &extra_result));
+    for field in [
+        "schema_version",
+        "operation_id",
+        "migration_id",
+        "operation",
+        "delivery_status",
+        "status_url",
+        "blocked_reason",
+        "preview",
+    ] {
+        let mut invalid = result.clone();
+        invalid.as_object_mut().unwrap().remove(field);
+        assert!(
+            !schema_accepts(name, &invalid),
+            "accepted missing result {field}"
+        );
+    }
+}
+
+#[test]
+fn cloud_migration_cutover_http_contracts_are_closed_and_state_exact() {
+    let request_name = "agentdoc.cloud.migration_request.v0.schema.json";
+    let digest = format!("sha256:{}", "a".repeat(64));
+    let request = json!({
+        "schema_version": "agentdoc.cloud.migration_request.v0",
+        "payload": {
+            "operation": "cutover",
+            "preview_id": "10000000-0000-0000-0000-000000000001",
+            "qualification_id": "20000000-0000-0000-0000-000000000001",
+            "revision": "b".repeat(40),
+            "runtime_digest": digest,
+            "candidate_bundle_digest": format!("sha256:{}", "b".repeat(64)),
+            "qualification_envelope_digest": format!("sha256:{}", "c".repeat(64)),
+            "qualification_receipt_digest": format!("sha256:{}", "d".repeat(64)),
+            "meaning": "accept_exact_revision_and_qualifying_history_as_initialization_evidence",
+            "rationale": "Accept this exact preview."
+        }
+    });
+    assert_valid(request_name, &request);
+    for field in [
+        "preview_id",
+        "qualification_id",
+        "revision",
+        "runtime_digest",
+        "candidate_bundle_digest",
+        "qualification_envelope_digest",
+        "qualification_receipt_digest",
+        "meaning",
+        "rationale",
+    ] {
+        let mut invalid = request.clone();
+        invalid["payload"].as_object_mut().unwrap().remove(field);
+        assert!(
+            !schema_accepts(request_name, &invalid),
+            "accepted missing {field}"
+        );
+    }
+    let mut owner_reserved = request.clone();
+    owner_reserved["payload"]
+        .as_object_mut()
+        .unwrap()
+        .remove("operation");
+    assert_valid(request_name, &owner_reserved);
+    for field in [
+        "principal_id",
+        "session_id",
+        "decision_id",
+        "expected",
+        "predecessor",
+        "target",
+        "fence",
+        "frontier",
+        "deployment",
+    ] {
+        let mut invalid = request.clone();
+        invalid["payload"][field] = json!("forged");
+        assert!(
+            !schema_accepts(request_name, &invalid),
+            "accepted forbidden {field}"
+        );
+    }
+    let mut invalid = request.clone();
+    invalid["payload"]["meaning"] = json!("accept_any_preview");
+    assert!(!schema_accepts(request_name, &invalid));
+    for (field, value) in [
+        ("revision", json!("A".repeat(40))),
+        ("revision", json!("b".repeat(39))),
+        ("revision", json!("0".repeat(40))),
+        ("runtime_digest", json!("sha256:ABC")),
+        ("candidate_bundle_digest", serde_json::Value::Null),
+        ("qualification_envelope_digest", json!("sha256:ABC")),
+        ("qualification_receipt_digest", json!("sha256:ABC")),
+        ("rationale", json!(" \t ")),
+        ("rationale", json!("é".repeat(4097))),
+    ] {
+        let mut invalid = request.clone();
+        invalid["payload"][field] = value;
+        assert!(
+            !schema_accepts(request_name, &invalid),
+            "accepted invalid {field}"
+        );
+    }
+    let mut native_byte_boundary = request.clone();
+    native_byte_boundary["payload"]["rationale"] = json!("é".repeat(4096));
+    assert_valid(request_name, &native_byte_boundary);
+
+    let operation_name = "agentdoc.cloud.migration_http_cutover_operation.v0.schema.json";
+    let operation = migration_http_cutover_operation_fixture();
+    assert_valid(operation_name, &operation);
+    for field in [
+        "schema_version",
+        "operation_id",
+        "migration_id",
+        "operation",
+        "status",
+        "status_url",
+    ] {
+        let mut missing = operation.clone();
+        missing.as_object_mut().unwrap().remove(field);
+        assert!(
+            !schema_accepts(operation_name, &missing),
+            "accepted cutover operation without {field}"
+        );
+    }
+    let mut wrong_operation = operation.clone();
+    wrong_operation["operation"] = json!("prepare");
+    assert!(!schema_accepts(operation_name, &wrong_operation));
+    let mut wrong_status = operation.clone();
+    wrong_status["status"] = json!("running");
+    assert!(!schema_accepts(operation_name, &wrong_status));
+    let mut wrong_url = operation.clone();
+    wrong_url["status_url"] = json!("/api/v1/workspaces/forged");
+    assert!(!schema_accepts(operation_name, &wrong_url));
+    let mut extra_operation = operation.clone();
+    extra_operation["deployment"] = json!("forged");
+    assert!(!schema_accepts(operation_name, &extra_operation));
+
+    let result_name = "agentdoc.cloud.migration_http_cutover_result.v0.schema.json";
+    let result = migration_http_cutover_result_fixture();
+    assert_valid(result_name, &result);
+    let mut queued = result.clone();
+    queued["delivery_status"] = json!("queued");
+    queued["cutover_receipt"] = serde_json::Value::Null;
+    assert_valid(result_name, &queued);
+    let mut blocked = queued.clone();
+    blocked["delivery_status"] = json!("blocked");
+    blocked["blocked_reason"] = json!("migration.worker_not_qualified");
+    assert_valid(result_name, &blocked);
+    let mut unnamed_blocked = blocked.clone();
+    unnamed_blocked["blocked_reason"] = serde_json::Value::Null;
+    assert!(!schema_accepts(result_name, &unnamed_blocked));
+    let mut early_receipt = queued.clone();
+    early_receipt["cutover_receipt"] = result["cutover_receipt"].clone();
+    assert!(!schema_accepts(result_name, &early_receipt));
+    for field in [
+        "schema_version",
+        "operation_id",
+        "migration_id",
+        "operation",
+        "delivery_status",
+        "status_url",
+        "blocked_reason",
+        "cutover_receipt",
+    ] {
+        let mut invalid = result.clone();
+        invalid.as_object_mut().unwrap().remove(field);
+        assert!(
+            !schema_accepts(result_name, &invalid),
+            "accepted missing {field}"
+        );
+    }
+    let mut extra_result = result.clone();
+    extra_result["target"] = json!("forged");
+    assert!(!schema_accepts(result_name, &extra_result));
 }
 
 #[test]

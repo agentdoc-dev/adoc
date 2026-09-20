@@ -150,7 +150,7 @@ The 13 `agentdoc.cloud.*` rows below whose owning slice is E5 also inventory imp
 | `agentdoc.cloud.gate_decision.v0` | cloud | E4.4 | exact-version gate-decision transport; its `adoc://` payload reference requires the adjacent registered `adoc.gate_result.v0` schema; gate semantics remain E5.3-owned |
 | `agentdoc.cloud.proposal_command.v0` | cloud | E4.4 | exact-version proposal-command transport; proposal semantics remain E5.1-owned |
 | `agentdoc.cloud.approval_command.v0` | cloud | E4.4 | exact-version approval-command transport; approval semantics remain E5.2-owned |
-| `agentdoc.cloud.migration_request.v0` | cloud | E4.4 | exact-version migration-request transport; Cloud E7-HTTP.T0/T1 publish closed `register_source` and `prepare` payload branches while other migration operation semantics remain owner-reserved |
+| `agentdoc.cloud.migration_request.v0` | cloud | E4.4 | exact-version migration-request transport; Cloud E7-HTTP.T0/T1/T3 publish closed `register_source`, `prepare`, and `cutover` payload branches. A bounded UUID `Idempotency-Key` header identifies each HTTP command/retry while the server assigns the durable operation ID; other migration operation semantics remain owner-reserved |
 | `agentdoc.cloud.migration_receipt.v0` | cloud | E4.4 | exact-version migration-receipt transport; qualification and cutover semantics remain E7.1-owned |
 | `agentdoc.cloud.egress_policy.v0` | cloud | E4.4 | registered transport with E6.6.T1 exact-scope payload and seven required category booleans defined by the [closed schema](../../agent/v0/schema/agentdoc.cloud.egress_policy.v0.schema.json). Scope uses a Cloud subset of the existing authorization vocabulary: canonical Cloud repository or connector instance, optionally narrowed to a native source container/resource. Its `adoc://` scope references require the adjacent registered `adoc.authorization_decision.v0` schema; publishing that schema does not change its planned status. Unknown keys are structural refusals; category additions require a version decision. Cloud enforces current policy authority on the exact scope. A missing or failed scope fetch returns all-disabled plus `egress.policy_unavailable`, never a cached or wider policy. Sender/source binding, gate compatibility and policy-change receipts remain later E6.6 slices; provenance RT-21 and PRD v1.0 §27 |
 | `agentdoc.cloud.validation_invocation.v0` | cloud | E4.2 | closed Cloud invocation manifest whose exact bytes bind an AgentDoc validation receipt to one immutable Workspace/Source Record/Source Binding/ACL snapshot/config/evaluation-date tuple |
@@ -224,6 +224,8 @@ The 13 `agentdoc.cloud.*` rows below whose owning slice is E5 also inventory imp
 | `agentdoc.cloud.migration_source_result.v0` | cloud | E7.2.T2 | shared exact canonical receipt-byte base64 and SHA256 response for target and checkpoint ports; schema and MCP published |
 | `agentdoc.cloud.migration_http_operation.v0` | cloud | Cloud E7-HTTP.T1 | closed public projection for a queued prepare operation; no authority or source credentials |
 | `agentdoc.cloud.migration_http_operation_result.v0` | cloud | Cloud E7-HTTP.T2 | closed public migration prepare delivery/result projection; preview carries the required exact qualification envelope digest, nullable native receipt digest, and safe counts; Cloud's HTTP route synthesizes the required `status_url` after validating the narrower native RPC projection |
+| `agentdoc.cloud.migration_http_cutover_operation.v0` | cloud | Cloud E7-HTTP.T3 | closed public projection for a queued cutover operation; Cloud's HTTP route synthesizes the required `status_url` |
+| `agentdoc.cloud.migration_http_cutover_result.v0` | cloud | Cloud E7-HTTP.T3 | closed public cutover delivery/result projection; a succeeded result carries the exact existing cutover receipt bytes and digest only |
 <!-- /registry:envelopes-planned -->
 
 ## Diagnostic Codes — shipped, owner `adoc`
@@ -671,6 +673,7 @@ The pre-release implementation annotations identify the ten E5 inventory-correct
 | `migration.source_fence_required` | planned (E7.2.T3) | cutover lacks the exact retained source fence or its current provider continuity proof; no authority advance |
 | `migration.cutover_conflict` | planned (E7.2.T3) | expected policy, managed frontier or cutover ownership differs; no partial authority switch |
 | `migration.cutover_required` | planned (E7.2.T3) | overlapping managed authority change requires the native migration cutover transaction and receipt |
+| `migration.worker_not_qualified` | planned (Cloud E7-HTTP.T2) | no current immutable worker qualification matches the deployment, execution configuration, runtime, and custody evidence; dispatch stays blocked without claiming or executing the operation |
 <!-- /registry:cloud-codes -->
 
 ## Attestation codes — planned, owner `cloud`

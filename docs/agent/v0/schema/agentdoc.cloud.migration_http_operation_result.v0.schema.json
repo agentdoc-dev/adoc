@@ -20,13 +20,13 @@
       "required": ["preview_id", "revision", "runtime_digest", "candidate_bundle_digest", "qualification_id", "qualification_outcome", "qualification_envelope_digest", "qualification_receipt_digest", "candidate_count", "source_count"],
       "properties": {
         "preview_id": { "$ref": "#/$defs/uuid" },
-        "revision": { "type": "string", "pattern": "^[0-9a-f]{40}$", "not": { "const": "0000000000000000000000000000000000000000" } },
+        "revision": { "$ref": "#/$defs/oid" },
         "runtime_digest": { "$ref": "#/$defs/sha256" },
-        "candidate_bundle_digest": { "type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$" },
+        "candidate_bundle_digest": { "$ref": "#/$defs/nullable_sha256" },
         "qualification_id": { "$ref": "#/$defs/uuid" },
         "qualification_outcome": { "enum": ["evaluated", "flagged_source_evidence"] },
         "qualification_envelope_digest": { "$ref": "#/$defs/sha256" },
-        "qualification_receipt_digest": { "type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$" },
+        "qualification_receipt_digest": { "$ref": "#/$defs/nullable_sha256" },
         "candidate_count": { "type": "integer", "minimum": 0, "maximum": 10000 },
         "source_count": { "type": "integer", "minimum": 0, "maximum": 10000 }
       },
@@ -51,6 +51,8 @@
   ],
   "$defs": {
     "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
-    "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+    "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "nullable_sha256": { "anyOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }] },
+    "oid": { "type": "string", "pattern": "^[0-9a-f]{40}$", "not": { "const": "0000000000000000000000000000000000000000" } }
   }
 }

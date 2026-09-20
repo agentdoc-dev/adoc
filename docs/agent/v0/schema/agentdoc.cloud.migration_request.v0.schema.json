@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "adoc://agent/v0/schema/agentdoc.cloud.migration_request.v0.schema.json",
   "title": "AgentDoc Cloud Migration Request",
-  "description": "E4.4 transport schema for versioned migration requests. E7 HTTP operations publish closed payload branches here before Cloud emits them; unknown operation payloads remain reserved for their owning slice.",
+  "description": "E4.4 transport schema for versioned migration source-registration, prepare, and cutover requests. E7 HTTP operations publish closed payload branches here before Cloud emits them; unknown operation payloads remain reserved for their owning slice.",
   "type": "object",
   "required": ["schema_version", "payload"],
   "properties": {
@@ -27,6 +27,15 @@
             }
           },
           "then": { "$ref": "#/$defs/prepare" }
+        },
+        {
+          "if": {
+            "required": ["operation"],
+            "properties": {
+              "operation": { "const": "cutover" }
+            }
+          },
+          "then": { "$ref": "#/$defs/cutover" }
         }
       ]
     }
@@ -38,13 +47,14 @@
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
     },
     "sourceContainerId": {
+      "description": "Registration-specific boundary matching the Cloud SQL ledger: at most 512 characters; rejects empty, edge whitespace, CR, LF, U+2028, and U+2029. Other migration contracts own their source-id grammar.",
       "type": "string",
       "minLength": 1,
       "maxLength": 512,
       "pattern": "^\\S(?:[^\\r\\n\\u2028\\u2029]*\\S)?$"
     },
     "ref": {
-      "description": "Git branch reference: refs/heads/ followed by one or more slash-separated ASCII identifier segments; each starts alphanumeric and remaining characters are alphanumeric, underscore, or hyphen.",
+      "description": "Restricted branch-ref grammar for this contract; it does not claim to accept every valid Git ref.",
       "type": "string",
       "minLength": 12,
       "maxLength": 211,
@@ -118,11 +128,7 @@
         "ref": {
           "$ref": "#/$defs/ref"
         },
-        "revision": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{40}$",
-          "not": { "const": "0000000000000000000000000000000000000000" }
-        },
+        "revision": { "$ref": "#/$defs/oid" },
         "previous_preview_id": {
           "anyOf": [
             { "type": "null" },
@@ -131,6 +137,51 @@
         }
       },
       "additionalProperties": false
+    },
+    "cutover": {
+      "type": "object",
+      "required": [
+        "operation",
+        "preview_id",
+        "qualification_id",
+        "revision",
+        "runtime_digest",
+        "candidate_bundle_digest",
+        "qualification_envelope_digest",
+        "qualification_receipt_digest",
+        "meaning",
+        "rationale"
+      ],
+      "properties": {
+        "operation": { "const": "cutover" },
+        "preview_id": { "$ref": "#/$defs/uuid" },
+        "qualification_id": { "$ref": "#/$defs/uuid" },
+        "revision": { "$ref": "#/$defs/oid" },
+        "runtime_digest": { "$ref": "#/$defs/sha256" },
+        "candidate_bundle_digest": { "$ref": "#/$defs/sha256" },
+        "qualification_envelope_digest": { "$ref": "#/$defs/sha256" },
+        "qualification_receipt_digest": { "$ref": "#/$defs/sha256" },
+        "meaning": {
+          "const": "accept_exact_revision_and_qualifying_history_as_initialization_evidence"
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "Human rationale. Native admission additionally limits the exact UTF-8 encoding to 4096 bytes."
+        }
+      },
+      "additionalProperties": false
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "oid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "not": { "const": "0000000000000000000000000000000000000000" }
     }
   }
 }
