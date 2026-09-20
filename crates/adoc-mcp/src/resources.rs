@@ -1233,6 +1233,26 @@ const RESOURCES: &[AgentResource] = &[
         ),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_http_rollback_operation.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-http-rollback-operation-v0-json",
+        title: "AgentDoc Cloud Migration HTTP Rollback Operation JSON Schema",
+        description: "JSON Schema for the versioned Cloud migration HTTP rollback operation projection.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_http_rollback_operation.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_http_rollback_result.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-http-rollback-result-v0-json",
+        title: "AgentDoc Cloud Migration HTTP Rollback Result JSON Schema",
+        description: "JSON Schema for the versioned Cloud migration HTTP rollback result projection.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_http_rollback_result.v0.schema.json"
+        ),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/agentdoc.cloud.proposal_command.v0.schema.json",
         name: "schema-agentdoc-cloud-proposal-command-v0-json",
         title: "AgentDoc Cloud Proposal Command JSON Schema",

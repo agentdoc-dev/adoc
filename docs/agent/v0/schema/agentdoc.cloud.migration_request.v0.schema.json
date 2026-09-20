@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "adoc://agent/v0/schema/agentdoc.cloud.migration_request.v0.schema.json",
   "title": "AgentDoc Cloud Migration Request",
-  "description": "E4.4 transport schema for versioned migration source-registration, prepare, and cutover requests. E7 HTTP operations publish closed payload branches here before Cloud emits them; unknown operation payloads remain reserved for their owning slice.",
+  "description": "E4.4 transport schema for versioned migration source-registration, prepare, cutover, and rollback requests. E7 HTTP operations publish closed payload branches here before Cloud emits them; unknown operation payloads remain reserved for their owning slice.",
   "type": "object",
   "required": ["schema_version", "payload"],
   "properties": {
@@ -36,6 +36,15 @@
             }
           },
           "then": { "$ref": "#/$defs/cutover" }
+        },
+        {
+          "if": {
+            "required": ["operation"],
+            "properties": {
+              "operation": { "const": "rollback" }
+            }
+          },
+          "then": { "$ref": "#/$defs/rollback" }
         }
       ]
     }
@@ -171,6 +180,14 @@
           "pattern": "\\S",
           "description": "Human rationale. Native admission additionally limits the exact UTF-8 encoding to 4096 bytes."
         }
+      },
+      "additionalProperties": false
+    },
+    "rollback": {
+      "type": "object",
+      "required": ["operation"],
+      "properties": {
+        "operation": { "const": "rollback" }
       },
       "additionalProperties": false
     },

@@ -452,6 +452,8 @@ fn lists_and_reads_all_stable_agent_resources() {
         "adoc://agent/v0/schema/agentdoc.cloud.migration_http_operation_result.v0.schema.json",
         "adoc://agent/v0/schema/agentdoc.cloud.migration_http_cutover_operation.v0.schema.json",
         "adoc://agent/v0/schema/agentdoc.cloud.migration_http_cutover_result.v0.schema.json",
+        "adoc://agent/v0/schema/agentdoc.cloud.migration_http_rollback_operation.v0.schema.json",
+        "adoc://agent/v0/schema/agentdoc.cloud.migration_http_rollback_result.v0.schema.json",
         "adoc://agent/v0/schema/agentdoc.cloud.proposal_command.v0.schema.json",
         "adoc://agent/v0/schema/agentdoc.cloud.repository_config.v0.schema.json",
         "adoc://agent/v0/schema/agentdoc.cloud.work_request.v0.schema.json",

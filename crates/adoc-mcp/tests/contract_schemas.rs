@@ -509,6 +509,8 @@ fn cloud_operation_contracts_round_trip_and_reject_the_registered_unknown_versio
         "agentdoc.cloud.migration_http_operation_result.v0",
         "agentdoc.cloud.migration_http_cutover_operation.v0",
         "agentdoc.cloud.migration_http_cutover_result.v0",
+        "agentdoc.cloud.migration_http_rollback_operation.v0",
+        "agentdoc.cloud.migration_http_rollback_result.v0",
         "agentdoc.cloud.migration_receipt.v0",
         "agentdoc.cloud.egress_policy.v0",
     ] {
@@ -543,6 +545,10 @@ fn cloud_operation_contracts_round_trip_and_reject_the_registered_unknown_versio
             migration_http_cutover_operation_fixture()
         } else if id == "agentdoc.cloud.migration_http_cutover_result.v0" {
             migration_http_cutover_result_fixture()
+        } else if id == "agentdoc.cloud.migration_http_rollback_operation.v0" {
+            migration_http_rollback_operation_fixture()
+        } else if id == "agentdoc.cloud.migration_http_rollback_result.v0" {
+            migration_http_rollback_result_fixture()
         } else {
             json!({ "schema_version": id, "payload": payload })
         };
@@ -612,6 +618,39 @@ fn migration_http_cutover_result_fixture() -> serde_json::Value {
             "schema_version": "agentdoc.cloud.migration_cutover_result.v0",
             "receipt_bytes_base64": "e30K",
             "receipt_digest": format!("sha256:{}", "a".repeat(64))
+        }
+    })
+}
+
+fn migration_http_rollback_operation_fixture() -> serde_json::Value {
+    json!({
+        "schema_version": "agentdoc.cloud.migration_http_rollback_operation.v0",
+        "operation_id": "10000000-0000-0000-0000-000000000001",
+        "migration_id": "20000000-0000-0000-0000-000000000001",
+        "operation": "rollback",
+        "status": "queued",
+        "status_url": "/api/v1/workspaces/30000000-0000-0000-0000-000000000001/migrations/20000000-0000-0000-0000-000000000001?operation_id=10000000-0000-0000-0000-000000000001"
+    })
+}
+
+fn migration_http_rollback_result_fixture() -> serde_json::Value {
+    json!({
+        "schema_version": "agentdoc.cloud.migration_http_rollback_result.v0",
+        "operation_id": "10000000-0000-0000-0000-000000000001",
+        "migration_id": "20000000-0000-0000-0000-000000000001",
+        "operation": "rollback",
+        "delivery_status": "succeeded",
+        "status_url": "/api/v1/workspaces/30000000-0000-0000-0000-000000000001/migrations/20000000-0000-0000-0000-000000000001?operation_id=10000000-0000-0000-0000-000000000001",
+        "blocked_reason": null,
+        "rollback_receipt": {
+            "schema_version": "agentdoc.cloud.migration_cutover_result.v0",
+            "receipt_bytes_base64": "e30K",
+            "receipt_digest": format!("sha256:{}", "a".repeat(64))
+        },
+        "fence_release_receipt": {
+            "schema_version": "agentdoc.cloud.migration_cutover_result.v0",
+            "receipt_bytes_base64": "e30K",
+            "receipt_digest": format!("sha256:{}", "b".repeat(64))
         }
     })
 }
@@ -876,6 +915,61 @@ fn cloud_migration_cutover_http_contracts_are_closed_and_state_exact() {
     }
     let mut extra_result = result.clone();
     extra_result["target"] = json!("forged");
+    assert!(!schema_accepts(result_name, &extra_result));
+}
+
+#[test]
+fn cloud_migration_rollback_http_contracts_are_closed_and_state_exact() {
+    let request_name = "agentdoc.cloud.migration_request.v0.schema.json";
+    let request = json!({
+        "schema_version": "agentdoc.cloud.migration_request.v0",
+        "payload": { "operation": "rollback" }
+    });
+    assert_valid(request_name, &request);
+    let mut forged_request = request.clone();
+    forged_request["payload"]["transition_id"] = json!("10000000-0000-0000-0000-000000000001");
+    assert!(!schema_accepts(request_name, &forged_request));
+
+    let operation_name = "agentdoc.cloud.migration_http_rollback_operation.v0.schema.json";
+    let operation = migration_http_rollback_operation_fixture();
+    assert_valid(operation_name, &operation);
+    let mut wrong_operation = operation.clone();
+    wrong_operation["operation"] = json!("cutover");
+    assert!(!schema_accepts(operation_name, &wrong_operation));
+    let mut extra_operation = operation.clone();
+    extra_operation["transition_id"] = json!("forged");
+    assert!(!schema_accepts(operation_name, &extra_operation));
+
+    let result_name = "agentdoc.cloud.migration_http_rollback_result.v0.schema.json";
+    let result = migration_http_rollback_result_fixture();
+    assert_valid(result_name, &result);
+    let mut release_pending = result.clone();
+    release_pending["delivery_status"] = json!("release_pending");
+    release_pending["fence_release_receipt"] = serde_json::Value::Null;
+    assert_valid(result_name, &release_pending);
+    let mut early_release = release_pending.clone();
+    early_release["fence_release_receipt"] = result["fence_release_receipt"].clone();
+    assert!(!schema_accepts(result_name, &early_release));
+    let mut no_rollback = release_pending.clone();
+    no_rollback["rollback_receipt"] = serde_json::Value::Null;
+    assert!(!schema_accepts(result_name, &no_rollback));
+    let mut queued = result.clone();
+    queued["delivery_status"] = json!("queued");
+    queued["rollback_receipt"] = serde_json::Value::Null;
+    queued["fence_release_receipt"] = serde_json::Value::Null;
+    assert_valid(result_name, &queued);
+    let mut blocked = queued.clone();
+    blocked["delivery_status"] = json!("blocked");
+    blocked["blocked_reason"] = json!("migration.worker_not_qualified");
+    assert_valid(result_name, &blocked);
+    let mut missing = result.clone();
+    missing
+        .as_object_mut()
+        .unwrap()
+        .remove("fence_release_receipt");
+    assert!(!schema_accepts(result_name, &missing));
+    let mut extra_result = result.clone();
+    extra_result["fence"] = json!("forged");
     assert!(!schema_accepts(result_name, &extra_result));
 }
 

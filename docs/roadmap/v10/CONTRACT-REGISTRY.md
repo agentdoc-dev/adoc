@@ -226,6 +226,8 @@ The 13 `agentdoc.cloud.*` rows below whose owning slice is E5 also inventory imp
 | `agentdoc.cloud.migration_http_operation_result.v0` | cloud | Cloud E7-HTTP.T2 | closed public migration prepare delivery/result projection; preview carries the required exact qualification envelope digest, nullable native receipt digest, and safe counts; Cloud's HTTP route synthesizes the required `status_url` after validating the narrower native RPC projection |
 | `agentdoc.cloud.migration_http_cutover_operation.v0` | cloud | Cloud E7-HTTP.T3 | closed public projection for a queued cutover operation; Cloud's HTTP route synthesizes the required `status_url` |
 | `agentdoc.cloud.migration_http_cutover_result.v0` | cloud | Cloud E7-HTTP.T3 | closed public cutover delivery/result projection; a succeeded result carries the exact existing cutover receipt bytes and digest only |
+| `agentdoc.cloud.migration_http_rollback_operation.v0` | cloud | Cloud E7-HTTP.T4 | closed public projection for a queued rollback operation; Cloud's HTTP route synthesizes the required `status_url` |
+| `agentdoc.cloud.migration_http_rollback_result.v0` | cloud | Cloud E7-HTTP.T4 | closed public rollback delivery/result projection; release-pending carries only the exact existing rollback receipt bytes and digest, while succeeded adds the fence-release receipt |
 <!-- /registry:envelopes-planned -->
 
 ## Diagnostic Codes — shipped, owner `adoc`
