@@ -1203,6 +1203,16 @@ const RESOURCES: &[AgentResource] = &[
         ),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_http_operation_result.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-http-operation-result-v0-json",
+        title: "AgentDoc Cloud Migration HTTP Operation Result JSON Schema",
+        description: "JSON Schema for the versioned Cloud migration HTTP operation result projection.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_http_operation_result.v0.schema.json"
+        ),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/agentdoc.cloud.proposal_command.v0.schema.json",
         name: "schema-agentdoc-cloud-proposal-command-v0-json",
         title: "AgentDoc Cloud Proposal Command JSON Schema",

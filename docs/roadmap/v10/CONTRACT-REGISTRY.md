@@ -223,6 +223,7 @@ The 13 `agentdoc.cloud.*` rows below whose owning slice is E5 also inventory imp
 | `agentdoc.cloud.migration_source_checkpoint_receipt.v0` | cloud | E7.2.T2 | native comparison and immutable negative-stop evidence; match alone grants no progress, approval or cutover; schema and MCP published |
 | `agentdoc.cloud.migration_source_result.v0` | cloud | E7.2.T2 | shared exact canonical receipt-byte base64 and SHA256 response for target and checkpoint ports; schema and MCP published |
 | `agentdoc.cloud.migration_http_operation.v0` | cloud | Cloud E7-HTTP.T1 | closed public projection for a queued prepare operation; no authority or source credentials |
+| `agentdoc.cloud.migration_http_operation_result.v0` | cloud | Cloud E7-HTTP.T2 | closed public migration prepare delivery/result projection; preview carries the required exact qualification envelope digest, nullable native receipt digest, and safe counts; Cloud's HTTP route synthesizes the required `status_url` after validating the narrower native RPC projection |
 <!-- /registry:envelopes-planned -->
 
 ## Diagnostic Codes — shipped, owner `adoc`

@@ -506,6 +506,7 @@ fn cloud_operation_contracts_round_trip_and_reject_the_registered_unknown_versio
         "agentdoc.cloud.approval_command.v0",
         "agentdoc.cloud.migration_request.v0",
         "agentdoc.cloud.migration_http_operation.v0",
+        "agentdoc.cloud.migration_http_operation_result.v0",
         "agentdoc.cloud.migration_receipt.v0",
         "agentdoc.cloud.egress_policy.v0",
     ] {
@@ -534,6 +535,8 @@ fn cloud_operation_contracts_round_trip_and_reject_the_registered_unknown_versio
                 "status": "queued",
                 "status_url": "/api/v1/workspaces/30000000-0000-0000-0000-000000000001/migrations/20000000-0000-0000-0000-000000000001?operation_id=10000000-0000-0000-0000-000000000001"
             })
+        } else if id == "agentdoc.cloud.migration_http_operation_result.v0" {
+            migration_http_operation_result_fixture()
         } else {
             json!({ "schema_version": id, "payload": payload })
         };
@@ -553,6 +556,94 @@ fn cloud_operation_contracts_round_trip_and_reject_the_registered_unknown_versio
         "agentdoc.cloud.assessment_submission.v0.schema.json",
         &unsupported
     ));
+}
+
+fn migration_http_operation_result_fixture() -> serde_json::Value {
+    json!({
+        "schema_version": "agentdoc.cloud.migration_http_operation_result.v0",
+        "operation_id": "10000000-0000-0000-0000-000000000001",
+        "migration_id": "20000000-0000-0000-0000-000000000001",
+        "operation": "prepare",
+        "delivery_status": "succeeded",
+        "status_url": "/api/v1/workspaces/30000000-0000-0000-0000-000000000001/migrations/20000000-0000-0000-0000-000000000001?operation_id=10000000-0000-0000-0000-000000000001",
+        "blocked_reason": null,
+        "preview": {
+            "preview_id": "40000000-0000-0000-0000-000000000001",
+            "revision": "0123456789abcdef0123456789abcdef01234567",
+            "runtime_digest": format!("sha256:{}", "a".repeat(64)),
+            "candidate_bundle_digest": format!("sha256:{}", "b".repeat(64)),
+            "qualification_id": "40000000-0000-0000-0000-000000000001",
+            "qualification_outcome": "evaluated",
+            "qualification_envelope_digest": format!("sha256:{}", "d".repeat(64)),
+            "qualification_receipt_digest": format!("sha256:{}", "c".repeat(64)),
+            "candidate_count": 1,
+            "source_count": 1
+        }
+    })
+}
+
+#[test]
+fn cloud_migration_http_operation_result_is_closed_and_preserves_preview_invariants() {
+    let name = "agentdoc.cloud.migration_http_operation_result.v0.schema.json";
+    let result = migration_http_operation_result_fixture();
+    assert_valid(name, &result);
+
+    let mut blocked = result.clone();
+    blocked["delivery_status"] = json!("blocked");
+    blocked["blocked_reason"] = json!("migration.worker_not_qualified");
+    blocked["preview"] = serde_json::Value::Null;
+    assert_valid(name, &blocked);
+
+    let mut flagged = result.clone();
+    flagged["preview"]["qualification_outcome"] = json!("flagged_source_evidence");
+    flagged["preview"]["candidate_bundle_digest"] = serde_json::Value::Null;
+    flagged["preview"]["qualification_receipt_digest"] = serde_json::Value::Null;
+    flagged["preview"]["candidate_count"] = json!(0);
+    assert_valid(name, &flagged);
+
+    for (pointer, value) in [
+        ("/blocked_reason", json!("migration.worker_not_qualified")),
+        ("/preview/revision", json!("ABC")),
+        (
+            "/preview/revision",
+            json!("0000000000000000000000000000000000000000"),
+        ),
+        (
+            "/preview/qualification_envelope_digest",
+            json!("sha256:ABC"),
+        ),
+        (
+            "/preview/qualification_receipt_digest",
+            serde_json::Value::Null,
+        ),
+        ("/preview/candidate_bundle_digest", serde_json::Value::Null),
+        ("/preview/candidate_count", json!(-1)),
+    ] {
+        let mut invalid = result.clone();
+        *invalid.pointer_mut(pointer).expect("fixture pointer") = value;
+        assert!(
+            !schema_accepts(name, &invalid),
+            "accepted invalid {pointer}"
+        );
+    }
+    let mut missing_digest = result.clone();
+    missing_digest["preview"]
+        .as_object_mut()
+        .expect("preview object")
+        .remove("qualification_envelope_digest");
+    assert!(!schema_accepts(name, &missing_digest));
+    let mut invalid_flagged = flagged.clone();
+    invalid_flagged["preview"]["candidate_count"] = json!(1);
+    assert!(!schema_accepts(name, &invalid_flagged));
+    let mut missing_preview = result.clone();
+    missing_preview["preview"] = serde_json::Value::Null;
+    assert!(!schema_accepts(name, &missing_preview));
+    let mut early_preview = result.clone();
+    early_preview["delivery_status"] = json!("running");
+    assert!(!schema_accepts(name, &early_preview));
+    let mut extra = result.clone();
+    extra["preview"]["diagnostics"] = json!("secret");
+    assert!(!schema_accepts(name, &extra));
 }
 
 #[test]
