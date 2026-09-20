@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "adoc://agent/v0/schema/agentdoc.cloud.migration_request.v0.schema.json",
   "title": "AgentDoc Cloud Migration Request",
-  "description": "E4.4 transport schema for the versioned migration request. The owning domain slice defines payload semantics; this boundary preserves the JSON object verbatim and rejects non-exact operation versions.",
+  "description": "E4.4 transport schema for versioned migration requests. E7 HTTP operations publish closed payload branches here before Cloud emits them; unknown operation payloads remain reserved for their owning slice.",
   "type": "object",
   "required": ["schema_version", "payload"],
   "properties": {
@@ -10,8 +10,83 @@
       "const": "agentdoc.cloud.migration_request.v0"
     },
     "payload": {
-      "type": "object"
+      "oneOf": [
+        {
+          "$ref": "#/$defs/sourceRegistration"
+        },
+        {
+          "type": "object",
+          "not": {
+            "required": ["operation"],
+            "properties": {
+              "operation": {
+                "const": "register_source"
+              }
+            }
+          }
+        }
+      ]
     }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "sourceContainerId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^\\S(?:[^\\r\\n\\u2028\\u2029]*\\S)?$"
+    },
+    "ref": {
+      "description": "Git branch reference: refs/heads/ followed by one or more slash-separated ASCII identifier segments; each starts alphanumeric and remaining characters are alphanumeric, underscore, or hyphen.",
+      "type": "string",
+      "minLength": 12,
+      "maxLength": 211,
+      "pattern": "^refs/heads/[A-Za-z0-9][A-Za-z0-9_-]*(?:/[A-Za-z0-9][A-Za-z0-9_-]*)*$"
+    },
+    "sourceRegistration": {
+      "type": "object",
+      "required": [
+        "operation",
+        "repository_id",
+        "connector_id",
+        "source_container_id",
+        "ref",
+        "expected_revision"
+      ],
+      "properties": {
+        "operation": {
+          "const": "register_source"
+        },
+        "repository_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "connector_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "source_container_id": {
+          "$ref": "#/$defs/sourceContainerId"
+        },
+        "ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "expected_revision": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
 }

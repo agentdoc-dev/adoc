@@ -544,6 +544,125 @@ fn cloud_operation_contracts_round_trip_and_reject_the_registered_unknown_versio
 }
 
 #[test]
+fn cloud_migration_source_registration_payload_is_closed_and_version_exact() {
+    let name = "agentdoc.cloud.migration_request.v0.schema.json";
+    let valid = json!({
+        "schema_version": "agentdoc.cloud.migration_request.v0",
+        "payload": {
+            "operation": "register_source",
+            "repository_id": "10000000-0000-0000-0000-000000000001",
+            "connector_id": "20000000-0000-0000-0000-000000000001",
+            "source_container_id": "github:installation:41",
+            "ref": "refs/heads/main",
+            "expected_revision": null
+        }
+    });
+    assert_valid(name, &valid);
+
+    let mut replay = valid.clone();
+    replay["payload"]["expected_revision"] = json!(1);
+    assert_valid(name, &replay);
+
+    for invalid in [
+        json!({
+            "schema_version": "agentdoc.cloud.migration_request.v0",
+            "payload": {
+                "operation": "register_source",
+                "repository_id": "10000000-0000-0000-0000-000000000001",
+                "connector_id": "20000000-0000-0000-0000-000000000001",
+                "source_container_id": "github:installation:41",
+                "ref": "main",
+                "expected_revision": null
+            }
+        }),
+        json!({
+            "schema_version": "agentdoc.cloud.migration_request.v0",
+            "payload": {
+                "operation": "register_source",
+                "repository_id": "10000000-0000-0000-0000-000000000001",
+                "connector_id": "20000000-0000-0000-0000-000000000001",
+                "source_container_id": "github:installation:41",
+                "ref": "refs/heads/main",
+                "expected_revision": 0
+            }
+        }),
+        json!({
+            "schema_version": "agentdoc.cloud.migration_request.v0",
+            "payload": {
+                "operation": "register_source",
+                "repository_id": "10000000-0000-0000-0000-000000000001",
+                "connector_id": "20000000-0000-0000-0000-000000000001",
+                "source_container_id": "github:installation:41",
+                "ref": "refs/heads/main",
+                "expected_revision": null,
+                "authorization_decision_id": "30000000-0000-0000-0000-000000000001"
+            }
+        }),
+    ] {
+        assert!(
+            !schema_accepts(name, &invalid),
+            "invalid source-registration request was accepted: {invalid}"
+        );
+    }
+
+    for (field, value) in [
+        ("repository_id", json!("not-a-uuid")),
+        ("connector_id", json!("not-a-uuid")),
+        ("source_container_id", json!("")),
+        ("source_container_id", json!(" source")),
+        ("source_container_id", json!("source\nnext")),
+        ("source_container_id", json!("source ")),
+        ("source_container_id", json!("x".repeat(513))),
+        ("ref", json!(format!("refs/heads/{}", "x".repeat(201)))),
+        ("expected_revision", json!(-1)),
+        ("expected_revision", json!(1.5)),
+        ("expected_revision", json!(2_147_483_648_i64)),
+    ] {
+        let mut invalid = valid.clone();
+        invalid["payload"][field] = value;
+        assert!(!schema_accepts(name, &invalid), "accepted invalid {field}");
+    }
+
+    for (field, value) in [
+        ("source_container_id", json!("x".repeat(512))),
+        ("ref", json!("refs/heads/a")),
+        ("ref", json!(format!("refs/heads/{}", "x".repeat(200)))),
+        ("expected_revision", json!(2_147_483_647_i64)),
+    ] {
+        let mut boundary = valid.clone();
+        boundary["payload"][field] = value;
+        assert_valid(name, &boundary);
+    }
+
+    let mut missing = valid.clone();
+    missing["payload"].as_object_mut().unwrap().remove("ref");
+    assert!(!schema_accepts(name, &missing));
+    for field in [
+        "operation",
+        "repository_id",
+        "connector_id",
+        "source_container_id",
+        "ref",
+        "expected_revision",
+    ] {
+        let mut invalid = valid.clone();
+        invalid["payload"].as_object_mut().unwrap().remove(field);
+        if field == "operation" {
+            assert_valid(name, &invalid);
+        } else {
+            assert!(!schema_accepts(name, &invalid), "accepted missing {field}");
+        }
+    }
+    assert_valid(
+        name,
+        &json!({
+            "schema_version": "agentdoc.cloud.migration_request.v0",
+            "payload": { "operation": "prepare" }
+        }),
+    );
+}
+
+#[test]
 fn cloud_gate_decision_wraps_the_shared_gate_result_contract() {
     let gate = schema("agentdoc.cloud.gate_decision.v0.schema.json");
     assert_eq!(
