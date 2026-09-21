@@ -386,6 +386,14 @@ fn e8_1_attestation_contracts_and_codes_are_registered_as_planned() {
     for (id, slice) in [
         ("agentdoc.cloud.github_approval_attestation.v0", "E8.1.T1"),
         ("agentdoc.cloud.github_approval_observation.v0", "E8.1.T1"),
+        (
+            "agentdoc.cloud.github_approval_attestation_attempt.v0",
+            "E8.1.T3",
+        ),
+        (
+            "agentdoc.cloud.github_approval_attestation_status.v0",
+            "E8.1.T3",
+        ),
     ] {
         let row = anchored_row(&registry, "registry:envelopes-planned", id, 4);
         assert_eq!(
@@ -397,7 +405,7 @@ fn e8_1_attestation_contracts_and_codes_are_registered_as_planned() {
     for (anchor, code, status) in [(
         "registry:action-codes",
         "action.attestation_bot_rejected",
-        "planned (E8.1)",
+        "planned (E8.1.T3)",
     )] {
         let row = anchored_row(&registry, anchor, code, 3);
         assert_eq!(
