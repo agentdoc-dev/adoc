@@ -150,6 +150,8 @@ The 13 `agentdoc.cloud.*` rows below whose owning slice is E5 also inventory imp
 | `agentdoc.cloud.gate_decision.v0` | cloud | E4.4 | exact-version gate-decision transport; its `adoc://` payload reference requires the adjacent registered `adoc.gate_result.v0` schema; gate semantics remain E5.3-owned |
 | `agentdoc.cloud.proposal_command.v0` | cloud | E4.4 | exact-version proposal-command transport; proposal semantics remain E5.1-owned |
 | `agentdoc.cloud.approval_command.v0` | cloud | E4.4 | exact-version approval-command transport; approval semantics remain E5.2-owned |
+| `agentdoc.cloud.github_approval_attestation.v0` | cloud | E8.1.T1 | exact-match immutable GitHub approval-attestation record; Cloud binds one authenticated external review identity, exact Workspace/repository/pull request/head SHA, Proposal Set version/digest, exposure, scope, Proof Obligations, `proposal.approve` decision, observation snapshot and all-true requirement facts; rejected attempts and bare reviews never construct this record or satisfy `approval_required`; native `adoc.approval.v0` remains unchanged |
+| `agentdoc.cloud.github_approval_observation.v0` | cloud | E8.1.T1 | closed normalized observation accepted only with canonical bytes, one approved review bound to a concrete actor/commit/submission instant, and all eight requirement predicates exactly true; raw, partial, false or extra caller facts cannot enter the trusted snapshot boundary |
 | `agentdoc.cloud.migration_request.v0` | cloud | E4.4 | exact-version migration-request transport; migration semantics remain E7.1-owned |
 | `agentdoc.cloud.migration_receipt.v0` | cloud | E4.4 | exact-version migration-receipt transport; qualification and cutover semantics remain E7.1-owned |
 | `agentdoc.cloud.egress_policy.v0` | cloud | E4.4 | registered transport with E6.6.T1 exact-scope payload and seven required category booleans defined by the [closed schema](../../agent/v0/schema/agentdoc.cloud.egress_policy.v0.schema.json). Scope uses a Cloud subset of the existing authorization vocabulary: canonical Cloud repository or connector instance, optionally narrowed to a native source container/resource. Its `adoc://` scope references require the adjacent registered `adoc.authorization_decision.v0` schema; publishing that schema does not change its planned status. Unknown keys are structural refusals; category additions require a version decision. Cloud enforces current policy authority on the exact scope. A missing or failed scope fetch returns all-disabled plus `egress.policy_unavailable`, never a cached or wider policy. Sender/source binding, gate compatibility and policy-change receipts remain later E6.6 slices; provenance RT-21 and PRD v1.0 §27 |
@@ -673,12 +675,14 @@ The pre-release implementation annotations identify the ten E5 inventory-correct
 
 ## Attestation codes — planned, owner `cloud`
 
-The canonical bot-attestation code family root (RT-21, E0.3.T3). The Action never mints its own bot-attestation family: its check surface wraps this code via the registered `action.attestation_bot_rejected` row above. The E8.1 attestation record contract and the sibling codes (`attestation.binding_mismatch`, `attestation.requirements_unmet`) register at E8.1.T1 as a registry edit, flipping this row from planned to implemented rather than re-registering it.
+The canonical bot-attestation code family root (RT-21, E0.3.T3). The Action never mints its own bot-attestation family: its check surface wraps `attestation.bot_approver_rejected` via the registered `action.attestation_bot_rejected` row above. E8.1.T1 registers the sibling codes `attestation.binding_mismatch` and `attestation.requirements_unmet` beside it. Every row stays `planned` with its owning slice and flips to `unreleased` when that slice's implementation and tests land; rows are never re-registered.
 
 <!-- registry:attestation-codes -->
 | code | status | planned by | meaning |
 | --- | --- | --- | --- |
-| `attestation.bot_approver_rejected` | planned | E8.1 | bot/service approver rejected by default for approval attestation |
+| `attestation.bot_approver_rejected` | planned | E8.1.T1 | bot/service/agent/workload approver rejected by default for approval attestation; E8.1.T4's exact governed identity exception may lift only this identity-type rejection |
+| `attestation.binding_mismatch` | planned | E8.1.T1 | authenticated review evidence does not exact-match the retained Workspace, repository, pull request, head SHA, Proposal Set digest or exposure binding |
+| `attestation.requirements_unmet` | planned | E8.1.T1 | one or more required review, CODEOWNERS, check, branch-protection, authorization or merge predicates is false, unknown or unreadable |
 <!-- /registry:attestation-codes -->
 
 ## Dispositions
