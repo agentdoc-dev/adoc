@@ -71,6 +71,25 @@ fn anchored_ids(doc: &str, anchor: &str) -> BTreeSet<String> {
     ids
 }
 
+/// Cells of the row whose first cell is `` `id` `` under `anchor`, trimmed and
+/// checked against the table's expected column count.
+fn anchored_row<'a>(doc: &'a str, anchor: &str, id: &str, columns: usize) -> Vec<&'a str> {
+    let block = support::doc_scan::anchored_block(doc, REGISTRY, anchor);
+    let prefix = format!("| `{id}` |");
+    let row = block
+        .lines()
+        .map(str::trim)
+        .find(|line| line.starts_with(&prefix))
+        .unwrap_or_else(|| panic!("{REGISTRY}: `{anchor}` has no row for {id:?}"));
+    let cells: Vec<&str> = row.trim_matches('|').split('|').map(str::trim).collect();
+    assert_eq!(
+        cells.len(),
+        columns,
+        "{REGISTRY}: `{anchor}` row {id:?} must have {columns} cells, got {cells:?}"
+    );
+    cells
+}
+
 /// Every id registered anywhere in the registry, across all anchored tables.
 fn all_registered_ids(doc: &str) -> BTreeSet<String> {
     ANCHORS
@@ -357,6 +376,48 @@ fn anchors_cover_every_registry_table() {
         "{REGISTRY}: the anchors in the document and the ANCHORS list drifted — \
          a table outside the list would be invisible to every id check"
     );
+}
+
+#[test]
+fn e8_1_attestation_contracts_and_codes_are_registered_as_planned() {
+    // E8.1 implementations are unmerged: every row stays planned with its
+    // owning slice until the implementation and tests land.
+    let registry = registry();
+    for (id, slice) in [
+        ("agentdoc.cloud.github_approval_attestation.v0", "E8.1.T1"),
+        ("agentdoc.cloud.github_approval_observation.v0", "E8.1.T1"),
+    ] {
+        let row = anchored_row(&registry, "registry:envelopes-planned", id, 4);
+        assert_eq!(
+            &row[..3],
+            [format!("`{id}`").as_str(), "cloud", slice],
+            "{id} must stay a planned Cloud envelope owned by {slice}"
+        );
+    }
+    for (anchor, code, status) in [(
+        "registry:action-codes",
+        "action.attestation_bot_rejected",
+        "planned (E8.1)",
+    )] {
+        let row = anchored_row(&registry, anchor, code, 3);
+        assert_eq!(
+            &row[..2],
+            [format!("`{code}`").as_str(), status],
+            "{anchor} row {code} must carry status {status:?}"
+        );
+    }
+    for (code, slice) in [
+        ("attestation.bot_approver_rejected", "E8.1.T1"),
+        ("attestation.binding_mismatch", "E8.1.T1"),
+        ("attestation.requirements_unmet", "E8.1.T1"),
+    ] {
+        let row = anchored_row(&registry, "registry:attestation-codes", code, 4);
+        assert_eq!(
+            &row[..3],
+            [format!("`{code}`").as_str(), "planned", slice],
+            "attestation code {code} must stay planned and owned by {slice}"
+        );
+    }
 }
 
 #[test]
