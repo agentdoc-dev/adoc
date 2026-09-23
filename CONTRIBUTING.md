@@ -1,7 +1,7 @@
 # Contributing to AgentDoc
 
 Thanks for improving AgentDoc. The project is a Rust workspace; the current
-source preview is `0.4.0`. The released Linux CLI is `0.3.4`.
+version is the `1.0.0-alpha.1` prerelease. The previous release was the `0.3.4` Linux CLI.
 
 ## Before you start
 

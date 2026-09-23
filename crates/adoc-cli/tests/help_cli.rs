@@ -10,7 +10,7 @@ fn version_matches_the_source_preview() {
         .expect("adoc --version runs");
 
     assert_eq!(output.status.code(), Some(0));
-    assert_eq!(stdout(&output), "adoc 0.4.0\n");
+    assert_eq!(stdout(&output), "adoc 1.0.0-alpha.1\n");
     assert!(output.stderr.is_empty());
 }
 
