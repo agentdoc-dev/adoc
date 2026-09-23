@@ -1,0 +1,49 @@
+{
+  "description": "U3.3.P3a examples: Cloud prepare transport v1 and the derived portable adoc.migration_request.v1 for both starting points. previous_preview_id null means no predecessor, never fresh.",
+  "cloud_requests": [
+    {
+      "schema_version": "agentdoc.cloud.migration_request.v1",
+      "payload": {
+        "operation": "prepare",
+        "repository_id": "00000000-0000-4000-8000-000000000010",
+        "connector_id": "00000000-0000-4000-8000-000000000011",
+        "source_container_id": "00000000-0000-4000-8000-000000000012",
+        "ref": "refs/heads/main",
+        "revision": "0123456789abcdef0123456789abcdef01234567",
+        "previous_preview_id": null,
+        "inspection_id": "00000000-0000-4000-8000-000000000013",
+        "inspection_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "starting_point": "recorded_history"
+      }
+    },
+    {
+      "schema_version": "agentdoc.cloud.migration_request.v1",
+      "payload": {
+        "operation": "prepare",
+        "repository_id": "00000000-0000-4000-8000-000000000010",
+        "connector_id": "00000000-0000-4000-8000-000000000011",
+        "source_container_id": "00000000-0000-4000-8000-000000000012",
+        "ref": "refs/heads/main",
+        "revision": "0123456789abcdef0123456789abcdef01234567",
+        "previous_preview_id": "00000000-0000-4000-8000-000000000014",
+        "inspection_id": "00000000-0000-4000-8000-000000000013",
+        "inspection_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "starting_point": "fresh"
+      }
+    }
+  ],
+  "adoc_requests": [
+    {
+      "schema_version": "adoc.migration_request.v1",
+      "request_id": "00000000-0000-4000-8000-000000000015",
+      "workspace_id": "00000000-0000-4000-8000-000000000016",
+      "source_id": "00000000-0000-4000-8000-000000000012",
+      "repository_identity": "github:42",
+      "revision": { "system": "git", "value": "0123456789abcdef0123456789abcdef01234567" },
+      "evaluation_date": "2026-09-23",
+      "inspection_id": "00000000-0000-4000-8000-000000000013",
+      "inspection_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "starting_point": "fresh"
+    }
+  ]
+}

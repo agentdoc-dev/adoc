@@ -180,12 +180,6 @@ pub(crate) struct RawMigrationSource {
     pub(crate) loaded: Result<SourceFile, SourceLoadError>,
 }
 impl FsSourceProvider {
-    pub(crate) fn load_raw_migration_sources(
-        &self,
-        limit: usize,
-    ) -> Result<Vec<RawMigrationSource>, crate::domain::migration::MigrationError> {
-        self.load_raw_migration_sources_with_extensions(limit, SOURCE_EXTENSIONS)
-    }
     /// As above, selecting only `extensions` before any read, count or byte limit.
     pub(crate) fn load_raw_migration_sources_with_extensions(
         &self,

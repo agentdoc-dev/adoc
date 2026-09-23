@@ -8026,6 +8026,7 @@ fn repository_inspection_request_actual_receipts_and_examples_match_portable_sch
         let value: serde_json::Value =
             serde_json::from_str(&receipt.to_canonical_json().unwrap()).unwrap();
         assert_valid("adoc.repository_inspection_receipt.v0.schema.json", &value);
+        assert_manifest_digest(&value);
         findings.insert(format!(
             "{}/{}",
             value["finding"], value["validation_result"]
@@ -8040,6 +8041,7 @@ fn repository_inspection_request_actual_receipts_and_examples_match_portable_sch
     );
     for receipt in examples["receipts"].as_array().unwrap() {
         assert_valid("adoc.repository_inspection_receipt.v0.schema.json", receipt);
+        assert_manifest_digest(receipt);
     }
     let mut foreign = examples["request"].clone();
     foreign["foreign"] = json!(true);
@@ -8047,4 +8049,172 @@ fn repository_inspection_request_actual_receipts_and_examples_match_portable_sch
         "adoc.repository_inspection_request.v0.schema.json",
         &foreign
     ));
+}
+
+#[test]
+fn migration_v1_examples_and_actual_history_fresh_outputs_match_portable_schemas() {
+    let examples: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/migration-v1-examples.json")).unwrap();
+    for request in examples["cloud_requests"].as_array().unwrap() {
+        assert_valid("agentdoc.cloud.migration_request.v1.schema.json", request);
+        for (pointer, bad) in [
+            ("/payload/starting_point", json!("auto")),
+            ("/payload/revision", json!("0".repeat(40))),
+            ("/payload/operation", json!("cutover")),
+            (
+                "/schema_version",
+                json!("agentdoc.cloud.migration_request.v0"),
+            ),
+        ] {
+            let mut invalid = request.clone();
+            *invalid.pointer_mut(pointer).unwrap() = bad;
+            assert!(!schema_accepts(
+                "agentdoc.cloud.migration_request.v1.schema.json",
+                &invalid
+            ));
+        }
+        let mut foreign = request.clone();
+        foreign["payload"]["foreign"] = json!(true);
+        assert!(!schema_accepts(
+            "agentdoc.cloud.migration_request.v1.schema.json",
+            &foreign
+        ));
+    }
+    for request in examples["adoc_requests"].as_array().unwrap() {
+        assert_valid("adoc.migration_request.v1.schema.json", request);
+        assert!(!schema_accepts(
+            "adoc.migration_request.v0.schema.json",
+            request
+        ));
+        let mut missing = request.clone();
+        missing.as_object_mut().unwrap().remove("starting_point");
+        assert!(!schema_accepts(
+            "adoc.migration_request.v1.schema.json",
+            &missing
+        ));
+    }
+
+    let digest = format!("sha256:{}", "a".repeat(64));
+    let verified = "# Migration @doc(test.page)\n\n::claim test.claim\nstatus: verified\nowner: team\nverified_at: 2026-01-01\ntest: cargo test\nexpires_at: 2027-01-01\n--\nBody.\n::\n";
+    for (config, path, modes) in [
+        (true, "docs/index.adoc", &["recorded_history", "fresh"][..]),
+        (false, "index.adoc", &["fresh"][..]),
+    ] {
+        let workspace = tempfile::tempdir().unwrap();
+        let root = workspace.path();
+        if config {
+            write(
+                &root.join("agentdoc.config.yaml"),
+                "version: 1\nmode: strict\ndocs_path: docs\n",
+            );
+        }
+        write(&root.join(path), verified);
+        run_git(root, &["init", "-q"]);
+        run_git(root, &["config", "user.email", "test@example.test"]);
+        run_git(root, &["config", "user.name", "Test"]);
+        run_git(root, &["add", "."]);
+        run_git(root, &["commit", "-qm", "source"]);
+        let head = Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .unwrap();
+        let job = json!({"schema_version":"agentdoc.cloud.migration_import_job.v0","connector_id":"connector","observed_at":"2026-09-08T12:00:00Z","source_acl_scope":{"snapshot_id":"acl","source_container_id":"s","source":{"kind":"repository","id":"repo"}},"sources":[{"path":path,"source_record_id":"record","source_binding_id":"binding"}]});
+        for mode in modes {
+            let request = json!({"schema_version":"adoc.migration_request.v1", "request_id":"r", "workspace_id":"w", "source_id":"s", "repository_identity":"repo", "revision":{"system":"git", "value":String::from_utf8(head.stdout.clone()).unwrap().trim()}, "evaluation_date":"2026-09-08", "inspection_id":"i", "inspection_digest":digest, "starting_point":mode});
+            assert_valid("adoc.migration_request.v1.schema.json", &request);
+            let bytes = serde_json::to_vec(&request).unwrap();
+            let receipt =
+                adoc_local::prepare_migration(root, &bytes, "0.4.0".into(), digest.clone())
+                    .unwrap();
+            let receipt: serde_json::Value =
+                serde_json::from_str(&receipt.to_canonical_json().unwrap()).unwrap();
+            assert_valid("adoc.migration_receipt.v1.schema.json", &receipt);
+            assert!(!schema_accepts(
+                "adoc.migration_receipt.v0.schema.json",
+                &receipt
+            ));
+            let import = adoc_core::import_migration_from_git(
+                root,
+                &bytes,
+                &serde_json::to_vec(&job).unwrap(),
+                "0.4.0".into(),
+                digest.clone(),
+            )
+            .unwrap();
+            let import: serde_json::Value =
+                serde_json::from_str(&import.to_canonical_json().unwrap()).unwrap();
+            assert_valid("adoc.migration_import.v1.schema.json", &import);
+            assert!(!schema_accepts(
+                "adoc.migration_import.v0.schema.json",
+                &import
+            ));
+            let policy = if *mode == "fresh" { "fresh.1" } else { "1" };
+            let result = adoc_core::qualify_migration_from_git(
+                root,
+                &bytes,
+                &serde_json::to_vec(&job).unwrap(),
+                policy,
+                "0.4.0".into(),
+                digest.clone(),
+            )
+            .unwrap();
+            let output: serde_json::Value =
+                serde_json::from_str(&result.to_canonical_json().unwrap()).unwrap();
+            assert_valid("adoc.migration_qualification.v1.schema.json", &output);
+            assert!(!schema_accepts(
+                "adoc.migration_qualification.v0.schema.json",
+                &output
+            ));
+            let nested = |field: &str| -> serde_json::Value {
+                serde_json::from_str(output[field].as_str().unwrap()).unwrap()
+            };
+            assert_valid(
+                "adoc.migration_import.v1.schema.json",
+                &nested("candidate_bundle_bytes"),
+            );
+            let qualification = nested("qualification_receipt_bytes");
+            let schema = "adoc.migration_qualification_receipt.v1.schema.json";
+            assert_valid(schema, &qualification);
+            assert!(!schema_accepts(
+                "adoc.migration_qualification_receipt.v0.schema.json",
+                &qualification
+            ));
+            // An incompatible receipt (mode/policy/eligibility mismatch) is refused.
+            let mut forged = qualification.clone();
+            if *mode == "fresh" {
+                forged["objects"][0]["eligible"] = json!(true);
+                forged["objects"][0]["reasons"] = json!([]);
+            } else {
+                forged["qualification_policy_version"] = json!("fresh.1");
+            }
+            assert!(!schema_accepts(schema, &forged), "{mode}");
+            let mut swapped = qualification.clone();
+            swapped["starting_point"] = json!(if *mode == "fresh" {
+                "recorded_history"
+            } else {
+                "fresh"
+            });
+            assert!(!schema_accepts(schema, &swapped), "{mode}");
+        }
+    }
+}
+
+/// `manifest_digest` must be verifiable from the listed `{path, sha256}` manifest.
+fn assert_manifest_digest(receipt: &serde_json::Value) {
+    use sha2::{Digest, Sha256};
+    match (&receipt["manifest"], &receipt["manifest_digest"]) {
+        (serde_json::Value::Null, serde_json::Value::Null) => {}
+        (manifest, digest) => assert_eq!(
+            digest.as_str().unwrap(),
+            format!(
+                "sha256:{}",
+                Sha256::digest(serde_json::to_vec(manifest).unwrap())
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<String>()
+            )
+        ),
+    }
 }

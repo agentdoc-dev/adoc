@@ -1,0 +1,47 @@
+{
+  "schema_version": "adoc.migration_receipt.v0",
+  "phase": "prepare",
+  "request": {
+    "schema_version": "adoc.migration_request.v0",
+    "request_id": "request-1",
+    "workspace_id": "workspace-1",
+    "source_id": "source-1",
+    "repository_identity": "repo:test",
+    "revision": {
+      "system": "git",
+      "value": "58fffb7bdac0ea6f79a60000cb5e9ca56580dbc7"
+    },
+    "evaluation_date": "2026-09-08"
+  },
+  "request_digest": "sha256:55e03c159f93b03b9ac44d635703ed76d552b77843e398f9214a5177e11a1a42",
+  "validation_receipt": {
+    "schema_version": "adoc.validation_receipt.v0",
+    "runtime": {
+      "version": "1.0.0-alpha.1",
+      "binary_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "contract_versions": {
+      "graph": "adoc.graph.v6"
+    },
+    "evaluation_date": "2026-09-08",
+    "inputs": [
+      {
+        "path": "docs/one.adoc",
+        "digest": "sha256:1b537442b686be10072ea23c2d6512a043f0268337e4f1b7d0c2aebf91e25b66"
+      },
+      {
+        "path": "docs/two.adoc",
+        "digest": "sha256:a57155dd0d8a6d155e0ffde26bd29d4d236539ae6799fa6bf6459420833f8167"
+      }
+    ],
+    "context": [
+      {
+        "name": "config",
+        "digest": "sha256:55f8a10ff1fe7e51dd5fff2aedb65ebb58cd075e510af73dcbfc57bc0c34f0e3"
+      }
+    ],
+    "result": "pass",
+    "diagnostics_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "diagnostics": []
+}
