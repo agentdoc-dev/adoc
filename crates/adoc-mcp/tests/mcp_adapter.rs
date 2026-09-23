@@ -3,7 +3,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-mod support;
+use crate::support;
 
 use adoc_local::{PathPolicy, ProjectRootPathPolicy};
 use adoc_mcp::{

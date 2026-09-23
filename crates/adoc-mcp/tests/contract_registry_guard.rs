@@ -5,7 +5,7 @@
 //! outlive the code that emitted it. The parse targets pinned HTML comment
 //! anchors and backticked first table cells, never free prose.
 
-mod support;
+use crate::support;
 
 use std::collections::BTreeSet;
 use std::fs;
