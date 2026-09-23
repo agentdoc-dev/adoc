@@ -92,6 +92,14 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                     repository,
                     runtime_binary_digest,
                 } => commands::migration_prepare(request, repository, runtime_binary_digest),
+                Commands::Repository {
+                    command:
+                        cli::RepositoryCommand::Inspect {
+                            request,
+                            repository,
+                            runtime_binary_digest,
+                        },
+                } => commands::repository_inspect(request, repository, runtime_binary_digest),
                 Commands::PortableProject => commands::portable_project(),
                 Commands::ManagedRetrieve {
                     require_sensitive_classification: _,

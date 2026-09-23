@@ -48,3 +48,11 @@ behavior, real HTTP authorization and wire shape; it is not real GitHub deployme
 admission, controller credential-isolation proof or provider/native race acceptance.
 Those remain separate required T3 checks. No production identity, credential or
 repository content is retained here.
+
+## Repository inspection examples
+
+`repository-inspection-examples.json` retains real `adoc repository inspect`
+stdout values (re-indented) for configured, no-config (generated profile),
+invalid-config, empty and malformed fixture commits with fixed commit dates.
+Test identities only. Receipts are read-only evidence and grant no import,
+registration or promotion authority.

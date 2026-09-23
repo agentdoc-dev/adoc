@@ -498,6 +498,12 @@ pub(crate) enum Commands {
         #[arg(long)]
         runtime_binary_digest: String,
     },
+    /// Read-only exact-commit repository inspection for an isolated worker.
+    #[command(display_order = 102)]
+    Repository {
+        #[command(subcommand)]
+        command: RepositoryCommand,
+    },
     /// Project an authorized retained corpus; bounded JSON on stdin and stdout.
     #[command(display_order = 103)]
     PortableProject,
@@ -925,6 +931,19 @@ pub(crate) enum Commands {
         direction: Option<CliGraphDirection>,
         #[arg(long, default_value = "10")]
         top: NonZeroUsize,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum RepositoryCommand {
+    /// Emit a bounded inspection receipt for one exact commit; writes nothing.
+    Inspect {
+        #[arg(long)]
+        request: PathBuf,
+        #[arg(long)]
+        repository: PathBuf,
+        #[arg(long)]
+        runtime_binary_digest: String,
     },
 }
 

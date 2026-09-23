@@ -46,7 +46,7 @@ pub(crate) fn prepare_with_provider(
     let target = resolve(snapshot.path())?;
     let outcome = run_validation_runtime(target.runtime_input(
         snapshot.path(),
-        &request,
+        request.date()?,
         runtime_version,
         runtime_binary_digest,
     )?)
@@ -71,7 +71,7 @@ impl MigrationValidationTarget {
     fn runtime_input(
         &self,
         snapshot: &Path,
-        request: &MigrationRequest,
+        evaluation_date: chrono::NaiveDate,
         runtime_version: String,
         runtime_binary_digest: String,
     ) -> Result<ValidationRuntimeInput, MigrationError> {
@@ -79,7 +79,7 @@ impl MigrationValidationTarget {
             root: self.root.clone(),
             project: self.project.clone(),
             anchor_root: snapshot.to_path_buf(),
-            evaluation_date: request.date()?,
+            evaluation_date,
             runtime_version,
             runtime_binary_digest,
             config_path: self.config_path.clone(),
@@ -89,6 +89,194 @@ impl MigrationValidationTarget {
             semantic_context_expectations: None,
         })
     }
+}
+
+use crate::domain::migration::{
+    GENERATED_INSPECTION_CONFIG, GENERATED_INSPECTION_EXTENSIONS, GENERATED_INSPECTION_PROFILE,
+    MIGRATION_IMPORT_MAX_SOURCES, REPOSITORY_INSPECTION_RECEIPT_SCHEMA_VERSION,
+    RepositoryInspectionRequest,
+};
+/// Upper bound on distinct diagnostic codes echoed by an inspection receipt.
+const INSPECTION_MAX_DIAGNOSTIC_CODES: usize = 64;
+
+/// Read-only exact-commit inspection receipt. Grants no import, source registration
+/// or promotion authority; carries codes and digests only, never source bytes.
+#[derive(Debug, Serialize)]
+pub struct RepositoryInspectionReceipt {
+    schema_version: &'static str,
+    request: RepositoryInspectionRequest,
+    request_digest: String,
+    runtime_version: String,
+    runtime_binary_digest: String,
+    config_state: &'static str,
+    profile: &'static str,
+    finding: &'static str,
+    validation_result: &'static str,
+    eligible_file_count: Option<usize>,
+    parsed_item_count: Option<usize>,
+    config_digest: Option<String>,
+    generated_config: Option<&'static str>,
+    generated_config_digest: Option<String>,
+    manifest_digest: Option<String>,
+    diagnostic_codes: Vec<String>,
+}
+impl RepositoryInspectionReceipt {
+    pub fn to_canonical_json(&self) -> Result<String, MigrationError> {
+        bounded_json(self)
+    }
+}
+
+/// Inspect an exact snapshot with the same config resolver, safe source loader and
+/// validator as migration prepare/import. Refusals (unsafe source, limits, missing
+/// snapshot) return errors, never partial counts.
+pub(crate) fn inspect_with_provider(
+    bytes: &[u8],
+    provider: &impl SnapshotWorkspaceProvider,
+    resolve: impl FnOnce(&Path) -> Result<MigrationValidationTarget, MigrationError>,
+    runtime_version: String,
+    runtime_binary_digest: String,
+) -> Result<RepositoryInspectionReceipt, MigrationError> {
+    use crate::infrastructure::source::fs::FsSourceProvider;
+    use std::io::Read;
+    let request = RepositoryInspectionRequest::parse(bytes)?;
+    request.require_runtime(&runtime_version, &runtime_binary_digest)?;
+    let evaluation_date = request.date()?;
+    let snapshot = provider
+        .checkout(&SnapshotSelector::GitRef(GitRef::new(request.revision())))
+        .map_err(|_| MigrationError::SnapshotUnavailable)?;
+    let root = snapshot.path();
+    let config_path = root.join("agentdoc.config.yaml");
+    let committed = match std::fs::symlink_metadata(&config_path) {
+        Ok(metadata) if metadata.is_file() => {
+            let mut config = Vec::new();
+            std::fs::File::open(&config_path)
+                .and_then(|file| {
+                    file.take(MIGRATION_IMPORT_MAX_BYTES as u64 + 1)
+                        .read_to_end(&mut config)
+                })
+                .map_err(|_| MigrationError::SnapshotUnavailable)?;
+            if config.len() > MIGRATION_IMPORT_MAX_BYTES {
+                return Err(MigrationError::OutputLimit);
+            }
+            Some(config)
+        }
+        Ok(_) => return Err(MigrationError::UnsafeSource),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(_) => return Err(MigrationError::SnapshotUnavailable),
+    };
+    let mut receipt = RepositoryInspectionReceipt {
+        schema_version: REPOSITORY_INSPECTION_RECEIPT_SCHEMA_VERSION,
+        request,
+        request_digest: sha256_prefixed(bytes),
+        runtime_version: runtime_version.clone(),
+        runtime_binary_digest: runtime_binary_digest.clone(),
+        config_state: "absent",
+        profile: GENERATED_INSPECTION_PROFILE,
+        finding: "files_without_config",
+        validation_result: "not_run",
+        eligible_file_count: None,
+        parsed_item_count: None,
+        config_digest: None,
+        generated_config: None,
+        generated_config_digest: None,
+        manifest_digest: None,
+        diagnostic_codes: Vec::new(),
+    };
+    let target = match committed {
+        Some(config) => {
+            receipt.profile = "committed";
+            receipt.config_digest = Some(sha256_prefixed(&config));
+            match resolve(root) {
+                // Invalid committed config is reported, never replaced by the default.
+                Err(_) => {
+                    receipt.config_state = "invalid";
+                    receipt.finding = "invalid_config";
+                    return Ok(receipt);
+                }
+                Ok(target) => {
+                    receipt.config_state = "valid";
+                    receipt.finding = "configured";
+                    target
+                }
+            }
+        }
+        None => {
+            receipt.generated_config = Some(GENERATED_INSPECTION_CONFIG);
+            receipt.generated_config_digest =
+                Some(sha256_prefixed(GENERATED_INSPECTION_CONFIG.as_bytes()));
+            MigrationValidationTarget {
+                root: root.to_path_buf(),
+                project: Some(super::compile::LocalProjectContext {
+                    project_root: root.to_path_buf(),
+                    docs_root: root.to_path_buf(),
+                }),
+                config_path: None,
+                config_bytes: GENERATED_INSPECTION_CONFIG.into(),
+            }
+        }
+    };
+    let project = target
+        .project
+        .as_ref()
+        .ok_or(MigrationError::UnsafeSource)?;
+    let mut raw = FsSourceProvider::for_project(
+        target.root.clone(),
+        project.project_root.clone(),
+        project.docs_root.clone(),
+    )
+    .load_raw_migration_sources_with_extensions(
+        MIGRATION_IMPORT_MAX_BYTES,
+        // The generated profile is `.adoc` only; `.md` is never read or counted.
+        if receipt.config_state == "absent" {
+            GENERATED_INSPECTION_EXTENSIONS
+        } else {
+            crate::domain::source::SOURCE_EXTENSIONS
+        },
+    )?;
+    if raw.len() > MIGRATION_IMPORT_MAX_SOURCES {
+        return Err(MigrationError::OutputLimit);
+    }
+    raw.sort_by(|left, right| left.path.cmp(&right.path));
+    let manifest: Vec<_> = raw
+        .iter()
+        .map(|source| serde_json::json!({"path": source.path, "sha256": sha256_prefixed(&source.bytes)}))
+        .collect();
+    receipt.eligible_file_count = Some(raw.len());
+    receipt.manifest_digest = Some(sha256_prefixed(
+        &serde_json::to_vec(&manifest).map_err(|_| MigrationError::ValidationUnavailable)?,
+    ));
+    if raw.is_empty() {
+        receipt.finding = "no_eligible_files";
+        receipt.parsed_item_count = Some(0);
+        return Ok(receipt);
+    }
+    let validated = super::validation_runtime::run_migration_snapshot_validation(
+        target.runtime_input(
+            root,
+            evaluation_date,
+            runtime_version,
+            runtime_binary_digest,
+        )?,
+        &raw.iter()
+            .map(|source| source.loaded.clone())
+            .collect::<Vec<_>>(),
+    )
+    .map_err(|_| MigrationError::ValidationUnavailable)?;
+    let codes: std::collections::BTreeSet<_> = validated
+        .diagnostics
+        .iter()
+        .map(|diagnostic| diagnostic.code.as_str().to_owned())
+        .collect();
+    receipt.diagnostic_codes = codes
+        .into_iter()
+        .take(INSPECTION_MAX_DIAGNOSTIC_CODES)
+        .collect();
+    receipt.validation_result = match validated.receipt.result() {
+        ValidationResult::Pass => "pass",
+        ValidationResult::Fail => "fail",
+    };
+    receipt.parsed_item_count = validated.parsed_item_count;
+    Ok(receipt)
 }
 
 use crate::domain::migration::{
@@ -176,7 +364,7 @@ pub(crate) fn import_with_provider(
     let target = resolve(snapshot.path())?;
     let input = target.runtime_input(
         snapshot.path(),
-        &request,
+        request.date()?,
         runtime_version,
         runtime_binary_digest,
     )?;
@@ -463,7 +651,7 @@ pub(crate) fn qualify_with_provider(
     }
     let input = target.runtime_input(
         snapshot.path(),
-        &request,
+        request.date()?,
         runtime_version,
         runtime_binary_digest,
     )?;

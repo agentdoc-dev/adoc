@@ -1105,7 +1105,7 @@ pub fn prepare_migration_from_git(
 pub use application::migration::MigrationImportBundle;
 pub use domain::migration::{
     MIGRATION_IMPORT_JOB_MAX_BYTES, MIGRATION_IMPORT_JOB_SCHEMA_VERSION,
-    MIGRATION_IMPORT_MAX_BYTES, MIGRATION_IMPORT_SCHEMA_VERSION,
+    MIGRATION_IMPORT_MAX_BYTES, MIGRATION_IMPORT_MAX_SOURCES, MIGRATION_IMPORT_SCHEMA_VERSION,
     MIGRATION_VALIDATION_INVOCATION_SCHEMA_VERSION,
 };
 
@@ -1160,6 +1160,36 @@ pub fn qualify_migration_from_git(
         request_bytes,
         job_bytes,
         policy_version,
+        &provider,
+        resolve_migration_target,
+        runtime_version,
+        runtime_binary_digest,
+    )
+}
+
+pub use application::migration::RepositoryInspectionReceipt;
+pub use domain::migration::{
+    GENERATED_INSPECTION_CONFIG, GENERATED_INSPECTION_PROFILE,
+    REPOSITORY_INSPECTION_RECEIPT_SCHEMA_VERSION, REPOSITORY_INSPECTION_REQUEST_SCHEMA_VERSION,
+    RepositoryInspectionRequest,
+};
+
+/// Read-only inspection of an exact commit from a worker-owned repository. Writes
+/// nothing to the repository; the caller owns the network-denied boundary.
+pub fn inspect_repository_from_git(
+    repository: &std::path::Path,
+    request_bytes: &[u8],
+    runtime_version: String,
+    runtime_binary_digest: String,
+) -> Result<RepositoryInspectionReceipt, MigrationError> {
+    let request = RepositoryInspectionRequest::parse(request_bytes)?;
+    request.require_runtime(&runtime_version, &runtime_binary_digest)?;
+    let provider = infrastructure::git::worktree::GitWorktreeProvider::for_migration(
+        repository,
+        request.revision(),
+    )?;
+    application::migration::inspect_with_provider(
+        request_bytes,
         &provider,
         resolve_migration_target,
         runtime_version,
