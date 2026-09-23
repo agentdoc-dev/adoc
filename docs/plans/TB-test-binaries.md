@@ -1,6 +1,6 @@
 # TB - one integration-test binary per crate
 
-Status: planned 2026-09-23. Implementation not started and needs separate authorization.
+Status: implemented 2026-09-23 (TB.T1-T5), PR #266.
 Branch `test/consolidate-test-binaries`, worktree `.worktrees/adoc-test-binaries`,
 base `origin/main` @ `4461c14e`. Slice tags `TB.T1`…`TB.T5`.
 
