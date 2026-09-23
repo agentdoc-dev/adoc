@@ -12,7 +12,7 @@
 //! original and round-tripped trees. The two invariants stay in separate
 //! tests, per the ADR.
 
-mod support;
+use crate::support;
 
 use std::collections::BTreeMap;
 use std::fs;

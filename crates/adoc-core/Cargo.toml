@@ -8,6 +8,7 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+autotests = false
 
 [features]
 default = ["embeddings"]
@@ -34,6 +35,13 @@ jsonschema = "0.49.4"
 serial_test = "4"
 tempfile = "3"
 
+[[test]]
+name = "integration"
+path = "tests/integration.rs"
+
+# Own binary (ADR-0068): it sets ADOC_TEST_EMBEDDING_PROVIDER process-wide and
+# never unsets it, so sharing a process would switch other tests' embedding
+# provider.
 [[test]]
 name = "v1_4_semantic_load"
 required-features = ["test-embedding-provider"]
