@@ -68,6 +68,51 @@ fn nested(source: &Value, key: &str) -> Value {
     serde_json::from_str(source[key].as_str().unwrap()).unwrap()
 }
 
+/// The ordinary CLI must produce byte-identical full-snapshot evidence from
+/// the exported context bytes; this also checks their digest bindings.
+fn assert_check_replays_receipt(root: &Path, bundle: &Value, source: &Value) {
+    let contexts = TestWorkspace::new("migration-import-context");
+    let graph_path = contexts.root.join("graph.json");
+    let invocation_path = contexts.root.join("invocation.json");
+    let receipt_path = contexts.root.join("receipt.json");
+    fs::write(
+        &graph_path,
+        bundle["graph_artifact_bytes"].as_str().unwrap(),
+    )
+    .unwrap();
+    fs::write(
+        &invocation_path,
+        source["source_invocation_bytes"].as_str().unwrap(),
+    )
+    .unwrap();
+    let checked = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(root)
+        .args([
+            "check",
+            "--as-of",
+            "2026-09-08",
+            "--runtime-binary-digest",
+            &format!("sha256:{}", "a".repeat(64)),
+        ])
+        .arg("--receipt")
+        .arg(&receipt_path)
+        .arg("--source-invocation")
+        .arg(&invocation_path)
+        .arg("--context-artifact")
+        .arg(&graph_path)
+        .output()
+        .unwrap();
+    assert!(
+        checked.status.success(),
+        "{}",
+        String::from_utf8_lossy(&checked.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(receipt_path).unwrap(),
+        source["validation_receipt_bytes"].as_str().unwrap()
+    );
+}
+
 #[test]
 fn migration_import_exports_exact_sources_and_full_snapshot_receipts() {
     let (workspace, request, job) = fixture();
@@ -124,48 +169,7 @@ fn migration_import_exports_exact_sources_and_full_snapshot_receipts() {
         assert_eq!(binding["binding"]["connector"], "git");
         assert_eq!(binding["binding"]["source"], source["path"]);
         assert_eq!(binding["binding"]["anchor"], "document");
-        // The ordinary CLI must produce byte-identical full-snapshot evidence from
-        // these exported context bytes; this also checks their digest bindings.
-        let contexts = TestWorkspace::new("migration-import-context");
-        let graph_path = contexts.root.join("graph.json");
-        let invocation_path = contexts.root.join("invocation.json");
-        let receipt_path = contexts.root.join("receipt.json");
-        fs::write(
-            &graph_path,
-            bundle["graph_artifact_bytes"].as_str().unwrap(),
-        )
-        .unwrap();
-        fs::write(
-            &invocation_path,
-            source["source_invocation_bytes"].as_str().unwrap(),
-        )
-        .unwrap();
-        let checked = Command::new(env!("CARGO_BIN_EXE_adoc"))
-            .current_dir(&workspace.root)
-            .args([
-                "check",
-                "--as-of",
-                "2026-09-08",
-                "--runtime-binary-digest",
-                &format!("sha256:{}", "a".repeat(64)),
-            ])
-            .arg("--receipt")
-            .arg(&receipt_path)
-            .arg("--source-invocation")
-            .arg(&invocation_path)
-            .arg("--context-artifact")
-            .arg(&graph_path)
-            .output()
-            .unwrap();
-        assert!(
-            checked.status.success(),
-            "{}",
-            String::from_utf8_lossy(&checked.stderr)
-        );
-        assert_eq!(
-            fs::read_to_string(receipt_path).unwrap(),
-            source["validation_receipt_bytes"].as_str().unwrap()
-        );
+        assert_check_replays_receipt(&workspace.root, &bundle, source);
     }
     let original_one = nodes.iter().find(|node| node["id"] == "test.one").unwrap();
     let original_two = nodes.iter().find(|node| node["id"] == "test.two").unwrap();
@@ -184,6 +188,49 @@ fn migration_import_exports_exact_sources_and_full_snapshot_receipts() {
     )
     .unwrap();
     assert_eq!(output.stdout, run(&workspace.root, &request, &job).stdout);
+
+    // v1 fresh without committed config: the generated profile's `config` digest
+    // must match `adoc check` replayed against the materialized bundle config.
+    let fresh = TestWorkspace::new("migration-import-fresh");
+    let root = &fresh.root;
+    git(root, &["init", "-q"]);
+    git(root, &["config", "user.email", "test@example.test"]);
+    git(root, &["config", "user.name", "Test"]);
+    fs::write(
+        root.join("one.adoc"),
+        "# one @doc(test.one.page)\n\n::claim test.one\nstatus: draft\n--\nBody.\n::\n",
+    )
+    .unwrap();
+    git(root, &["add", "."]);
+    git(root, &["commit", "-qm", "source"]);
+    let mut request = request;
+    request["schema_version"] = json!("adoc.migration_request.v1");
+    request["inspection_id"] = json!("inspection-1");
+    request["inspection_digest"] = json!(format!("sha256:{}", "b".repeat(64)));
+    request["starting_point"] = json!("fresh");
+    request["revision"]["value"] = json!(git(root, &["rev-parse", "HEAD"]));
+    let mut job = job;
+    job["sources"] =
+        json!([{"path":"one.adoc","source_record_id":"record-1","source_binding_id":"binding-1"}]);
+    let output = run(root, &request, &job);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let bundle: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(bundle["schema_version"], "adoc.migration_import.v1");
+    assert!(!root.join("agentdoc.config.yaml").exists());
+    fs::write(
+        root.join("agentdoc.config.yaml"),
+        bundle["config_bytes"].as_str().unwrap(),
+    )
+    .unwrap();
+    for source in bundle["sources"].as_array().unwrap() {
+        let receipt = nested(source, "validation_receipt_bytes");
+        assert_eq!(receipt["context"][0]["name"], "config");
+        assert_check_replays_receipt(root, &bundle, source);
+    }
 }
 #[test]
 fn migration_import_refuses_incomplete_metadata_and_invalid_compilation() {

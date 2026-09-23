@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/agentdoc.cloud.migration_request.v1.schema.json",
+  "title": "AgentDoc Cloud Migration Prepare Request v1",
+  "description": "U3.3 closed prepare transport. previous_preview_id null means no predecessor, never fresh. Config/profile/runtime resolve from the trusted inspection, never client bytes. Starting point participates in request identity. v0 remains supported unchanged.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "payload"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "agentdoc.cloud.migration_request.v1"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation",
+        "repository_id",
+        "connector_id",
+        "source_container_id",
+        "ref",
+        "revision",
+        "previous_preview_id",
+        "inspection_id",
+        "inspection_digest",
+        "starting_point"
+      ],
+      "properties": {
+        "operation": {
+          "const": "prepare"
+        },
+        "repository_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "connector_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "source_container_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$",
+          "not": {
+            "const": "0000000000000000000000000000000000000000"
+          }
+        },
+        "previous_preview_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "inspection_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "inspection_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "starting_point": {
+          "enum": [
+            "recorded_history",
+            "fresh"
+          ]
+        }
+      }
+    }
+  }
+}

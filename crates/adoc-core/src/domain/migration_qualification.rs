@@ -4,7 +4,7 @@ use super::{
     graph::{GraphKnowledgeObjectNode, unresolved_contradiction_claim_index},
     lifecycle_mapping::LifecycleMappingContract,
     managed_state::{EffectivityState, GovernanceState},
-    migration::{MigrationError, MigrationImportSource},
+    migration::{MigrationError, MigrationImportSource, StartingPoint},
     source_provenance::SourceBindingCoordinates,
 };
 use serde::Serialize;
@@ -14,10 +14,25 @@ pub const MIGRATION_QUALIFICATION_SCHEMA_VERSION: &str = "adoc.migration_qualifi
 pub const MIGRATION_QUALIFICATION_RECEIPT_SCHEMA_VERSION: &str =
     "adoc.migration_qualification_receipt.v0";
 pub const MIGRATION_QUALIFICATION_POLICY_VERSION: &str = "1";
+pub const MIGRATION_QUALIFICATION_V1_SCHEMA_VERSION: &str = "adoc.migration_qualification.v1";
+pub const MIGRATION_QUALIFICATION_RECEIPT_V1_SCHEMA_VERSION: &str =
+    "adoc.migration_qualification_receipt.v1";
+/// Fresh policy: every item is review-required; authored history is provenance only.
+pub const MIGRATION_FRESH_QUALIFICATION_POLICY_VERSION: &str = "fresh.1";
 pub(crate) const MIGRATION_LIFECYCLE_MAPPING_VERSION: &str = "1";
 
+/// The only policy a starting point admits; any other pairing is mode tampering.
+pub(crate) fn policy_for(starting_point: StartingPoint) -> &'static str {
+    match starting_point {
+        StartingPoint::RecordedHistory => MIGRATION_QUALIFICATION_POLICY_VERSION,
+        StartingPoint::Fresh => MIGRATION_FRESH_QUALIFICATION_POLICY_VERSION,
+    }
+}
+
 pub(crate) fn require_policy(version: &str) -> Result<(), MigrationError> {
-    if version == MIGRATION_QUALIFICATION_POLICY_VERSION {
+    if version == MIGRATION_QUALIFICATION_POLICY_VERSION
+        || version == MIGRATION_FRESH_QUALIFICATION_POLICY_VERSION
+    {
         Ok(())
     } else {
         Err(MigrationError::UnsupportedQualificationPolicy)
@@ -37,6 +52,7 @@ enum ReasonCode {
     ReviewOverdue,
     Contradicted,
     UnresolvedEvidence,
+    FreshReviewRequired,
 }
 #[derive(Debug, Serialize)]
 struct QualificationReason {
@@ -145,6 +161,10 @@ pub(crate) fn evaluate(
                 related_object_ids: related.into_iter().collect(),
                 diagnostic_codes: codes.into_iter().collect(),
             });
+        }
+        if version == MIGRATION_FRESH_QUALIFICATION_POLICY_VERSION {
+            // ponytail: history reasons computed then replaced; fresh never grants eligibility.
+            reasons = vec![QualificationReason::simple(ReasonCode::FreshReviewRequired)];
         }
         output.push(QualifiedMigrationObject {
             object_id: node.id.clone(),

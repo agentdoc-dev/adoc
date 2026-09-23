@@ -1077,7 +1077,8 @@ pub use domain::managed_field_provenance::{
 pub use application::migration::MigrationReceipt;
 pub use domain::migration::{
     MIGRATION_RECEIPT_SCHEMA_VERSION, MIGRATION_REQUEST_MAX_BYTES,
-    MIGRATION_REQUEST_SCHEMA_VERSION, MigrationError, MigrationRequest,
+    MIGRATION_REQUEST_SCHEMA_VERSION, MIGRATION_REQUEST_V1_SCHEMA_VERSION, MigrationError,
+    MigrationRequest, StartingPoint,
 };
 
 /// Prepare an exact commit from a worker-owned repository. The caller must provide
@@ -1135,8 +1136,10 @@ pub fn import_migration_from_git(
 
 pub use application::migration::MigrationQualification;
 pub use domain::migration_qualification::{
-    MIGRATION_QUALIFICATION_POLICY_VERSION, MIGRATION_QUALIFICATION_RECEIPT_SCHEMA_VERSION,
-    MIGRATION_QUALIFICATION_SCHEMA_VERSION,
+    MIGRATION_FRESH_QUALIFICATION_POLICY_VERSION, MIGRATION_QUALIFICATION_POLICY_VERSION,
+    MIGRATION_QUALIFICATION_RECEIPT_SCHEMA_VERSION,
+    MIGRATION_QUALIFICATION_RECEIPT_V1_SCHEMA_VERSION, MIGRATION_QUALIFICATION_SCHEMA_VERSION,
+    MIGRATION_QUALIFICATION_V1_SCHEMA_VERSION,
 };
 
 /// Qualify actual validated exact-snapshot candidates or retain failed source evidence.
@@ -1216,6 +1219,8 @@ fn resolve_migration_target(
         root,
         config_path: Some(config_path),
         config_bytes: text,
+        extensions: domain::source::SOURCE_EXTENSIONS,
+        profile: "committed",
     })
 }
 
