@@ -394,6 +394,20 @@ fn e8_1_attestation_contracts_and_codes_are_registered_as_planned() {
             "agentdoc.cloud.github_approval_attestation_status.v0",
             "E8.1.T3",
         ),
+        (
+            "agentdoc.cloud.github_approval_source_policy_receipt.v0",
+            "E8.1.T4",
+        ),
+        (
+            "agentdoc.cloud.github_bot_approval_allowlist_receipt.v0",
+            "E8.1.T4",
+        ),
+        ("agentdoc.cloud.github_approval_gate_fact.v0", "E8.1.T5"),
+        ("agentdoc.cloud.gate_evidence_set.v1", "E8.1.T5"),
+        ("agentdoc.cloud.approved_proposal_promotion.v1", "E8.1.T5"),
+        ("agentdoc.cloud.activation_gate_evidence.v1", "E8.1.T5"),
+        ("agentdoc.cloud.terminal_gate_evidence.v1", "E8.1.T5"),
+        ("agentdoc.cloud.internal_integrated_trace.v1", "E8.1.T5"),
     ] {
         let row = anchored_row(&registry, "registry:envelopes-planned", id, 4);
         assert_eq!(
@@ -402,11 +416,23 @@ fn e8_1_attestation_contracts_and_codes_are_registered_as_planned() {
             "{id} must stay a planned Cloud envelope owned by {slice}"
         );
     }
-    for (anchor, code, status) in [(
-        "registry:action-codes",
-        "action.attestation_bot_rejected",
-        "planned (E8.1.T3)",
-    )] {
+    for (anchor, code, status) in [
+        (
+            "registry:action-codes",
+            "action.attestation_bot_rejected",
+            "planned (E8.1.T3)",
+        ),
+        (
+            "registry:cloud-codes",
+            "governance.attestation_not_current",
+            "planned (E8.1.T5)",
+        ),
+        (
+            "registry:cloud-codes",
+            "gate.policy_missing",
+            "planned (E8.1.T4)",
+        ),
+    ] {
         let row = anchored_row(&registry, anchor, code, 3);
         assert_eq!(
             &row[..2],
@@ -418,6 +444,7 @@ fn e8_1_attestation_contracts_and_codes_are_registered_as_planned() {
         ("attestation.bot_approver_rejected", "E8.1.T1"),
         ("attestation.binding_mismatch", "E8.1.T1"),
         ("attestation.requirements_unmet", "E8.1.T1"),
+        ("attestation.permission_profile_mismatch", "E8.1.T2"),
     ] {
         let row = anchored_row(&registry, "registry:attestation-codes", code, 4);
         assert_eq!(
