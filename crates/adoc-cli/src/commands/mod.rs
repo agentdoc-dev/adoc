@@ -262,5 +262,7 @@ mod format_tests {
     }
 }
 
+mod repository_inspect;
+pub(crate) use repository_inspect::repository_inspect;
 mod migration_qualify;
 pub(crate) use migration_qualify::migration_qualify;

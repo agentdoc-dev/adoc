@@ -184,6 +184,14 @@ impl FsSourceProvider {
         &self,
         limit: usize,
     ) -> Result<Vec<RawMigrationSource>, crate::domain::migration::MigrationError> {
+        self.load_raw_migration_sources_with_extensions(limit, SOURCE_EXTENSIONS)
+    }
+    /// As above, selecting only `extensions` before any read, count or byte limit.
+    pub(crate) fn load_raw_migration_sources_with_extensions(
+        &self,
+        limit: usize,
+        extensions: &[&str],
+    ) -> Result<Vec<RawMigrationSource>, crate::domain::migration::MigrationError> {
         use crate::domain::migration::MigrationError;
         use std::io::Read;
         let roots = self
@@ -201,6 +209,14 @@ impl FsSourceProvider {
         let mut output = Vec::new();
         for entry in source_paths(&self.root, Some(&roots.docs)) {
             let entry = entry.map_err(|_| MigrationError::UnsafeSource)?;
+            if !entry
+                .path
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| extensions.contains(&extension))
+            {
+                continue;
+            }
             let physical = entry
                 .path
                 .canonicalize()

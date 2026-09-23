@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.repository_inspection_receipt.v0.schema.json",
+  "title": "AgentDoc Repository Inspection Receipt",
+  "description": "Read-only bounded exact-commit inspection receipt: digests, counts and diagnostic codes only, never source bytes. Grants no import, source registration or promotion authority. Refusals (unsafe source, source-count/byte limits, unavailable snapshot) produce no receipt.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "request",
+    "request_digest",
+    "runtime_version",
+    "runtime_binary_digest",
+    "config_state",
+    "profile",
+    "finding",
+    "validation_result",
+    "eligible_file_count",
+    "parsed_item_count",
+    "config_digest",
+    "generated_config",
+    "generated_config_digest",
+    "manifest_digest",
+    "diagnostic_codes"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "adoc.repository_inspection_receipt.v0"
+    },
+    "request": {
+      "$ref": "adoc://agent/v0/schema/adoc.repository_inspection_request.v0.schema.json"
+    },
+    "request_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "runtime_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^\\S(?:[^\\u0000-\\u001f\\u007f-\\u009f]*\\S)?$"
+    },
+    "runtime_binary_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "config_state": {
+      "enum": [
+        "valid",
+        "invalid",
+        "absent"
+      ]
+    },
+    "profile": {
+      "enum": [
+        "committed",
+        "generated_default_v1"
+      ]
+    },
+    "finding": {
+      "enum": [
+        "configured",
+        "files_without_config",
+        "no_eligible_files",
+        "invalid_config"
+      ]
+    },
+    "validation_result": {
+      "enum": [
+        "pass",
+        "fail",
+        "not_run"
+      ]
+    },
+    "eligible_file_count": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 512
+    },
+    "parsed_item_count": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "config_digest": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "generated_config": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 1024
+    },
+    "generated_config_digest": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "manifest_digest": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "diagnostic_codes": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9_.]+$"
+      }
+    }
+  }
+}

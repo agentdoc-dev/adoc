@@ -7971,3 +7971,80 @@ fn migration_cutover_receipt_contracts_close_t3_bindings() {
         "connector_authority_policy:98:record"
     );
 }
+
+#[test]
+fn repository_inspection_request_actual_receipts_and_examples_match_portable_schemas() {
+    let digest = format!("sha256:{}", "a".repeat(64));
+    let fixtures: [&[(&str, &str)]; 4] = [
+        &[
+            (
+                "agentdoc.config.yaml",
+                "version: 1\nmode: strict\ndocs_path: docs\n",
+            ),
+            (
+                "docs/index.adoc",
+                "# Inspect @doc(test.page)\n\n::claim test.claim\nstatus: draft\n--\nBody.\n::\n",
+            ),
+        ],
+        &[("guide.adoc", "# Inspect @doc(test.page)\n")],
+        &[(
+            "agentdoc.config.yaml",
+            "version: 1\nmode: strict\ndocs_path: missing\n",
+        )],
+        &[("bad.adoc", "::claim\nno id or close\n")],
+    ];
+    let mut findings = std::collections::BTreeSet::new();
+    for files in fixtures {
+        let workspace = tempfile::tempdir().unwrap();
+        let root = workspace.path();
+        for (path, text) in files {
+            write(&root.join(path), text);
+        }
+        run_git(root, &["init", "-q"]);
+        run_git(root, &["config", "user.email", "test@example.test"]);
+        run_git(root, &["config", "user.name", "Test"]);
+        run_git(root, &["add", "."]);
+        run_git(root, &["commit", "-qm", "source"]);
+        let head = Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .unwrap();
+        let request = json!({"schema_version":"adoc.repository_inspection_request.v0", "workspace_id":"w", "provider_repository_id":"42", "ref":"main", "git_revision":String::from_utf8(head.stdout).unwrap().trim(), "evaluation_date":"2026-09-23", "runtime":{"version":"0.4.0", "binary_digest":digest}});
+        assert_valid(
+            "adoc.repository_inspection_request.v0.schema.json",
+            &request,
+        );
+        let receipt = adoc_core::inspect_repository_from_git(
+            root,
+            &serde_json::to_vec(&request).unwrap(),
+            "0.4.0".into(),
+            digest.clone(),
+        )
+        .unwrap();
+        let value: serde_json::Value =
+            serde_json::from_str(&receipt.to_canonical_json().unwrap()).unwrap();
+        assert_valid("adoc.repository_inspection_receipt.v0.schema.json", &value);
+        findings.insert(format!(
+            "{}/{}",
+            value["finding"], value["validation_result"]
+        ));
+    }
+    assert_eq!(findings.len(), 4, "{findings:?}");
+    let examples: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/repository-inspection-examples.json")).unwrap();
+    assert_valid(
+        "adoc.repository_inspection_request.v0.schema.json",
+        &examples["request"],
+    );
+    for receipt in examples["receipts"].as_array().unwrap() {
+        assert_valid("adoc.repository_inspection_receipt.v0.schema.json", receipt);
+    }
+    let mut foreign = examples["request"].clone();
+    foreign["foreign"] = json!(true);
+    assert!(!schema_accepts(
+        "adoc.repository_inspection_request.v0.schema.json",
+        &foreign
+    ));
+}

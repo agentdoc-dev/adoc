@@ -109,6 +109,16 @@ pub(crate) fn compile_with_provider_anchored_for_date<P: SourceProvider>(
     run_compile_pipeline(provider, None, today, Some(anchor))
 }
 
+/// Same single pipeline pass, also returning the parsed item count (pages plus
+/// resolved Knowledge Objects) from the assembled workspace, graph or not.
+pub(crate) fn compile_counted_anchored_for_date<P: SourceProvider>(
+    provider: &P,
+    anchor: &dyn EvidenceFileReader,
+    today: NaiveDate,
+) -> (CompileResult, usize) {
+    run_compile_pipeline_counted(provider, None, today, Some(anchor))
+}
+
 pub(crate) fn build_with_provider<P: SourceProvider>(
     provider: &P,
     options: BuildOptions<'_>,
@@ -143,20 +153,32 @@ pub(crate) enum BuildEmbeddingBehavior<'a> {
 
 fn run_compile_pipeline<P: SourceProvider>(
     provider: &P,
-    mut build_options: Option<BuildOptions<'_>>,
+    build_options: Option<BuildOptions<'_>>,
     today: NaiveDate,
     anchor: Option<&dyn EvidenceFileReader>,
 ) -> CompileResult {
+    run_compile_pipeline_counted(provider, build_options, today, anchor).0
+}
+
+fn run_compile_pipeline_counted<P: SourceProvider>(
+    provider: &P,
+    mut build_options: Option<BuildOptions<'_>>,
+    today: NaiveDate,
+    anchor: Option<&dyn EvidenceFileReader>,
+) -> (CompileResult, usize) {
     // Refuse unresolved authority before source inspection or embedding setup.
     if let Some(policy) = build_options
         .as_ref()
         .and_then(|options| options.policy.as_ref())
         && let Err(diagnostic) = policy.validate()
     {
-        return CompileResult {
-            diagnostics: vec![*diagnostic],
-            artifacts: None,
-        };
+        return (
+            CompileResult {
+                diagnostics: vec![*diagnostic],
+                artifacts: None,
+            },
+            0,
+        );
     }
     let repository_identity = provider.repository_identity();
     // Pipeline stages: load → validate-source-pages → resolve-KOs →
@@ -182,6 +204,13 @@ fn run_compile_pipeline<P: SourceProvider>(
     ));
     diagnostics.extend(validate_resolved_pages(&parsed, today));
     let workspace = assemble_workspace(parsed);
+    let parsed_items = workspace.pages.len()
+        + workspace
+            .pages
+            .iter()
+            .flat_map(|page| &page.blocks)
+            .filter(|block| matches!(block, crate::domain::ast::BlockAst::KnowledgeObject(_)))
+            .count();
     diagnostics.extend(validate_workspace(&workspace));
     if let Some(reader) = anchor {
         diagnostics.extend(check_evidence_anchors(&workspace, reader));
@@ -199,10 +228,13 @@ fn run_compile_pipeline<P: SourceProvider>(
     let artifacts = artifact_result.artifacts;
     diagnostics.extend(artifact_result.diagnostics);
     sort_diagnostics_by_source(&mut diagnostics);
-    CompileResult {
-        diagnostics,
-        artifacts,
-    }
+    (
+        CompileResult {
+            diagnostics,
+            artifacts,
+        },
+        parsed_items,
+    )
 }
 
 fn build_embedding_diagnostics(options: &BuildOptions<'_>) -> Vec<Diagnostic> {

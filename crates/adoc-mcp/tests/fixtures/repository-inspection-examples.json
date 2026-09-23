@@ -1,0 +1,165 @@
+{
+  "description": "Real `adoc repository inspect` stdout values from adoc-cli 0.4.0 at fixed commit dates (2026-09-23), pretty-printed. Test identities only; no credentials.",
+  "request": {
+    "schema_version": "adoc.repository_inspection_request.v0",
+    "workspace_id": "workspace-1",
+    "provider_repository_id": "123456",
+    "ref": "main",
+    "git_revision": "d7a14121cf81316b68afbb7400decb46b490f307",
+    "evaluation_date": "2026-09-23",
+    "runtime": {
+      "version": "0.4.0",
+      "binary_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  "receipts": [
+    {
+      "schema_version": "adoc.repository_inspection_receipt.v0",
+      "request": {
+        "schema_version": "adoc.repository_inspection_request.v0",
+        "workspace_id": "workspace-1",
+        "provider_repository_id": "123456",
+        "ref": "main",
+        "git_revision": "d7a14121cf81316b68afbb7400decb46b490f307",
+        "evaluation_date": "2026-09-23",
+        "runtime": {
+          "version": "0.4.0",
+          "binary_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "request_digest": "sha256:1752094cb5c3697381518be974a0450f6e20a9bcad4fb86dbca1ed007a6a3230",
+      "runtime_version": "0.4.0",
+      "runtime_binary_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "config_state": "valid",
+      "profile": "committed",
+      "finding": "configured",
+      "validation_result": "pass",
+      "eligible_file_count": 1,
+      "parsed_item_count": 2,
+      "config_digest": "sha256:55f8a10ff1fe7e51dd5fff2aedb65ebb58cd075e510af73dcbfc57bc0c34f0e3",
+      "generated_config": null,
+      "generated_config_digest": null,
+      "manifest_digest": "sha256:6b306be94d48813dd230e6664cc26f94b8c9527dfdc56251974c15adbba93b7a",
+      "diagnostic_codes": []
+    },
+    {
+      "schema_version": "adoc.repository_inspection_receipt.v0",
+      "request": {
+        "schema_version": "adoc.repository_inspection_request.v0",
+        "workspace_id": "workspace-1",
+        "provider_repository_id": "123456",
+        "ref": "main",
+        "git_revision": "01b73bca29142297518748c1cd1d0d74bbaef8fb",
+        "evaluation_date": "2026-09-23",
+        "runtime": {
+          "version": "0.4.0",
+          "binary_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "request_digest": "sha256:edeb6101ca5783732a18c5fa86a895330ac04e9ec792ae3b1dfc399551f28839",
+      "runtime_version": "0.4.0",
+      "runtime_binary_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "config_state": "absent",
+      "profile": "generated_default_v1",
+      "finding": "files_without_config",
+      "validation_result": "pass",
+      "eligible_file_count": 1,
+      "parsed_item_count": 1,
+      "config_digest": null,
+      "generated_config": "# generated_default_v1: repository root; eligible sources: *.adoc only\nversion: 1\nmode: strict\ndocs_path: .\n",
+      "generated_config_digest": "sha256:79eacadbec6712ae5fba42e08da0af70d26794eeeb477c3b8d06033058b82ecf",
+      "manifest_digest": "sha256:fa71f5021f5a9a1e30d65b895e163b7cb9630156c00ada5ff7d22760e328e5ad",
+      "diagnostic_codes": []
+    },
+    {
+      "schema_version": "adoc.repository_inspection_receipt.v0",
+      "request": {
+        "schema_version": "adoc.repository_inspection_request.v0",
+        "workspace_id": "workspace-1",
+        "provider_repository_id": "123456",
+        "ref": "main",
+        "git_revision": "1ec210a8b53f3d8397ee30fb9e8d6ebb9c4c487a",
+        "evaluation_date": "2026-09-23",
+        "runtime": {
+          "version": "0.4.0",
+          "binary_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "request_digest": "sha256:99928f0c315bdaceb30e70462d26cb0f9d0c01932fb46b56becc836f5a748c60",
+      "runtime_version": "0.4.0",
+      "runtime_binary_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "config_state": "invalid",
+      "profile": "committed",
+      "finding": "invalid_config",
+      "validation_result": "not_run",
+      "eligible_file_count": null,
+      "parsed_item_count": null,
+      "config_digest": "sha256:cab8621a631993086bbd5d9a1962dac6b4d75385cab3359b8eeb8cb6b3d86120",
+      "generated_config": null,
+      "generated_config_digest": null,
+      "manifest_digest": null,
+      "diagnostic_codes": []
+    },
+    {
+      "schema_version": "adoc.repository_inspection_receipt.v0",
+      "request": {
+        "schema_version": "adoc.repository_inspection_request.v0",
+        "workspace_id": "workspace-1",
+        "provider_repository_id": "123456",
+        "ref": "main",
+        "git_revision": "1534fe88df218071d93530263534fef28c21f442",
+        "evaluation_date": "2026-09-23",
+        "runtime": {
+          "version": "0.4.0",
+          "binary_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "request_digest": "sha256:7b6f2e506e5cd6805cab856d9d0cdb524c73f2b50fe56cca612848e72d461ffa",
+      "runtime_version": "0.4.0",
+      "runtime_binary_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "config_state": "valid",
+      "profile": "committed",
+      "finding": "no_eligible_files",
+      "validation_result": "not_run",
+      "eligible_file_count": 0,
+      "parsed_item_count": 0,
+      "config_digest": "sha256:274a5454e01f648aac4b85f744958307e2411e9a35bf83c917365d5c0a582f0d",
+      "generated_config": null,
+      "generated_config_digest": null,
+      "manifest_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "diagnostic_codes": []
+    },
+    {
+      "schema_version": "adoc.repository_inspection_receipt.v0",
+      "request": {
+        "schema_version": "adoc.repository_inspection_request.v0",
+        "workspace_id": "workspace-1",
+        "provider_repository_id": "123456",
+        "ref": "main",
+        "git_revision": "45bf2aaec0d5583bf4e4f869081770cf76cc19be",
+        "evaluation_date": "2026-09-23",
+        "runtime": {
+          "version": "0.4.0",
+          "binary_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "request_digest": "sha256:09a3db68ef984e3e2624fcb04c7da1b07293ffb4d1bf158834dd993e340b7acf",
+      "runtime_version": "0.4.0",
+      "runtime_binary_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "config_state": "absent",
+      "profile": "generated_default_v1",
+      "finding": "files_without_config",
+      "validation_result": "fail",
+      "eligible_file_count": 1,
+      "parsed_item_count": null,
+      "config_digest": null,
+      "generated_config": "# generated_default_v1: repository root; eligible sources: *.adoc only\nversion: 1\nmode: strict\ndocs_path: .\n",
+      "generated_config_digest": "sha256:79eacadbec6712ae5fba42e08da0af70d26794eeeb477c3b8d06033058b82ecf",
+      "manifest_digest": "sha256:742c5840d8f71d534b5a1a9e782d1caf83e66c46f834080bcc1f380dbae2d5d5",
+      "diagnostic_codes": [
+        "id.invalid",
+        "parse.malformed_open_fence"
+      ]
+    }
+  ]
+}

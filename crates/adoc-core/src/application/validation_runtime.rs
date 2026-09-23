@@ -42,7 +42,7 @@ use chrono::NaiveDate;
 use serde::Serialize;
 use thiserror::Error;
 
-use crate::application::compile::{LocalProjectContext, compile_with_provider_anchored_for_date};
+use crate::application::compile::{LocalProjectContext, compile_counted_anchored_for_date};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::graph::{GraphArtifactDocument, GraphNode, GraphRepositoryIdentity};
 use crate::domain::hashing::sha256_prefixed;
@@ -115,6 +115,8 @@ pub struct ValidationRuntimeOutcome {
     pub receipt: ValidationReceipt,
     pub diagnostics: Vec<Diagnostic>,
     pub(crate) graph_artifact: Option<String>,
+    /// Pages plus Knowledge Objects from the same parse; None when unparseable.
+    pub(crate) parsed_item_count: Option<usize>,
     pub(crate) source_files: Vec<SourceFile>,
 }
 
@@ -386,8 +388,16 @@ fn run_with_context_bytes<P: SourceProvider>(
         inner: provider,
     };
     let reader = FsEvidenceFileReader::new(input.anchor_root.clone());
-    let compiled =
-        compile_with_provider_anchored_for_date(&snapshot, &reader, input.evaluation_date);
+    let (compiled, parsed_items) =
+        compile_counted_anchored_for_date(&snapshot, &reader, input.evaluation_date);
+    // Unparseable or unreadable sources (error-level `parse.*`/`io.*`) have no count.
+    let parsed_item_count = (!compiled.diagnostics.iter().any(|diagnostic| {
+        diagnostic.severity == crate::domain::diagnostic::Severity::Error
+            && ["parse.", "io."]
+                .iter()
+                .any(|prefix| diagnostic.code.as_str().starts_with(prefix))
+    }))
+    .then_some(parsed_items);
     let mut diagnostics = compiled.diagnostics;
     if let (Some(artifact_path), Some(bytes)) = (&input.context_artifact, &context_artifact_bytes) {
         diagnostics.extend(validate_context_artifact(
@@ -476,6 +486,7 @@ fn run_with_context_bytes<P: SourceProvider>(
         receipt,
         diagnostics,
         graph_artifact: compiled.artifacts.map(|artifacts| artifacts.graph_json),
+        parsed_item_count,
         source_files: snapshot
             .sources
             .into_iter()
