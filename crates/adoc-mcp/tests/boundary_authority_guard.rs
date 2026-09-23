@@ -12,7 +12,7 @@
 //! authorization precedence pipeline are pinned, and no roadmap/annex line
 //! may state a permissive-default authorization resolution.
 
-mod support;
+use crate::support;
 
 use std::fs;
 use std::path::PathBuf;

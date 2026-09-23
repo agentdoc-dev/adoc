@@ -6,7 +6,7 @@
 //! label as a release gate. The parse targets slice headings, bold field
 //! labels, and pinned HTML comment anchors, never free prose.
 
-mod support;
+use crate::support;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;

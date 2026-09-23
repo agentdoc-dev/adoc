@@ -17,6 +17,18 @@ fn production_adoc_core_dependency_does_not_enable_test_embedding_provider() {
     );
 }
 
+#[test]
+fn test_layout_guard_keeps_its_own_test_target() {
+    // The guard cannot see its own `[[test]]` removed; this binary can (ADR-0068).
+    // ponytail: exact-text match; reformatting the table fails loudly here, never silently.
+    let manifest = fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"))
+        .expect("manifest is readable");
+    assert!(
+        manifest.contains("[[test]]\nname = \"test_layout_guard\"\n"),
+        "crates/adoc-mcp/Cargo.toml must keep `[[test]] name = \"test_layout_guard\"`"
+    );
+}
+
 fn manifest_section<'a>(manifest: &'a str, heading: &str) -> &'a str {
     let start = manifest.find(heading).expect("section exists") + heading.len();
     let rest = &manifest[start..];

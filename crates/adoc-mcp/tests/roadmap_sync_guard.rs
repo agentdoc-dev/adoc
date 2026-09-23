@@ -5,7 +5,7 @@
 //! targets stable structure only — slice headings and the bold field labels —
 //! never the overview table or free prose.
 
-mod support;
+use crate::support;
 
 use std::collections::BTreeMap;
 use std::fs;
