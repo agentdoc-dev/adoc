@@ -12,8 +12,8 @@ the security impact if known. Do not include secrets or credentials.
 
 ## Supported versions
 
-Security reports are assessed for the current `0.4.0` source preview and the
-currently published `0.3.4` Linux CLI. Older versions are not supported.
+Security reports are assessed for the current `1.0.0-alpha.1` prerelease and the
+previously published `0.3.4` Linux CLI. Older versions are not supported.
 
 AgentDoc is pre-release software. This policy does not state a response-time
 commitment or guarantee a fix.

@@ -37,7 +37,7 @@ The citation points back to editable source. Validation checks the document's st
 
 ## Try it locally
 
-This branch contains the unreleased **0.4.0 source preview**. The latest published release is the older **0.3.4 Linux CLI**, with different artifact formats. Build from source for the workflow below.
+This branch contains the **1.0.0-alpha.1** prerelease. The previous release was the older **0.3.4 Linux CLI**, with different artifact formats. Build from source for the workflow below.
 
 Install [Rustup](https://rustup.rs/) and your platform's native build tools, then:
 
