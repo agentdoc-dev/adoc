@@ -23,7 +23,7 @@ use std::process::Command;
 
 use serde_json::Value;
 
-mod support;
+use crate::support;
 
 use support::TestWorkspace;
 

@@ -1,4 +1,4 @@
-mod support;
+use crate::support;
 
 use support::{TestWorkspace, adoc_command, stderr, stdout};
 

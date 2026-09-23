@@ -6,7 +6,7 @@ evaluation fixture for the **V5 Expanded Knowledge Model**, the
 **fifteen-kind V6.5 vocabulary**. It mirrors the role the Billing
 Pilot plays for V0–V3 and the Markdown Pilot plays for V4: a realistic,
 hand-curated tree exercised by
-`cargo test -p adoc-cli --test expanded_pilot` on every workspace build.
+`cargo test -p adoc-cli --test integration expanded_pilot::` on every workspace build.
 
 The pilot is pure native AgentDoc Source (`.adoc`, Strict Mode) and
 exercises every V5 kind — `constraint`, `procedure`, `example`,
@@ -231,7 +231,7 @@ When adding a fixture object or file:
 4. If it triggers a new diagnostic, update the budget table **and** the
    test in the same commit. Use only clock-stable diagnostics (e.g. a
    fixed past `expires_at`) so the budget stays deterministic.
-5. Run `cargo test -p adoc-cli --test expanded_pilot --locked` and inspect
+5. Run `cargo test -p adoc-cli --test integration --locked expanded_pilot::` and inspect
    `dist/docs.html` against `meta/REVIEW-CHECKLIST.md`.
 
 When removing a fixture file, keep at least: one verified claim (for the

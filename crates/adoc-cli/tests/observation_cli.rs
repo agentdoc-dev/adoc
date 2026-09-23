@@ -1,6 +1,6 @@
 //! V6.5.2 `observation` Knowledge Object CLI acceptance (PRD §13.9).
 
-mod support;
+use crate::support;
 
 use std::fs;
 

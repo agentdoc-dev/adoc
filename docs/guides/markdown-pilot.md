@@ -3,7 +3,7 @@
 The Markdown Pilot at `examples/markdown-pilot/` is the end-to-end
 evaluation fixture for V4 Compatibility Mode. It mirrors the role the
 Billing Pilot plays for V0–V3: a realistic, hand-curated tree exercised
-by `cargo test -p adoc-cli --test markdown_pilot` on every workspace
+by `cargo test -p adoc-cli --test integration markdown_pilot::` on every workspace
 build.
 
 The pilot intentionally mixes Markdown source (`.md`, parsed under
@@ -106,7 +106,7 @@ When adding a fixture file:
 3. If the file adds a Knowledge Object, update
    `markdown_pilot_build_emits_safe_html_and_mixed_graph` to expect the
    new graph node and any new claim ID it references.
-4. Run `cargo test -p adoc-cli --test markdown_pilot --locked` and
+4. Run `cargo test -p adoc-cli --test integration --locked markdown_pilot::` and
    inspect `dist/docs.html` to confirm rendering is still visually
    correct.
 
