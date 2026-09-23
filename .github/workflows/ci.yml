@@ -194,7 +194,7 @@ jobs:
       # would be LRU-evicted long before the next run while still consuming
       # the repo's 10 GB budget.
       - name: Run retrieval pilot with FastEmbed
-        run: cargo test -p adoc-cli --test retrieval_pilot --features fastembed-it --locked
+        run: 'cargo test -p adoc-cli --test integration --features fastembed-it --locked retrieval_pilot::'
 
   deny:
     name: Supply chain

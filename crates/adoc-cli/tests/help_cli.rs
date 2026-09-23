@@ -1,4 +1,4 @@
-mod support;
+use crate::support;
 
 use support::{adoc_command, fixture_path, stderr, stdout, workspace_fixture_path};
 

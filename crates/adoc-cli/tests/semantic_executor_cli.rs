@@ -1,4 +1,4 @@
-mod support;
+use crate::support;
 
 use adoc_core::{semantic_prompt_digest, validate_semantic_executor_request};
 use serde_json::{Value, json};

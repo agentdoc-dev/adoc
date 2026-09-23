@@ -1,7 +1,7 @@
 //! E5.1.T4 — `adoc proposal-record`: identifier-only cross-links and
 //! delivery parity between producers.
 
-mod support;
+use crate::support;
 
 use adoc_core::{
     ExactRevision, ProposalBindings, ProposalChangeRequest, ProposalPatchInput,

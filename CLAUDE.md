@@ -9,7 +9,7 @@ Rust workspace (edition 2024, rust 1.95): `adoc-core` (domain), `adoc-cli`, `ado
 - Format: `cargo fmt --all`
 - Pre-commit gate: `prek run` (fmt + clippy + test + hygiene hooks; CI runs the same plus `cargo doc --workspace --no-deps --locked`)
 - Integration tests: one `integration` binary per crate (ADR-0068). A new `tests/<name>.rs` needs `mod <name>;` in that crate's `tests/integration.rs`; run one file with `cargo test -p <crate> --test integration <name>::`
-- Retrieval pilot tests (feature-gated, excluded from the default run): `cargo test -p adoc-cli --test retrieval_pilot --features fastembed-it --locked`
+- Retrieval pilot tests (feature-gated, excluded from the default run): `cargo test -p adoc-cli --test integration --features fastembed-it --locked retrieval_pilot::`
 
 ## Workflow
 - YOU MUST implement work — and structure implementation plans — as vertical slices (tracer bullets). Each slice cuts end-to-end (domain → adapter → tests) and leaves the workspace shippable.

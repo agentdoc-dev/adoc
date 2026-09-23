@@ -1,6 +1,6 @@
 //! V6.5.1 `api` Knowledge Object CLI acceptance (PRD §13.7, ADR-0039).
 
-mod support;
+use crate::support;
 
 use std::fs;
 

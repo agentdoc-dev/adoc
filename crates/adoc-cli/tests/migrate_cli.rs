@@ -9,7 +9,7 @@
 //! Every test operates on a tempdir copy of `examples/markdown-pilot/` —
 //! never the checked-in example, which retrieval fixtures pin.
 
-mod support;
+use crate::support;
 
 use std::collections::BTreeMap;
 use std::fs;

@@ -1,6 +1,6 @@
 //! V6.5.3 `question` Knowledge Object CLI acceptance (PRD §13.10).
 
-mod support;
+use crate::support;
 
 use std::fs;
 

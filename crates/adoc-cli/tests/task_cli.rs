@@ -5,7 +5,7 @@
 //! dates fire the warning deterministically, 2120-style far-future dates stay
 //! quiet. Never dates relative to now.
 
-mod support;
+use crate::support;
 
 use std::fs;
 

@@ -1,4 +1,4 @@
-mod support;
+use crate::support;
 
 use support::v1_4::{V1_4Pilot, build_v1_4_pilot};
 

@@ -241,7 +241,7 @@ Resolved (implemented):
 - Reviewer mentions are `@{owner}` verbatim — owner values like `team-billing` become `@team-billing`. Multiple reviewers join on a single space.
 - Body changes render as a ` ```diff ` fenced block with `-` for each `before.lines()` row and `+` for each `after.lines()` row. Status / owner / verified_at render as a single `**field:** before → after` line. Evidence / relation / impacts render as `+`/`-` prefixed lines with the field name and value.
 - Markdown is a structural format like JSON: `--color` flags never alter it. `--format markdown` is rejected for every CLI command other than `adoc diff` and `adoc review` (the dispatcher emits a fix-oriented stderr line and exits 2).
-- Golden fixtures live at `crates/adoc-cli/tests/fixtures/review_markdown/{diff.md,review.md}`. Tests refresh them via `ADOC_UPDATE_GOLDEN=1 cargo test -p adoc-cli --test review_cli`.
+- Golden fixtures live at `crates/adoc-cli/tests/fixtures/review_markdown/{diff.md,review.md}`. Tests refresh them via `ADOC_UPDATE_GOLDEN=1 cargo test -p adoc-cli --test integration review_cli::`.
 
 ### V3.6: MCP Surface Slice
 

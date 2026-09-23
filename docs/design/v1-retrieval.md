@@ -281,13 +281,13 @@ Two conventions keep blended cases honest and hermetic:
 Run the hermetic suite before committing:
 
 ```bash
-cargo test -p adoc-cli --test retrieval_pilot --locked
+cargo test -p adoc-cli --test integration --locked retrieval_pilot::
 ```
 
 The gated production-model suite runs with:
 
 ```bash
-cargo test -p adoc-cli --test retrieval_pilot --features fastembed-it --locked
+cargo test -p adoc-cli --test integration --features fastembed-it --locked retrieval_pilot::
 ```
 
 ## Migration Hint (downgraded at V1.7.3)

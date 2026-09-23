@@ -19,7 +19,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-mod support;
+use crate::support;
 
 use support::{TestWorkspace, adoc_command, copy_tree, stderr, stdout};
 

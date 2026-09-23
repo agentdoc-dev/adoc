@@ -1,4 +1,4 @@
-mod support;
+use crate::support;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -320,7 +320,7 @@ fn paired_output_accepts_only_complete_carried_diagnostic_removal() {
 }
 
 /// E6.1 CLI overhead gate. Build both revisions with `cargo test --release
-/// -p adoc-cli --test retrieval_pilot --no-run --locked`, then supply the saved
+/// -p adoc-cli --test integration --no-run --locked`, then supply the saved
 /// baseline executable through ADOC_RETRIEVAL_BASELINE_BIN. Both processes read
 /// the same pilot artifact bytes. The checked legacy Markdown diagnostic removal
 /// is reported explicitly; every other output byte must match. This includes

@@ -6,7 +6,7 @@
 //! Snapshots live in `tests/snapshots/`. To accept an intentional change, run
 //! `cargo insta review`.
 
-mod support;
+use crate::support;
 
 use std::fs;
 use std::process::Command;

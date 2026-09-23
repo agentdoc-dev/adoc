@@ -8,6 +8,7 @@ version = "0.4.0"
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+autotests = false
 
 [[bin]]
 name = "adoc"
@@ -37,3 +38,7 @@ insta = { version = "1", features = ["filters"] }
 predicates = "3"
 serde-saphyr = "1.1.0"
 strip-ansi-escapes = "0.2"
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"
