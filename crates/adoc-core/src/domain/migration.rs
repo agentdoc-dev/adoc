@@ -90,11 +90,7 @@ impl MigrationRequest {
             &request.source_id,
             &request.repository_identity,
         ] {
-            if text.is_empty()
-                || text.len() > 1024
-                || text.trim() != text
-                || text.chars().any(char::is_control)
-            {
+            if !valid_identity(text) {
                 return Err(MigrationError::InvalidRequest);
             }
         }
@@ -102,15 +98,117 @@ impl MigrationRequest {
         Ok(request)
     }
     pub(crate) fn date(&self) -> Result<NaiveDate, MigrationError> {
-        if self.evaluation_date.len() != 10 {
+        parse_date(&self.evaluation_date)
+    }
+}
+fn parse_date(text: &str) -> Result<NaiveDate, MigrationError> {
+    if text.len() != 10 {
+        return Err(MigrationError::InvalidRequest);
+    }
+    let date =
+        NaiveDate::parse_from_str(text, "%Y-%m-%d").map_err(|_| MigrationError::InvalidRequest)?;
+    if date.format("%Y-%m-%d").to_string() != text {
+        return Err(MigrationError::InvalidRequest);
+    }
+    Ok(date)
+}
+fn valid_identity(text: &str) -> bool {
+    !text.is_empty()
+        && text.len() <= 1024
+        && text.trim() == text
+        && !text.chars().any(char::is_control)
+}
+
+pub const REPOSITORY_INSPECTION_REQUEST_SCHEMA_VERSION: &str =
+    "adoc.repository_inspection_request.v0";
+pub const REPOSITORY_INSPECTION_RECEIPT_SCHEMA_VERSION: &str =
+    "adoc.repository_inspection_receipt.v0";
+/// Runtime-owned no-config profile: repository root is the document root. Never written.
+pub const GENERATED_INSPECTION_PROFILE: &str = "generated_default_v1";
+pub const GENERATED_INSPECTION_CONFIG: &str = "# generated_default_v1: repository root; eligible sources: *.adoc only\nversion: 1\nmode: strict\ndocs_path: .\n";
+/// Only this extension is eligible under the generated profile.
+pub(crate) const GENERATED_INSPECTION_EXTENSIONS: &[&str] = &["adoc"];
+
+/// Read-only inspection input bound to one exact commit and runtime pin.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RepositoryInspectionRequest {
+    pub(crate) schema_version: String,
+    pub(crate) workspace_id: String,
+    pub(crate) provider_repository_id: String,
+    #[serde(rename = "ref")]
+    pub(crate) git_ref: String,
+    pub(crate) git_revision: String,
+    pub(crate) evaluation_date: String,
+    pub(crate) runtime: InspectionRuntimePin,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct InspectionRuntimePin {
+    pub(crate) version: String,
+    pub(crate) binary_digest: String,
+}
+impl RepositoryInspectionRequest {
+    pub fn parse(bytes: &[u8]) -> Result<Self, MigrationError> {
+        if bytes.len() > MIGRATION_REQUEST_MAX_BYTES {
             return Err(MigrationError::InvalidRequest);
         }
-        let date = NaiveDate::parse_from_str(&self.evaluation_date, "%Y-%m-%d")
-            .map_err(|_| MigrationError::InvalidRequest)?;
-        if date.format("%Y-%m-%d").to_string() != self.evaluation_date {
+        let value: serde_json::Value =
+            serde_json::from_slice(bytes).map_err(|_| MigrationError::InvalidRequest)?;
+        if value
+            .get("schema_version")
+            .and_then(serde_json::Value::as_str)
+            != Some(REPOSITORY_INSPECTION_REQUEST_SCHEMA_VERSION)
+        {
             return Err(MigrationError::InvalidRequest);
         }
-        Ok(date)
+        if !value["git_revision"]
+            .as_str()
+            .is_some_and(is_exact_revision)
+        {
+            return Err(MigrationError::ExactRevisionRequired);
+        }
+        // Serde also accepts positional arrays for structs; the contract is an object.
+        if !value["runtime"].is_object() {
+            return Err(MigrationError::InvalidRequest);
+        }
+        let request: Self =
+            serde_json::from_slice(bytes).map_err(|_| MigrationError::InvalidRequest)?;
+        if ![
+            &request.workspace_id,
+            &request.provider_repository_id,
+            &request.git_ref,
+            &request.runtime.version,
+            &request.runtime.binary_digest,
+        ]
+        .into_iter()
+        .all(|text| valid_identity(text))
+            || !crate::is_sha256_digest(&request.runtime.binary_digest)
+        {
+            return Err(MigrationError::InvalidRequest);
+        }
+        request.date()?;
+        Ok(request)
+    }
+    pub(crate) fn date(&self) -> Result<NaiveDate, MigrationError> {
+        parse_date(&self.evaluation_date)
+    }
+    /// The request pins the exact runtime; any other runtime refuses.
+    pub(crate) fn require_runtime(
+        &self,
+        version: &str,
+        digest: &str,
+    ) -> Result<(), MigrationError> {
+        if !crate::is_sha256_digest(digest)
+            || self.runtime.version != version
+            || self.runtime.binary_digest != digest
+        {
+            return Err(MigrationError::InvalidRequest);
+        }
+        Ok(())
+    }
+    pub(crate) fn revision(&self) -> &str {
+        &self.git_revision
     }
 }
 fn is_exact_revision(value: &str) -> bool {
@@ -126,6 +224,7 @@ pub const MIGRATION_VALIDATION_INVOCATION_SCHEMA_VERSION: &str =
     "agentdoc.cloud.migration_validation_invocation.v0";
 pub const MIGRATION_IMPORT_JOB_MAX_BYTES: usize = 512 * 1024;
 pub const MIGRATION_IMPORT_MAX_BYTES: usize = 8 * 1024 * 1024;
+pub const MIGRATION_IMPORT_MAX_SOURCES: usize = 512;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -165,7 +264,7 @@ impl MigrationImportJob {
         let job: Self = serde_json::from_slice(bytes).map_err(|_| MigrationError::InvalidJob)?;
         if job.schema_version != MIGRATION_IMPORT_JOB_SCHEMA_VERSION
             || job.sources.is_empty()
-            || job.sources.len() > 512
+            || job.sources.len() > MIGRATION_IMPORT_MAX_SOURCES
             || job.source_acl_scope.source.kind != SourceAclResourceKind::Repository
             || job.source_acl_scope.source.id != request.repository_identity
             || job.source_acl_scope.source_container_id != request.source_id
@@ -254,6 +353,58 @@ mod tests {
             MigrationImportJob::parse(&vec![b' '; MIGRATION_IMPORT_JOB_MAX_BYTES + 1], &request)
                 .is_err()
         );
+    }
+
+    #[test]
+    fn migration_repository_inspection_request_is_closed_and_runtime_pinned() {
+        let digest = format!("sha256:{}", "a".repeat(64));
+        let value = serde_json::json!({"schema_version": REPOSITORY_INSPECTION_REQUEST_SCHEMA_VERSION, "workspace_id":"w", "provider_repository_id":"42", "ref":"main", "git_revision":"a".repeat(40), "evaluation_date":"2026-09-23", "runtime":{"version":"0.4.0","binary_digest":digest}});
+        let request =
+            RepositoryInspectionRequest::parse(&serde_json::to_vec(&value).unwrap()).unwrap();
+        assert!(request.require_runtime("0.4.0", &digest).is_ok());
+        assert!(request.require_runtime("0.4.1", &digest).is_err());
+        assert!(request.require_runtime("0.4.0", "sha256:short").is_err());
+        for revision in ["HEAD", &"0".repeat(40), &"A".repeat(40)] {
+            let mut invalid = value.clone();
+            invalid["git_revision"] = revision.into();
+            assert!(matches!(
+                RepositoryInspectionRequest::parse(&serde_json::to_vec(&invalid).unwrap()),
+                Err(MigrationError::ExactRevisionRequired)
+            ));
+        }
+        for (pointer, bad) in [
+            ("/evaluation_date", serde_json::json!("2026-02-29")),
+            ("/ref", serde_json::json!("")),
+            (
+                "/schema_version",
+                serde_json::json!("adoc.migration_request.v0"),
+            ),
+            ("/runtime/version", serde_json::json!(" x")),
+            ("/runtime/binary_digest", serde_json::json!("sha256:short")),
+            (
+                "/runtime/binary_digest",
+                serde_json::json!(format!("sha256:{}", "A".repeat(64))),
+            ),
+        ] {
+            let mut invalid = value.clone();
+            *invalid.pointer_mut(pointer).unwrap() = bad;
+            assert!(
+                RepositoryInspectionRequest::parse(&serde_json::to_vec(&invalid).unwrap()).is_err()
+            );
+        }
+        let mut foreign = value.clone();
+        foreign["foreign"] = true.into();
+        assert!(
+            RepositoryInspectionRequest::parse(&serde_json::to_vec(&foreign).unwrap()).is_err()
+        );
+        let mut positional = value.clone();
+        positional["runtime"] = serde_json::json!(["0.4.0", digest]);
+        assert!(
+            RepositoryInspectionRequest::parse(&serde_json::to_vec(&positional).unwrap()).is_err()
+        );
+        let mut nested = value.clone();
+        nested["runtime"]["foreign"] = true.into();
+        assert!(RepositoryInspectionRequest::parse(&serde_json::to_vec(&nested).unwrap()).is_err());
     }
 
     #[test]
