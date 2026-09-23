@@ -36,6 +36,12 @@ python3 scripts/smoke-test.py --bin-dir target/debug
 python3 scripts/check-doc-links.py
 ```
 
+Each crate compiles its integration tests into one `integration` test binary
+([ADR-0068](docs/adr/0068-single-integration-test-binary.md)). A new
+`crates/<crate>/tests/<name>.rs` file needs a `mod <name>;` line in that crate's
+`tests/integration.rs`; `test_layout_guard` fails until it is added. Filter one
+file's tests with `cargo test -p <crate> --test integration <name>::`.
+
 CI runs the Rust, dependency-policy, documentation-link and smoke checks on pull requests.
 It also runs the checksum-pinned validation-runtime parity harness. The model-backed
 retrieval pilot is opt-in via CI workflow dispatch; it is not part of the default

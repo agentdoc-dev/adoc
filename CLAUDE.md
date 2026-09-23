@@ -8,6 +8,7 @@ Rust workspace (edition 2024, rust 1.95): `adoc-core` (domain), `adoc-cli`, `ado
 - Lint: `cargo clippy --workspace --all-targets --locked -- -D warnings`
 - Format: `cargo fmt --all`
 - Pre-commit gate: `prek run` (fmt + clippy + test + hygiene hooks; CI runs the same plus `cargo doc --workspace --no-deps --locked`)
+- Integration tests: one `integration` binary per crate (ADR-0068). A new `tests/<name>.rs` needs `mod <name>;` in that crate's `tests/integration.rs`; run one file with `cargo test -p <crate> --test integration <name>::`
 - Retrieval pilot tests (feature-gated, excluded from the default run): `cargo test -p adoc-cli --test retrieval_pilot --features fastembed-it --locked`
 
 ## Workflow
