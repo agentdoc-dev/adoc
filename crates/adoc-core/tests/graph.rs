@@ -7,7 +7,7 @@ use adoc_core::{
 };
 use serde_json::{Value, json};
 
-mod support;
+use crate::support;
 
 use support::TestWorkspace;
 

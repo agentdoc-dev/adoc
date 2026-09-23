@@ -1248,7 +1248,7 @@ fn conflicting_content_bindings_for_one_target_are_rejected() {
 
 // E5.1 acceptance — E1.1 hash twins: a position-only source-placement move
 // leaves the proposal-set digest unchanged; a content change changes it.
-mod support;
+use crate::support;
 
 #[test]
 fn placement_only_move_keeps_the_proposal_set_digest_and_content_change_changes_it() {

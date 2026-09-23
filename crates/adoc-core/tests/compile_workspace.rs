@@ -1,4 +1,4 @@
-mod support;
+use crate::support;
 
 use adoc_core::{
     BuildArtifacts, BuildEmbeddingMode, BuildInput, CompileInput, DiagnosticCode, Severity,
