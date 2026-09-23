@@ -82,6 +82,11 @@ pub struct ValidationRuntimeInput {
     pub runtime_binary_digest: String,
     /// Discovered project config file, digested as validation context.
     pub config_path: Option<PathBuf>,
+    /// In-memory config bytes digested as the named `config` context entry
+    /// exactly as `adoc check` would digest them from a materialized
+    /// `agentdoc.config.yaml`. Takes precedence over `config_path`; never
+    /// written anywhere (runtime-generated profiles).
+    pub config_bytes: Option<Vec<u8>>,
     /// Cloud-supplied immutable source invocation manifest. Its digest binds
     /// namespace, revision, Source Binding, ACL snapshot, and config evidence
     /// without teaching the validation runtime Cloud semantics.
@@ -327,10 +332,15 @@ fn run_with_context_bytes<P: SourceProvider>(
         .collect();
     let inputs = source_input_digests(&sources);
     let mut context = Vec::new();
-    if let Some(config_path) = &input.config_path {
+    let config_digest = match (&input.config_bytes, &input.config_path) {
+        (Some(bytes), _) => Some(sha256_prefixed(bytes)),
+        (None, Some(config_path)) => Some(file_digest(config_path)?),
+        (None, None) => None,
+    };
+    if let Some(digest) = config_digest {
         context.push(NamedDigestEntry {
             name: "config".to_string(),
-            digest: file_digest(config_path)?,
+            digest,
         });
     }
     if let Some(source_invocation) = &input.source_invocation {
@@ -825,9 +835,21 @@ mod tests {
         let ordinary = run_validation_runtime(input.clone()).unwrap();
         let provider =
             FsSourceProvider::for_project(docs.clone(), project.path().to_path_buf(), docs.clone());
-        let raw = provider.load_raw_migration_sources(4096).unwrap();
+        let raw = provider
+            .load_raw_migration_sources_with_extensions(
+                4096,
+                crate::domain::source::SOURCE_EXTENSIONS,
+            )
+            .unwrap();
         assert_eq!(raw[0].bytes, [0xff, 0xfe]);
-        assert!(provider.load_raw_migration_sources(1).is_err());
+        assert!(
+            provider
+                .load_raw_migration_sources_with_extensions(
+                    1,
+                    crate::domain::source::SOURCE_EXTENSIONS
+                )
+                .is_err()
+        );
         // Once-read source bytes still determine both validation and receipt after disk changes.
         fs::write(docs.join("invalid.adoc"), "# Now valid\n").unwrap();
         fs::write(docs.join("valid.adoc"), "dirty invalid input").unwrap();
@@ -865,6 +887,7 @@ mod tests {
             runtime_version: "0.4.0".to_string(),
             runtime_binary_digest: TEST_DIGEST.to_string(),
             config_path: None,
+            config_bytes: None,
             source_invocation: None,
             context_artifact: None,
             semantic_context: None,

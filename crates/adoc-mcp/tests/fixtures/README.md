@@ -56,3 +56,9 @@ stdout values (re-indented) for configured, no-config (generated profile),
 invalid-config, empty and malformed fixture commits with fixed commit dates.
 Test identities only. Receipts are read-only evidence and grant no import,
 registration or promotion authority.
+
+`migration-v1-examples.json` holds hand-written U3.3.P3a examples of the closed
+`agentdoc.cloud.migration_request.v1` prepare transport (both starting points;
+`previous_preview_id: null` means no predecessor, never fresh) and the derived
+portable `adoc.migration_request.v1`. Real v1 prepare/qualification outputs are
+generated and schema-validated in `contract_schemas.rs`. Test identities only.

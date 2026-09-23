@@ -5,7 +5,7 @@
     "workspace_id": "workspace-1",
     "provider_repository_id": "123456",
     "ref": "main",
-    "git_revision": "d7a14121cf81316b68afbb7400decb46b490f307",
+    "git_revision": "54aaecfa39a8fae5ac802514c1874ed0427b6b45",
     "evaluation_date": "2026-09-23",
     "runtime": {
       "version": "0.4.0",
@@ -20,14 +20,14 @@
         "workspace_id": "workspace-1",
         "provider_repository_id": "123456",
         "ref": "main",
-        "git_revision": "d7a14121cf81316b68afbb7400decb46b490f307",
+        "git_revision": "54aaecfa39a8fae5ac802514c1874ed0427b6b45",
         "evaluation_date": "2026-09-23",
         "runtime": {
           "version": "0.4.0",
           "binary_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         }
       },
-      "request_digest": "sha256:1752094cb5c3697381518be974a0450f6e20a9bcad4fb86dbca1ed007a6a3230",
+      "request_digest": "sha256:ec5df130499600e6f8c34e7d3592233cec92a6b44b9494204126d788e811e498",
       "runtime_version": "0.4.0",
       "runtime_binary_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "config_state": "valid",
@@ -40,6 +40,12 @@
       "generated_config": null,
       "generated_config_digest": null,
       "manifest_digest": "sha256:6b306be94d48813dd230e6664cc26f94b8c9527dfdc56251974c15adbba93b7a",
+      "manifest": [
+        {
+          "path": "docs/index.adoc",
+          "sha256": "sha256:9ef3350a25719c63e840b058f4bf8b6177f7abe7617dc8d453382de27810d8fd"
+        }
+      ],
       "diagnostic_codes": []
     },
     {
@@ -49,14 +55,14 @@
         "workspace_id": "workspace-1",
         "provider_repository_id": "123456",
         "ref": "main",
-        "git_revision": "01b73bca29142297518748c1cd1d0d74bbaef8fb",
+        "git_revision": "c58e85afdb736dffbcd57452031073f1f54a0509",
         "evaluation_date": "2026-09-23",
         "runtime": {
           "version": "0.4.0",
           "binary_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         }
       },
-      "request_digest": "sha256:edeb6101ca5783732a18c5fa86a895330ac04e9ec792ae3b1dfc399551f28839",
+      "request_digest": "sha256:6e182116f9c87dd3fbb648d906b057b6ba3091ee1c29adfb2b2d6b38205a45e8",
       "runtime_version": "0.4.0",
       "runtime_binary_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "config_state": "absent",
@@ -69,6 +75,12 @@
       "generated_config": "# generated_default_v1: repository root; eligible sources: *.adoc only\nversion: 1\nmode: strict\ndocs_path: .\n",
       "generated_config_digest": "sha256:79eacadbec6712ae5fba42e08da0af70d26794eeeb477c3b8d06033058b82ecf",
       "manifest_digest": "sha256:fa71f5021f5a9a1e30d65b895e163b7cb9630156c00ada5ff7d22760e328e5ad",
+      "manifest": [
+        {
+          "path": "guide.adoc",
+          "sha256": "sha256:75369bdccad4527da61bdd9dbfe7d13cb74f9c8a832e373cced11f9c5a53a967"
+        }
+      ],
       "diagnostic_codes": []
     },
     {
@@ -78,14 +90,14 @@
         "workspace_id": "workspace-1",
         "provider_repository_id": "123456",
         "ref": "main",
-        "git_revision": "1ec210a8b53f3d8397ee30fb9e8d6ebb9c4c487a",
+        "git_revision": "8e0caf42bb3c813ccd5e2015960fbf4e24e1bddd",
         "evaluation_date": "2026-09-23",
         "runtime": {
           "version": "0.4.0",
           "binary_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         }
       },
-      "request_digest": "sha256:99928f0c315bdaceb30e70462d26cb0f9d0c01932fb46b56becc836f5a748c60",
+      "request_digest": "sha256:8a533c0cf8cb76ba66c82278c73553697a93b61d3ee92ef96a3621c8cddb6dd6",
       "runtime_version": "0.4.0",
       "runtime_binary_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "config_state": "invalid",
@@ -98,6 +110,7 @@
       "generated_config": null,
       "generated_config_digest": null,
       "manifest_digest": null,
+      "manifest": null,
       "diagnostic_codes": []
     },
     {
@@ -107,14 +120,14 @@
         "workspace_id": "workspace-1",
         "provider_repository_id": "123456",
         "ref": "main",
-        "git_revision": "1534fe88df218071d93530263534fef28c21f442",
+        "git_revision": "ca6bcdbd0a9c9a498e61cd486d7912b5b78d0ff3",
         "evaluation_date": "2026-09-23",
         "runtime": {
           "version": "0.4.0",
           "binary_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         }
       },
-      "request_digest": "sha256:7b6f2e506e5cd6805cab856d9d0cdb524c73f2b50fe56cca612848e72d461ffa",
+      "request_digest": "sha256:293115655b0fdce7b53c44e1a8111ad11d045af30935d79811e6bd23117b5dc8",
       "runtime_version": "0.4.0",
       "runtime_binary_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "config_state": "valid",
@@ -127,6 +140,7 @@
       "generated_config": null,
       "generated_config_digest": null,
       "manifest_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "manifest": [],
       "diagnostic_codes": []
     },
     {
@@ -136,14 +150,14 @@
         "workspace_id": "workspace-1",
         "provider_repository_id": "123456",
         "ref": "main",
-        "git_revision": "45bf2aaec0d5583bf4e4f869081770cf76cc19be",
+        "git_revision": "8f4f87ffb0a60b4eceba71db1f17af54f63aa4cf",
         "evaluation_date": "2026-09-23",
         "runtime": {
           "version": "0.4.0",
           "binary_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         }
       },
-      "request_digest": "sha256:09a3db68ef984e3e2624fcb04c7da1b07293ffb4d1bf158834dd993e340b7acf",
+      "request_digest": "sha256:c3419c95d61458145cc1e576d2ae74607c68d2a8cbab332a09fa9dab8a69edb2",
       "runtime_version": "0.4.0",
       "runtime_binary_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "config_state": "absent",
@@ -156,6 +170,12 @@
       "generated_config": "# generated_default_v1: repository root; eligible sources: *.adoc only\nversion: 1\nmode: strict\ndocs_path: .\n",
       "generated_config_digest": "sha256:79eacadbec6712ae5fba42e08da0af70d26794eeeb477c3b8d06033058b82ecf",
       "manifest_digest": "sha256:742c5840d8f71d534b5a1a9e782d1caf83e66c46f834080bcc1f380dbae2d5d5",
+      "manifest": [
+        {
+          "path": "bad.adoc",
+          "sha256": "sha256:c06b25a02a34b5a72e0f340e4cf1de70956060b9a45409e3fdf0a02e87839bb8"
+        }
+      ],
       "diagnostic_codes": [
         "id.invalid",
         "parse.malformed_open_fence"

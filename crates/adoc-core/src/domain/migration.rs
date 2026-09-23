@@ -6,6 +6,21 @@ use thiserror::Error;
 
 pub const MIGRATION_REQUEST_SCHEMA_VERSION: &str = "adoc.migration_request.v0";
 pub const MIGRATION_RECEIPT_SCHEMA_VERSION: &str = "adoc.migration_receipt.v0";
+/// v1 adds the selected starting point and the trusted inspection binding.
+pub const MIGRATION_REQUEST_V1_SCHEMA_VERSION: &str = "adoc.migration_request.v1";
+pub const MIGRATION_RECEIPT_V1_SCHEMA_VERSION: &str = "adoc.migration_receipt.v1";
+pub const MIGRATION_IMPORT_V1_SCHEMA_VERSION: &str = "adoc.migration_import.v1";
+const MIGRATION_REQUEST_V1_FIELDS: [&str; 3] =
+    ["inspection_id", "inspection_digest", "starting_point"];
+
+/// Selected migration starting point; v0 requests always mean recorded history.
+/// `fresh` never adopts authored history as approval.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StartingPoint {
+    RecordedHistory,
+    Fresh,
+}
 pub const MIGRATION_REQUEST_MAX_BYTES: usize = 16_384;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -18,6 +33,13 @@ pub struct MigrationRequest {
     pub(crate) repository_identity: String,
     pub(crate) revision: MigrationRevision,
     pub(crate) evaluation_date: String,
+    // v1 only; skipped when absent so v0 bytes stay identical.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) inspection_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) inspection_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) starting_point: Option<StartingPoint>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -68,11 +90,20 @@ impl MigrationRequest {
         }
         let value: serde_json::Value =
             serde_json::from_slice(bytes).map_err(|_| MigrationError::InvalidRequest)?;
-        if value
+        let v1 = match value
             .get("schema_version")
             .and_then(serde_json::Value::as_str)
-            != Some(MIGRATION_REQUEST_SCHEMA_VERSION)
         {
+            Some(MIGRATION_REQUEST_SCHEMA_VERSION) => false,
+            Some(MIGRATION_REQUEST_V1_SCHEMA_VERSION) => true,
+            _ => return Err(MigrationError::InvalidRequest),
+        };
+        let has_v1_field = value.as_object().is_none_or(|object| {
+            MIGRATION_REQUEST_V1_FIELDS
+                .iter()
+                .any(|field| object.contains_key(*field))
+        });
+        if !v1 && has_v1_field {
             return Err(MigrationError::InvalidRequest);
         }
         let revision = &value["revision"];
@@ -94,11 +125,32 @@ impl MigrationRequest {
                 return Err(MigrationError::InvalidRequest);
             }
         }
+        if v1
+            && !(request.starting_point.is_some()
+                && request.inspection_id.as_deref().is_some_and(valid_identity)
+                && request
+                    .inspection_digest
+                    .as_deref()
+                    .is_some_and(crate::is_sha256_digest))
+        {
+            return Err(MigrationError::InvalidRequest);
+        }
         request.date()?;
         Ok(request)
     }
     pub(crate) fn date(&self) -> Result<NaiveDate, MigrationError> {
         parse_date(&self.evaluation_date)
+    }
+    pub(crate) fn is_v1(&self) -> bool {
+        self.starting_point.is_some()
+    }
+    pub(crate) fn starting_point(&self) -> StartingPoint {
+        self.starting_point
+            .unwrap_or(StartingPoint::RecordedHistory)
+    }
+    /// Output contracts follow the request version so v0 bytes never change.
+    pub(crate) fn versioned(&self, v0: &'static str, v1: &'static str) -> &'static str {
+        if self.is_v1() { v1 } else { v0 }
     }
 }
 fn parse_date(text: &str) -> Result<NaiveDate, MigrationError> {

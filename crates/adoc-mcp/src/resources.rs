@@ -1173,6 +1173,66 @@ const RESOURCES: &[AgentResource] = &[
         ),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.migration_request.v1.schema.json",
+        name: "schema-adoc-migration-request-v1-json",
+        title: "AgentDoc Migration Request v1 JSON Schema",
+        description: "Portable exact-revision migration request with starting point and inspection binding.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/adoc.migration_request.v1.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_request.v1.schema.json",
+        name: "schema-agentdoc-cloud-migration-request-v1-json",
+        title: "AgentDoc Cloud Migration Prepare Request v1 JSON Schema",
+        description: "Closed Cloud prepare transport with starting point and inspection binding.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_request.v1.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.migration_receipt.v1.schema.json",
+        name: "schema-adoc-migration-receipt-v1-json",
+        title: "AgentDoc Migration Receipt v1 JSON Schema",
+        description: "Prepare receipt for v1 requests with effective config provenance.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/adoc.migration_receipt.v1.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.migration_import.v1.schema.json",
+        name: "schema-adoc-migration-import-v1-json",
+        title: "AgentDoc Migration Import v1 JSON Schema",
+        description: "Candidate input bundle for v1 requests.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/adoc.migration_import.v1.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.migration_qualification.v1.schema.json",
+        name: "schema-adoc-migration-qualification-v1-json",
+        title: "AgentDoc Migration Qualification v1 JSON Schema",
+        description: "Qualification outcome for v1 requests (policy 1 or fresh.1).",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/adoc.migration_qualification.v1.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.migration_qualification_receipt.v1.schema.json",
+        name: "schema-adoc-migration-qualification-receipt-v1-json",
+        title: "AgentDoc Migration Qualification Receipt v1 JSON Schema",
+        description: "Qualification receipt carrying the starting point; fresh is review-required only.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/adoc.migration_qualification_receipt.v1.schema.json"
+        ),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/adoc.repository_inspection_request.v0.schema.json",
         name: "schema-adoc-repository-inspection-request-v0-json",
         title: "AgentDoc Repository Inspection Request JSON Schema",

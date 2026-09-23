@@ -21,7 +21,8 @@
     "generated_config",
     "generated_config_digest",
     "manifest_digest",
-    "diagnostic_codes"
+    "diagnostic_codes",
+    "manifest"
   ],
   "properties": {
     "schema_version": {
@@ -122,6 +123,32 @@
       "items": {
         "type": "string",
         "pattern": "^[a-z0-9_.]+$"
+      }
+    },
+    "manifest": {
+      "description": "Sorted eligible source list; manifest_digest is sha256 of its compact JSON. Null when not enumerated. Overflow refuses, never truncates.",
+      "type": [
+        "array",
+        "null"
+      ],
+      "maxItems": 512,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "sha256"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          }
+        }
       }
     }
   }

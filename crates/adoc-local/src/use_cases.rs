@@ -695,6 +695,7 @@ where
         runtime_version: input.runtime_version,
         runtime_binary_digest: input.runtime_binary_digest,
         config_path: target.config_path,
+        config_bytes: None,
         source_invocation,
         context_artifact,
         semantic_context,

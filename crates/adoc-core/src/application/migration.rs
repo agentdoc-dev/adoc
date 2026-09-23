@@ -5,7 +5,11 @@ use super::validation_runtime::{
 use crate::domain::{
     diagnostic::Diagnostic,
     hashing::sha256_prefixed,
-    migration::{MIGRATION_RECEIPT_SCHEMA_VERSION, MigrationError, MigrationRequest},
+    migration::{
+        GENERATED_INSPECTION_EXTENSIONS, GENERATED_INSPECTION_PROFILE,
+        MIGRATION_IMPORT_V1_SCHEMA_VERSION, MIGRATION_RECEIPT_SCHEMA_VERSION,
+        MIGRATION_RECEIPT_V1_SCHEMA_VERSION, MigrationError, MigrationRequest, StartingPoint,
+    },
     ports::snapshot_workspace::{GitRef, SnapshotSelector, SnapshotWorkspaceProvider},
 };
 use serde::Serialize;
@@ -18,6 +22,11 @@ pub struct MigrationReceipt {
     phase: &'static str,
     request: MigrationRequest,
     request_digest: String,
+    // v1 only: effective config provenance.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    config_profile: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    config_digest: Option<String>,
     validation_receipt: ValidationReceipt,
     diagnostics: Vec<Diagnostic>,
 }
@@ -43,22 +52,72 @@ pub(crate) fn prepare_with_provider(
             &request.revision.value,
         )))
         .map_err(|_| MigrationError::SnapshotUnavailable)?;
-    let target = resolve(snapshot.path())?;
-    let outcome = run_validation_runtime(target.runtime_input(
+    let target = resolve_for_request(&request, snapshot.path(), resolve)?;
+    let input = target.runtime_input(
         snapshot.path(),
         request.date()?,
         runtime_version,
         runtime_binary_digest,
-    )?)
-    .map_err(|_| MigrationError::ValidationUnavailable)?;
+    )?;
+    let outcome = validate_target(&target, input)?;
+    let v1 = request.is_v1();
     Ok(MigrationReceipt {
-        schema_version: MIGRATION_RECEIPT_SCHEMA_VERSION,
+        schema_version: request.versioned(
+            MIGRATION_RECEIPT_SCHEMA_VERSION,
+            MIGRATION_RECEIPT_V1_SCHEMA_VERSION,
+        ),
         phase: "prepare",
         request,
         request_digest: sha256_prefixed(bytes),
+        config_profile: v1.then_some(target.profile),
+        config_digest: v1.then(|| sha256_prefixed(target.config_bytes.as_bytes())),
         validation_receipt: outcome.receipt,
         diagnostics: outcome.diagnostics,
     })
+}
+/// Committed config runs the full runtime; the generated profile validates only its
+/// eligible extensions, exactly as inspection counts them.
+fn validate_target(
+    target: &MigrationValidationTarget,
+    input: ValidationRuntimeInput,
+) -> Result<super::validation_runtime::ValidationRuntimeOutcome, MigrationError> {
+    if target.profile != GENERATED_INSPECTION_PROFILE {
+        return run_validation_runtime(input).map_err(|_| MigrationError::ValidationUnavailable);
+    }
+    let project = target
+        .project
+        .as_ref()
+        .ok_or(MigrationError::UnsafeSource)?;
+    let raw = crate::infrastructure::source::fs::FsSourceProvider::for_project(
+        target.root.clone(),
+        project.project_root.clone(),
+        project.docs_root.clone(),
+    )
+    .load_raw_migration_sources_with_extensions(MIGRATION_IMPORT_MAX_BYTES, target.extensions)?;
+    super::validation_runtime::run_migration_snapshot_validation(
+        input,
+        &raw.iter()
+            .map(|source| source.loaded.clone())
+            .collect::<Vec<_>>(),
+    )
+    .map_err(|_| MigrationError::ValidationUnavailable)
+}
+/// v1 `fresh` on a source without committed config uses the generated profile;
+/// v1 `recorded_history` there refuses. v0 keeps its committed-config-only path.
+fn resolve_for_request(
+    request: &MigrationRequest,
+    root: &Path,
+    resolve: impl FnOnce(&Path) -> Result<MigrationValidationTarget, MigrationError>,
+) -> Result<MigrationValidationTarget, MigrationError> {
+    let absent = matches!(
+        std::fs::symlink_metadata(root.join("agentdoc.config.yaml")),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound
+    );
+    match (request.is_v1() && absent, request.starting_point()) {
+        (true, StartingPoint::Fresh) => Ok(MigrationValidationTarget::generated(root)),
+        (true, StartingPoint::RecordedHistory) => Err(MigrationError::InvalidRequest),
+        (false, _) => resolve(root),
+    }
 }
 #[derive(Debug)]
 pub(crate) struct MigrationValidationTarget {
@@ -66,8 +125,24 @@ pub(crate) struct MigrationValidationTarget {
     pub project: Option<super::compile::LocalProjectContext>,
     pub config_path: Option<PathBuf>,
     pub config_bytes: String,
+    pub extensions: &'static [&'static str],
+    pub profile: &'static str,
 }
 impl MigrationValidationTarget {
+    /// Runtime-owned no-config profile: repository root, `.adoc` only. Never written.
+    fn generated(root: &Path) -> Self {
+        Self {
+            root: root.to_path_buf(),
+            project: Some(super::compile::LocalProjectContext {
+                project_root: root.to_path_buf(),
+                docs_root: root.to_path_buf(),
+            }),
+            config_path: None,
+            config_bytes: GENERATED_INSPECTION_CONFIG.into(),
+            extensions: GENERATED_INSPECTION_EXTENSIONS,
+            profile: GENERATED_INSPECTION_PROFILE,
+        }
+    }
     fn runtime_input(
         &self,
         snapshot: &Path,
@@ -83,6 +158,12 @@ impl MigrationValidationTarget {
             runtime_version,
             runtime_binary_digest,
             config_path: self.config_path.clone(),
+            // ponytail: generated profile digests its bytes in memory, as a
+            // materialized agentdoc.config.yaml would be; committed config reads its file.
+            config_bytes: self
+                .config_path
+                .is_none()
+                .then(|| self.config_bytes.clone().into_bytes()),
             source_invocation: None,
             context_artifact: None,
             semantic_context: None,
@@ -92,9 +173,8 @@ impl MigrationValidationTarget {
 }
 
 use crate::domain::migration::{
-    GENERATED_INSPECTION_CONFIG, GENERATED_INSPECTION_EXTENSIONS, GENERATED_INSPECTION_PROFILE,
-    MIGRATION_IMPORT_MAX_SOURCES, REPOSITORY_INSPECTION_RECEIPT_SCHEMA_VERSION,
-    RepositoryInspectionRequest,
+    GENERATED_INSPECTION_CONFIG, MIGRATION_IMPORT_MAX_SOURCES,
+    REPOSITORY_INSPECTION_RECEIPT_SCHEMA_VERSION, RepositoryInspectionRequest,
 };
 /// Upper bound on distinct diagnostic codes echoed by an inspection receipt.
 const INSPECTION_MAX_DIAGNOSTIC_CODES: usize = 64;
@@ -118,6 +198,8 @@ pub struct RepositoryInspectionReceipt {
     generated_config: Option<&'static str>,
     generated_config_digest: Option<String>,
     manifest_digest: Option<String>,
+    /// Sorted `{path, sha256}` list; `manifest_digest` is sha256 of its compact JSON.
+    manifest: Option<Vec<serde_json::Value>>,
     diagnostic_codes: Vec<String>,
 }
 impl RepositoryInspectionReceipt {
@@ -180,6 +262,7 @@ pub(crate) fn inspect_with_provider(
         generated_config: None,
         generated_config_digest: None,
         manifest_digest: None,
+        manifest: None,
         diagnostic_codes: Vec::new(),
     };
     let target = match committed {
@@ -204,15 +287,7 @@ pub(crate) fn inspect_with_provider(
             receipt.generated_config = Some(GENERATED_INSPECTION_CONFIG);
             receipt.generated_config_digest =
                 Some(sha256_prefixed(GENERATED_INSPECTION_CONFIG.as_bytes()));
-            MigrationValidationTarget {
-                root: root.to_path_buf(),
-                project: Some(super::compile::LocalProjectContext {
-                    project_root: root.to_path_buf(),
-                    docs_root: root.to_path_buf(),
-                }),
-                config_path: None,
-                config_bytes: GENERATED_INSPECTION_CONFIG.into(),
-            }
+            MigrationValidationTarget::generated(root)
         }
     };
     let project = target
@@ -227,11 +302,7 @@ pub(crate) fn inspect_with_provider(
     .load_raw_migration_sources_with_extensions(
         MIGRATION_IMPORT_MAX_BYTES,
         // The generated profile is `.adoc` only; `.md` is never read or counted.
-        if receipt.config_state == "absent" {
-            GENERATED_INSPECTION_EXTENSIONS
-        } else {
-            crate::domain::source::SOURCE_EXTENSIONS
-        },
+        target.extensions,
     )?;
     if raw.len() > MIGRATION_IMPORT_MAX_SOURCES {
         return Err(MigrationError::OutputLimit);
@@ -245,6 +316,8 @@ pub(crate) fn inspect_with_provider(
     receipt.manifest_digest = Some(sha256_prefixed(
         &serde_json::to_vec(&manifest).map_err(|_| MigrationError::ValidationUnavailable)?,
     ));
+    // Bounded by MIGRATION_IMPORT_MAX_SOURCES above (overflow refused, never truncated).
+    receipt.manifest = Some(manifest);
     if raw.is_empty() {
         receipt.finding = "no_eligible_files";
         receipt.parsed_item_count = Some(0);
@@ -361,15 +434,14 @@ pub(crate) fn import_with_provider(
             &request.revision.value,
         )))
         .map_err(|_| MigrationError::SnapshotUnavailable)?;
-    let target = resolve(snapshot.path())?;
+    let target = resolve_for_request(&request, snapshot.path(), resolve)?;
     let input = target.runtime_input(
         snapshot.path(),
         request.date()?,
         runtime_version,
         runtime_binary_digest,
     )?;
-    let validated =
-        run_validation_runtime(input.clone()).map_err(|_| MigrationError::ValidationUnavailable)?;
+    let validated = validate_target(&target, input.clone())?;
     build_import_bundle(
         request_bytes,
         job_bytes,
@@ -417,13 +489,8 @@ fn build_import_bundle(
             .to_str()
             .ok_or(MigrationError::UnsafeSource)?;
         let metadata = metadata.get(path).ok_or(MigrationError::InvalidJob)?;
-        let (source_record_bytes, source_binding_bytes) = source_evidence(
-            &request,
-            &job,
-            metadata,
-            source.text.as_bytes(),
-            "text/plain",
-        )?;
+        let (source_record_bytes, source_binding_bytes) =
+            source_evidence(&request, &job, metadata, source.text.as_bytes())?;
         let invocation = MigrationValidationInvocation {
             schema_version: MIGRATION_VALIDATION_INVOCATION_SCHEMA_VERSION,
             workspace_id: &request.workspace_id,
@@ -474,7 +541,10 @@ fn build_import_bundle(
         });
     }
     Ok(MigrationImportBundle {
-        schema_version: MIGRATION_IMPORT_SCHEMA_VERSION,
+        schema_version: request.versioned(
+            MIGRATION_IMPORT_SCHEMA_VERSION,
+            MIGRATION_IMPORT_V1_SCHEMA_VERSION,
+        ),
         request,
         request_digest,
         job_digest: sha256_prefixed(job_bytes),
@@ -489,8 +559,14 @@ fn source_evidence(
     job: &MigrationImportJob,
     metadata: &crate::domain::migration::MigrationImportSource,
     bytes: &[u8],
-    media_type: &str,
 ) -> Result<(String, String), MigrationError> {
+    // Media type follows the bytes, not the evaluation outcome, so Cloud can
+    // materialize the same Source Record before qualification decides.
+    let media_type = if std::str::from_utf8(bytes).is_ok() {
+        "text/plain"
+    } else {
+        "application/octet-stream"
+    };
     use crate::domain::source_provenance::{
         SourceBindingCoordinates, SourceBindingInput, build_source_binding,
     };
@@ -542,9 +618,9 @@ fn source_evidence(
 }
 
 use crate::domain::migration_qualification::{
-    self, MIGRATION_LIFECYCLE_MAPPING_VERSION, MIGRATION_QUALIFICATION_POLICY_VERSION,
-    MIGRATION_QUALIFICATION_RECEIPT_SCHEMA_VERSION, MIGRATION_QUALIFICATION_SCHEMA_VERSION,
-    QualificationFreshness, QualifiedMigrationObject,
+    self, MIGRATION_LIFECYCLE_MAPPING_VERSION, MIGRATION_QUALIFICATION_RECEIPT_SCHEMA_VERSION,
+    MIGRATION_QUALIFICATION_RECEIPT_V1_SCHEMA_VERSION, MIGRATION_QUALIFICATION_SCHEMA_VERSION,
+    MIGRATION_QUALIFICATION_V1_SCHEMA_VERSION, QualificationFreshness, QualifiedMigrationObject,
 };
 
 /// Actual-runtime evidence only. Construction is private; eligibility never grants authority.
@@ -588,6 +664,9 @@ struct QualificationReceipt {
     graph_artifact_digest: String,
     config_digest: String,
     evaluation_date: String,
+    // v1 only; `fresh` receipts carry policy `fresh.1` and no eligible object.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    starting_point: Option<StartingPoint>,
     qualification_policy_version: &'static str,
     lifecycle_mapping_version: &'static str,
     objects: Vec<QualifiedMigrationObject>,
@@ -620,13 +699,17 @@ pub(crate) fn qualify_with_provider(
     use base64::{Engine, engine::general_purpose::STANDARD};
     migration_qualification::require_policy(policy_version)?;
     let request = MigrationRequest::parse(request_bytes)?;
+    let policy = migration_qualification::policy_for(request.starting_point());
+    if policy_version != policy {
+        return Err(MigrationError::UnsupportedQualificationPolicy);
+    }
     let job = MigrationImportJob::parse(job_bytes, &request)?;
     let snapshot = provider
         .checkout(&SnapshotSelector::GitRef(GitRef::new(
             &request.revision.value,
         )))
         .map_err(|_| MigrationError::SnapshotUnavailable)?;
-    let target = resolve(snapshot.path())?;
+    let target = resolve_for_request(&request, snapshot.path(), resolve)?;
     let project = target
         .project
         .as_ref()
@@ -636,7 +719,7 @@ pub(crate) fn qualify_with_provider(
         project.project_root.clone(),
         project.docs_root.clone(),
     )
-    .load_raw_migration_sources(MIGRATION_IMPORT_MAX_BYTES)?;
+    .load_raw_migration_sources_with_extensions(MIGRATION_IMPORT_MAX_BYTES, target.extensions)?;
     let metadata: std::collections::BTreeMap<_, _> = job
         .sources
         .iter()
@@ -707,14 +790,18 @@ pub(crate) fn qualify_with_provider(
         )?;
         let candidate_bundle_bytes = bundle.to_canonical_json()?;
         let receipt = QualificationReceipt {
-            schema_version: MIGRATION_QUALIFICATION_RECEIPT_SCHEMA_VERSION,
+            schema_version: request.versioned(
+                MIGRATION_QUALIFICATION_RECEIPT_SCHEMA_VERSION,
+                MIGRATION_QUALIFICATION_RECEIPT_V1_SCHEMA_VERSION,
+            ),
             request_digest: request_digest.clone(),
             job_digest: job_digest.clone(),
             candidate_bundle_digest: sha256_prefixed(candidate_bundle_bytes.as_bytes()),
             graph_artifact_digest: graph_digest,
             config_digest: sha256_prefixed(config_bytes.as_bytes()),
             evaluation_date: request.evaluation_date.clone(),
-            qualification_policy_version: MIGRATION_QUALIFICATION_POLICY_VERSION,
+            starting_point: request.starting_point,
+            qualification_policy_version: policy,
             lifecycle_mapping_version: MIGRATION_LIFECYCLE_MAPPING_VERSION,
             objects,
         };
@@ -728,13 +815,8 @@ pub(crate) fn qualify_with_provider(
             let metadata = metadata
                 .get(source.path.as_str())
                 .ok_or(MigrationError::InvalidJob)?;
-            let (source_record_bytes, source_binding_bytes) = source_evidence(
-                &request,
-                &job,
-                metadata,
-                &source.bytes,
-                "application/octet-stream",
-            )?;
+            let (source_record_bytes, source_binding_bytes) =
+                source_evidence(&request, &job, metadata, &source.bytes)?;
             sources.push(FlaggedSourceEvidence {
                 path: source.path,
                 source_bytes_base64: STANDARD.encode(source.bytes),
@@ -750,11 +832,14 @@ pub(crate) fn qualify_with_provider(
         }
     };
     Ok(MigrationQualification {
-        schema_version: MIGRATION_QUALIFICATION_SCHEMA_VERSION,
+        schema_version: request.versioned(
+            MIGRATION_QUALIFICATION_SCHEMA_VERSION,
+            MIGRATION_QUALIFICATION_V1_SCHEMA_VERSION,
+        ),
         request,
         request_digest,
         job_digest,
-        qualification_policy_version: MIGRATION_QUALIFICATION_POLICY_VERSION,
+        qualification_policy_version: policy,
         config_bytes,
         outcome,
     })
