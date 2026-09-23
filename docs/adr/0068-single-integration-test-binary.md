@@ -34,7 +34,15 @@ lane spent most of its cold run compiling and linking rather than executing.
    file is silently never compiled. `crates/adoc-mcp/tests/test_layout_guard.rs`
    fails, naming the file and the fix, when a crate that opted out of
    auto-discovery has a `tests/*.rs` file that is neither a `mod` line in its
-   `tests/integration.rs` nor a `[[test]]` target.
+   `tests/integration.rs` nor the path of a `[[test]]` target, or a
+   `tests/<dir>/main.rs` that is not the path of a `[[test]]` target (a
+   `mod <dir>;` line loads `mod.rs`, never `main.rs`). A target's path is its
+   `path`, else `tests/<name>.rs` or `tests/<name>/main.rs`. The guard reads
+   lines, not attributes: a test file is feature-gated inside the file, never
+   with `#[cfg]` on its `mod` line. The guard is its own `[[test]]` target: on a
+   `mod` line of the binary it checks, deleting that one line would silently
+   disable it. In turn `adoc-mcp`'s `manifest_guard` fails if that target is
+   removed.
 5. **Test names gain the file as a module prefix.** `cargo test --test
    retrieval_pilot` becomes `cargo test --test integration retrieval_pilot::`,
    and insta snapshots are named `integration__<file>__<name>.snap`. Historical
@@ -54,4 +62,24 @@ sessions); `CARGO_INCREMENTAL=0` locally (slower edit loops); cargo-nextest
 - Tests from different files now share one process. Temp workspaces were
   already unique per process (a process-wide counter in `support`), and the
   only process-global mutation is isolated per decision 3.
-- Measured effect: recorded below by TB.T5.
+- The dispatch-only FastEmbed CI lane now compiles all `adoc-cli` test modules
+  to run the `retrieval_pilot::` filter, and any of them failing to build under
+  `fastembed-it` breaks that lane. Accepted: `retrieval_pilot` also holds tests
+  that run in the default lane, and the lane runs only on manual dispatch.
+- Measured effect (TB.T5, 2026-09-23, 8-core macOS, fresh target directory,
+  `cargo test --workspace --locked`):
+
+  | | Before | After |
+  |---|---|---|
+  | Test executables in `target/debug/deps` | 98 | 13 |
+  | `target/debug` after one cold build | 4.5 GB | 3.1 GB |
+  | `target/debug/deps` / `incremental` | 3.3 GB / 1.0 GB | 2.2 GB / 687 MB |
+  | Cold `--no-run` build (wall) | 117 s | 78 s |
+  | Test run after build (wall) | 97 s | 43 s |
+
+  The 13 include `test_layout_guard`'s own binary, added in PR review. A
+  re-measure with it left the sizes unchanged; the timings are from the
+  earlier run, because the machine was under unrelated load. The listed tests
+  are identical before and after apart from the new guard tests. The larger
+  saving is on long-lived worktrees: each rebuild now leaves 6 stale test
+  executables behind instead of 91.
