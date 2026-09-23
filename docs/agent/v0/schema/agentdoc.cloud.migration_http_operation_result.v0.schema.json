@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/agentdoc.cloud.migration_http_operation_result.v0.schema.json",
+  "title": "agentdoc.cloud.migration_http_operation_result.v0",
+  "description": "Closed public projection for a Cloud migration prepare operation. Preview is present only after an exact native qualification receipt join.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "operation_id", "migration_id", "operation", "delivery_status", "status_url", "blocked_reason", "preview"],
+  "properties": {
+    "schema_version": { "const": "agentdoc.cloud.migration_http_operation_result.v0" },
+    "operation_id": { "$ref": "#/$defs/uuid" },
+    "migration_id": { "$ref": "#/$defs/uuid" },
+    "operation": { "const": "prepare" },
+    "delivery_status": { "enum": ["queued", "running", "blocked", "succeeded", "failed", "unknown"] },
+    "status_url": { "type": "string", "pattern": "^/api/v1/workspaces/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/migrations/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\?operation_id=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "blocked_reason": { "type": ["string", "null"], "enum": ["migration.worker_not_qualified", null] },
+    "preview": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["preview_id", "revision", "runtime_digest", "candidate_bundle_digest", "qualification_id", "qualification_outcome", "qualification_envelope_digest", "qualification_receipt_digest", "candidate_count", "source_count"],
+      "properties": {
+        "preview_id": { "$ref": "#/$defs/uuid" },
+        "revision": { "$ref": "#/$defs/oid" },
+        "runtime_digest": { "$ref": "#/$defs/sha256" },
+        "candidate_bundle_digest": { "$ref": "#/$defs/nullable_sha256" },
+        "qualification_id": { "$ref": "#/$defs/uuid" },
+        "qualification_outcome": { "enum": ["evaluated", "flagged_source_evidence"] },
+        "qualification_envelope_digest": { "$ref": "#/$defs/sha256" },
+        "qualification_receipt_digest": { "$ref": "#/$defs/nullable_sha256" },
+        "candidate_count": { "type": "integer", "minimum": 0, "maximum": 10000 },
+        "source_count": { "type": "integer", "minimum": 0, "maximum": 10000 }
+      },
+      "allOf": [{
+        "if": { "properties": { "qualification_outcome": { "const": "flagged_source_evidence" } }, "required": ["qualification_outcome"] },
+        "then": { "properties": { "candidate_bundle_digest": { "type": "null" }, "qualification_receipt_digest": { "type": "null" }, "candidate_count": { "const": 0 } } },
+        "else": { "properties": { "candidate_bundle_digest": { "$ref": "#/$defs/sha256" }, "qualification_receipt_digest": { "$ref": "#/$defs/sha256" } } }
+      }]
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "delivery_status": { "const": "blocked" } }, "required": ["delivery_status"] },
+      "then": { "properties": { "blocked_reason": { "const": "migration.worker_not_qualified" } } },
+      "else": { "properties": { "blocked_reason": { "type": "null" } } }
+    },
+    {
+      "if": { "properties": { "delivery_status": { "const": "succeeded" } }, "required": ["delivery_status"] },
+      "then": { "properties": { "preview": { "type": "object" } } },
+      "else": { "properties": { "preview": { "type": "null" } } }
+    }
+  ],
+  "$defs": {
+    "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "nullable_sha256": { "anyOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }] },
+    "oid": { "type": "string", "pattern": "^[0-9a-f]{40}$", "not": { "const": "0000000000000000000000000000000000000000" } }
+  }
+}

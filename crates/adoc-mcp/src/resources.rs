@@ -1193,6 +1193,66 @@ const RESOURCES: &[AgentResource] = &[
         ),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_http_operation.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-http-operation-v0-json",
+        title: "AgentDoc Cloud Migration HTTP Operation JSON Schema",
+        description: "JSON Schema for the versioned Cloud migration HTTP operation projection.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_http_operation.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_http_operation_result.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-http-operation-result-v0-json",
+        title: "AgentDoc Cloud Migration HTTP Operation Result JSON Schema",
+        description: "JSON Schema for the versioned Cloud migration HTTP operation result projection.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_http_operation_result.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_http_cutover_operation.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-http-cutover-operation-v0-json",
+        title: "AgentDoc Cloud Migration HTTP Cutover Operation JSON Schema",
+        description: "JSON Schema for the versioned Cloud migration HTTP cutover operation projection.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_http_cutover_operation.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_http_cutover_result.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-http-cutover-result-v0-json",
+        title: "AgentDoc Cloud Migration HTTP Cutover Result JSON Schema",
+        description: "JSON Schema for the versioned Cloud migration HTTP cutover result projection.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_http_cutover_result.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_http_rollback_operation.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-http-rollback-operation-v0-json",
+        title: "AgentDoc Cloud Migration HTTP Rollback Operation JSON Schema",
+        description: "JSON Schema for the versioned Cloud migration HTTP rollback operation projection.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_http_rollback_operation.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_http_rollback_result.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-http-rollback-result-v0-json",
+        title: "AgentDoc Cloud Migration HTTP Rollback Result JSON Schema",
+        description: "JSON Schema for the versioned Cloud migration HTTP rollback result projection.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_http_rollback_result.v0.schema.json"
+        ),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/agentdoc.cloud.proposal_command.v0.schema.json",
         name: "schema-agentdoc-cloud-proposal-command-v0-json",
         title: "AgentDoc Cloud Proposal Command JSON Schema",

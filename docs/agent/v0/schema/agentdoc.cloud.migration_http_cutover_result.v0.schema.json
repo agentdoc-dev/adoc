@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/agentdoc.cloud.migration_http_cutover_result.v0.schema.json",
+  "title": "agentdoc.cloud.migration_http_cutover_result.v0",
+  "description": "Closed public migration cutover delivery/result projection.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "operation_id", "migration_id", "operation", "delivery_status", "status_url", "blocked_reason", "cutover_receipt"],
+  "properties": {
+    "schema_version": { "const": "agentdoc.cloud.migration_http_cutover_result.v0" },
+    "operation_id": { "$ref": "#/$defs/uuid" },
+    "migration_id": { "$ref": "#/$defs/uuid" },
+    "operation": { "const": "cutover" },
+    "delivery_status": { "enum": ["queued", "running", "blocked", "succeeded", "failed", "unknown"] },
+    "status_url": { "type": "string", "pattern": "^/api/v1/workspaces/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/migrations/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\?operation_id=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "blocked_reason": { "type": ["string", "null"], "enum": ["migration.worker_not_qualified", null] },
+    "cutover_receipt": { "oneOf": [{ "type": "null" }, { "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_result.v0.schema.json" }] }
+  },
+  "allOf": [
+    { "if": { "properties": { "delivery_status": { "const": "blocked" } }, "required": ["delivery_status"] }, "then": { "properties": { "blocked_reason": { "const": "migration.worker_not_qualified" } } }, "else": { "properties": { "blocked_reason": { "type": "null" } } } },
+    { "if": { "properties": { "delivery_status": { "const": "succeeded" } }, "required": ["delivery_status"] }, "then": { "properties": { "cutover_receipt": { "$ref": "adoc://agent/v0/schema/agentdoc.cloud.migration_cutover_result.v0.schema.json" } } }, "else": { "properties": { "cutover_receipt": { "type": "null" } } } }
+  ],
+  "$defs": { "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" } }
+}
