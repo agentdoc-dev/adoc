@@ -130,6 +130,7 @@ Deliberately invalid version fixtures cited from test modules in `crates/*/src`,
 | `agentdoc.cloud.egress_policy.v99` | fixture | rejected-version fixture for the closed E6.6.T1 category policy; never emitted |
 | `adoc.sensitive_access.v2` | fixture | rejected unknown exact successor for the gateway-sensitive-access v1 consumer |
 | `adoc.managed_field_provenance.v99` | fixture | rejected-version fixture proving managed field provenance consumers refuse unsupported versions (E6.2.T1) |
+| `agentdoc.cloud.migration_request.v2` | fixture | rejected-version fixture proving Cloud migration HTTP admission refuses an unknown `migration_request` successor (U3.3 P3); never emitted |
 <!-- /registry:test-fixture-ids -->
 
 ## Envelopes and contracts — planned
@@ -248,6 +249,16 @@ The 13 `agentdoc.cloud.*` rows below whose owning slice is E5 also inventory imp
 | `agentdoc.cloud.migration_http_cutover_result.v0` | cloud | E7.2.T3 | durable cutover worker result with delivery status, blocked reason and optional exact cutover receipt transport |
 | `agentdoc.cloud.migration_http_rollback_operation.v0` | cloud | E7.2.T4 | queued rollback-operation response bound to the exact migration and operation IDs |
 | `agentdoc.cloud.migration_http_rollback_result.v0` | cloud | E7.2.T4 | durable rollback worker result with delivery status, blocked reason and optional exact rollback receipt transport |
+| `agentdoc.cloud.migration_http_operation_result.v1` | cloud | U3.3 P3 | v0 prepare result plus `starting_point` (`recorded_history`\|`fresh`), bound inspection ID/digest, `config_profile`/`config_digest` and optional knowledge counts; v0 remains supported unchanged |
+| `agentdoc.cloud.migration_fresh_confirmation_request.v1` | cloud | U3.3 P4 | closed fresh-start confirmation command accepting the exact source/config/mode as the managed starting point without historical initialization approvals; `migration_initialization_request.v0` remains the recorded-history path |
+| `agentdoc.cloud.migration_fresh_confirmation.v1` | cloud | U3.3 P4 | retained fresh-start attestation produced for a `migration_fresh_confirmation_request.v1`; replaces `migration_initialization_attestation.v0` only on the fresh path |
+| `agentdoc.cloud.migration_fresh_completion_receipt.v1` | cloud | U3.3 P4 | fresh-path completion receipt; `migration_completion_receipt.v0` remains the recorded-history receipt |
+| `agentdoc.cloud.migration_custody_probe_evidence.v0` | cloud | U3.3 P5 | synthetic-qualification sandbox custody probe evidence binding deployment, VCR image, adoc runtime and launcher digests, sandbox ID, revision and probe checks; labelled `synthetic_qualification`, never customer migration evidence |
+| `agentdoc.cloud.onboarding_repository_discovery.v0` | cloud | U3.3 T1 | V2 Setup authorized repository-discovery response: member-visible repository options with cursor and App-selected-only `limited` flag |
+| `agentdoc.cloud.onboarding_repository_inspection.v0` | cloud | U3.3 T2 | V2 Setup inspection projection binding inspection ID/digest to the recorded findings at the inspected commit |
+| `agentdoc.cloud.onboarding_repository_registration.v0` | cloud | U3.3 T4 | V2 Setup registration response: per-repository outcomes plus Workspace capacity for partial recovery |
+| `agentdoc.cloud.ui_repository_selection.v1` | cloud | U3.3 T3 | server-built repository selection record; browser supplies only inspection references and the chosen `starting_point` |
+| `agentdoc.cloud.onboarding_repository_selection_save.v0` | cloud | U3.3 T3 | V2 Setup selection-save response for a `ui_repository_selection.v1` record |
 <!-- /registry:envelopes-planned -->
 
 ## Diagnostic Codes — shipped, owner `adoc`
@@ -665,6 +676,7 @@ The pre-release implementation annotations identify the ten E5 inventory-correct
 | `api.idempotency_conflict` | planned (E4.4) | an idempotency key is replayed with different request bytes |
 | `api.internal_error` | planned (E4.4) | the external API could not durably complete its transport-level operation; request correlation is returned for support |
 | `api.rate_limited` | planned (E4.4) | a rate limit rejects an external request and carries standard `Retry-After` semantics; quota enforcement remains E8.7-owned |
+| `api.forbidden` | planned (U3.3) | authenticated caller lacks authority for the requested onboarding repository operation (discover, inspect, register, select); HTTP 403, no provider call or state change |
 | `ingest.envelope_version_unsupported` | planned (E4.4) | assessment submission names an unknown or superseded exact operation/envelope version; remediation names the accepted version |
 | `ingest.duplicate_delivery` | planned (E4.6) | a byte-identical replay of an already-complete assessment delivery (E4.6), or a proposal command whose proposal-set digest is already recorded with the same patch set (E5.1; bindings and placement metadata may differ), is acknowledged without another ingestion record, activation event, or latest-state mutation; redelivery may complete an explicitly partial record |
 | `ingest.stale_run` | planned (E4.6) | an older observed head is retained in history but cannot replace the repository's newer lineage head |
