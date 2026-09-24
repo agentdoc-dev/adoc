@@ -416,21 +416,40 @@ fn e8_1_attestation_contracts_and_codes_are_registered_as_planned() {
             "{id} must stay a planned Cloud envelope owned by {slice}"
         );
     }
-    for (anchor, code, status) in [
+    // Each row also pins, in order, the description clauses the E8.1 rework settled.
+    for (anchor, code, status, clauses) in [
         (
             "registry:action-codes",
             "action.attestation_bot_rejected",
             "planned (E8.1.T3)",
+            &[][..],
         ),
         (
             "registry:cloud-codes",
             "governance.attestation_not_current",
             "planned (E8.1.T5)",
+            // D6.1: the insert trigger refuses break-glass, not only native approval.
+            &[
+                "references a native approval or a break-glass emergency receipt",
+                "references no attestation, native approval or break-glass receipt",
+            ][..],
         ),
         (
             "registry:cloud-codes",
             "gate.policy_missing",
             "planned (E8.1.T4)",
+            // T4's mode mutation refuses first; the T5 evaluator is the backstop.
+            &[
+                "The E8.1.T4 approval-source mode mutation raises",
+                "Separately, the E8.1.T5 evaluator",
+            ][..],
+        ),
+        (
+            "registry:cloud-codes",
+            "governance.promotion_not_authorized",
+            "planned (E5.5.T1, implemented in Cloud v0.1.0 pre-release)",
+            // E8.1.T5 attested promotion reuses the native refusal.
+            &["attested promotion `promote_github_attested_proposal_candidate_v1` reuses it"][..],
         ),
     ] {
         let row = anchored_row(&registry, anchor, code, 3);
@@ -439,6 +458,7 @@ fn e8_1_attestation_contracts_and_codes_are_registered_as_planned() {
             [format!("`{code}`").as_str(), status],
             "{anchor} row {code} must carry status {status:?}"
         );
+        assert_clauses_in_order(row[2], &format!("{anchor} row {code}"), clauses);
     }
     for (code, slice) in [
         ("attestation.bot_approver_rejected", "E8.1.T1"),
@@ -453,6 +473,41 @@ fn e8_1_attestation_contracts_and_codes_are_registered_as_planned() {
             "attestation code {code} must stay planned and owned by {slice}"
         );
     }
+    // T3 display invariant: the bound status wrapper projects null for a
+    // native-approval or break-glass decision, and for a selected satisfied
+    // attestation that is invalidated or unbound; a selected attempt projects.
+    let status_row = anchored_row(
+        &registry,
+        "registry:envelopes-planned",
+        "agentdoc.cloud.github_approval_attestation_status.v0",
+        4,
+    )[3];
+    assert_clauses_in_order(
+        status_row,
+        "the status envelope row",
+        &[
+            "carries a native approval or a break-glass emergency receipt",
+            "the projection is null if that attestation has been invalidated",
+            "or the published decision is not bound to it",
+            "while a selected attempt still projects",
+            "in each null case the Action omits the section",
+        ],
+    );
+}
+
+/// Asserts every clause occurs in `cell`, in the given order.
+fn assert_clauses_in_order(cell: &str, row: &str, clauses: &[&str]) {
+    let positions: Vec<usize> = clauses
+        .iter()
+        .map(|clause| {
+            cell.find(clause)
+                .unwrap_or_else(|| panic!("{REGISTRY}: {row} must keep the clause {clause:?}"))
+        })
+        .collect();
+    assert!(
+        positions.is_sorted(),
+        "{REGISTRY}: {row} must keep its clauses in order {clauses:?}"
+    );
 }
 
 #[test]
