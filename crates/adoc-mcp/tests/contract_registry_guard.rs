@@ -495,6 +495,126 @@ fn e8_1_attestation_contracts_and_codes_are_registered_as_planned() {
     );
 }
 
+#[test]
+fn e8_2_delivery_contracts_are_registered_as_planned() {
+    // E8.2 implementations are unmerged: every row stays planned with its
+    // owning repository and slice until the implementation and tests land.
+    let registry = registry();
+    // D2/D3: Action renders, Cloud validates without re-rendering, and a
+    // delivery is never writeback or approval.
+    for (id, owner, slice, clauses) in [
+        (
+            "adoc.git_proposal_references.v0",
+            "action",
+            "E8.2.T1",
+            &[
+                "carrying exactly the five references",
+                "a run with no proposal record emits no block",
+                "Cloud validates it and never re-renders it",
+            ][..],
+        ),
+        (
+            "agentdoc.cloud.proposal_delivery.v0",
+            "cloud",
+            "E8.2.T2",
+            &[
+                "Cloud validates it against stored evidence and its own provider observation",
+                "retains every admitted attempt append-only beside the immutable Proposal Record",
+                "a delivery is not writeback and confers no approval, governance, verification, promotion or effectivity",
+            ][..],
+        ),
+        (
+            "agentdoc.cloud.proposal_delivery_status.v0",
+            "cloud",
+            "E8.2.T5",
+            &[
+                "`missing` (no attempt admitted)",
+                "`pending` (attempts admitted, none accepted, including refused-only)",
+                "`status` never claims approval",
+            ][..],
+        ),
+    ] {
+        let row = anchored_row(&registry, "registry:envelopes-planned", id, 4);
+        assert_eq!(
+            &row[..3],
+            [format!("`{id}`").as_str(), owner, slice],
+            "{id} must stay a planned {owner} envelope owned by {slice}"
+        );
+        assert_clauses_in_order(row[3], &format!("envelope row {id}"), clauses);
+    }
+    let fixtures = anchored_ids(&registry, "registry:test-fixture-ids");
+    for id in [
+        "adoc.git_proposal_references.v99",
+        "agentdoc.cloud.proposal_delivery.v99",
+    ] {
+        assert!(fixtures.contains(id), "E8.2 fixture id missing: {id}");
+    }
+    // D2: Cloud rejects the delivery association, never the proposal record,
+    // and the provider-unavailable refusal persists nothing.
+    for (code, clauses) in [
+        (
+            "delivery.reference_missing",
+            &[
+                "Cloud rejects the delivery association and retains the diagnostic on the proposal record",
+                "for a `pr`-mode delivery",
+                "never mutated or repaired",
+            ][..],
+        ),
+        (
+            "delivery.reference_stale",
+            &[
+                "Cloud rejects the delivery association and retains the diagnostic on the proposal record",
+                "never silently repaired",
+            ][..],
+        ),
+        (
+            "delivery.provider_unavailable",
+            &[
+                "retryable `503` returned before request registration",
+                "nothing is persisted",
+            ][..],
+        ),
+    ] {
+        let row = anchored_row(&registry, "registry:cloud-codes", code, 3);
+        assert_eq!(
+            &row[..2],
+            [format!("`{code}`").as_str(), "planned (E8.2.T2)"],
+            "registry:cloud-codes row {code} must stay planned by E8.2.T2"
+        );
+        assert_clauses_in_order(row[2], &format!("registry:cloud-codes row {code}"), clauses);
+    }
+    // Reused ingest codes name their E8.2 delivery-report cases.
+    for (code, clause) in [
+        (
+            "ingest.envelope_version_unsupported",
+            "E8.2: a proposal delivery report whose `schema_version` is not",
+        ),
+        (
+            "ingest.envelope_version_unsupported",
+            "is also the remediation a `pr`-mode proposal delivery response names",
+        ),
+        (
+            "ingest.duplicate_delivery",
+            "E8.2: a replayed proposal delivery report under the same idempotency key",
+        ),
+        (
+            "ingest.duplicate_delivery",
+            "a proposal delivery report naming a commit already accepted",
+        ),
+        (
+            "ingest.digest_mismatch",
+            "or whose observed changed-path set differs from or exceeds the proposal's bound patch paths",
+        ),
+    ] {
+        let row = anchored_row(&registry, "registry:cloud-codes", code, 3);
+        assert_clauses_in_order(
+            row[2],
+            &format!("registry:cloud-codes row {code}"),
+            &[clause],
+        );
+    }
+}
+
 /// Asserts every clause occurs in `cell`, in the given order.
 fn assert_clauses_in_order(cell: &str, row: &str, clauses: &[&str]) {
     let positions: Vec<usize> = clauses
