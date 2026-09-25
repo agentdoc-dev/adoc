@@ -947,6 +947,11 @@ Close every remaining accepted V1 P0 capability at declared maturity — second 
 3. `E8.2.T3` — Original-branch delivery under branch-protection/source-binding/divergence preconditions; fork-origin write attempt → typed `delivery.fork_branch_read_only` refusal fixture.
 4. `E8.2.T4` — Delivery and approval as independent records: delivered-but-unapproved still blocks under `approval_required`; post-delivery content change on the original branch invalidates the prior approval, receipted. Requires E5.2 (approval records) and E5.3 (`approval_required` evaluation) accepted — both outside this slice's Depends-on closure; the invalidation assertions run through the E8.1.T5 shared suite, never a third implementation.
 5. `E8.2.T5` — Cross-link integrity: Cloud proposal state and Git projection resolve both directions on both paths; disconnected-repo fixture delivers both paths byte-identically to the prior release.
+
+D1 (accepted 2026-09-23): the reference block, resolver trailer and Cloud delivery report exist only for a Cloud-connected repository, decided by the explicit root-action input `cloud-proposal-resolver` (default empty); a disconnected delivery stays byte-identical to Action `v2.0.0-alpha.21`. Plan: [`E8.2-PLAN.md`](../../plans/E8.2-PLAN.md).
+
+D7 (accepted 2026-09-25): the branch-protection precondition means the observed protection profile is known and not bypassable; a connected `commit`-mode delivery to a branch whose authenticated observation proves no protection at all is allowed, and an unknown or bypassable profile refuses.
+
 **Acceptance:**
 - Reference block parse-round-trips; property test proves no constructible block lacks any of the five references.
 - Changed-head-SHA fixture flags `reference_stale` on the proposal record — no silent repair (adversarial).
