@@ -379,10 +379,48 @@ fn anchors_cover_every_registry_table() {
 }
 
 #[test]
-fn e8_1_attestation_contracts_and_codes_are_registered_as_planned() {
-    // E8.1 implementations are unmerged: every row stays planned with its
-    // owning slice until the implementation and tests land.
+fn e8_1_attestation_contracts_and_codes_are_registered() {
+    // cloud#169 merged (e8e9c276): the E8.1 code rows carry `unreleased` and
+    // the E8.1 envelopes stay in the planned block under the block's
+    // merged-but-unreleased prose convention (E8.1-QUALIFICATION-PLAN D-7).
     let registry = registry();
+    assert!(
+        registry.contains(
+            "The 12 `agentdoc.cloud.*` rows below whose owning slice is E8.1 inventory implementations merged to Cloud main at `e8e9c276`"
+        ),
+        "the planned envelope block must record the E8.1 envelopes as merged but unreleased"
+    );
+    // The prose note says "The 12 ... rows": pin the count so a row added or
+    // dropped from the block without updating the note fails here.
+    let e8_1_rows =
+        support::doc_scan::anchored_block(&registry, REGISTRY, "registry:envelopes-planned")
+            .lines()
+            .filter(|line| line.contains("| cloud | E8.1."))
+            .count();
+    assert_eq!(
+        e8_1_rows, 12,
+        "the planned envelope block's E8.1 row count must match its prose note"
+    );
+    assert!(
+        registry.contains(
+            "The canonical spelling for a merged-but-unreleased row is the `unreleased (<owning slice>)` status of the legend; the E5 rows' `planned (…, implemented in Cloud v0.1.0 pre-release)` annotations above are a legacy spelling of the same state and are not migrated."
+        ),
+        "the planned envelope block must name `unreleased (…)` as the canonical spelling and the E5 annotations as legacy"
+    );
+    assert!(
+        registry.contains(
+            "the whole E8.1 family flipped on 2026-09-25 (cloud#169 merged as `e8e9c276`), so every row below is `unreleased`. Rows are never re-registered."
+        ),
+        "the attestation-codes intro must state the E8.1 flip and that rows are never re-registered"
+    );
+    // The qualification plan's §6 disposition must not claim the envelopes flipped (R13).
+    let qualification = read_repo_doc("docs/plans/E8.1-QUALIFICATION-PLAN.md");
+    assert!(
+        qualification.contains(
+            "the 12 envelopes have no status cell and stay in the planned block, recorded as merged-but-unreleased by the block note"
+        ),
+        "the qualification plan's §6 registry row must say the E8.1 envelopes stay in the planned block"
+    );
     for (id, slice) in [
         ("agentdoc.cloud.github_approval_attestation.v0", "E8.1.T1"),
         ("agentdoc.cloud.github_approval_observation.v0", "E8.1.T1"),
@@ -413,7 +451,7 @@ fn e8_1_attestation_contracts_and_codes_are_registered_as_planned() {
         assert_eq!(
             &row[..3],
             [format!("`{id}`").as_str(), "cloud", slice],
-            "{id} must stay a planned Cloud envelope owned by {slice}"
+            "{id} must stay in the planned envelope block as a Cloud envelope owned by {slice}"
         );
     }
     // Each row also pins, in order, the description clauses the E8.1 rework settled.
@@ -421,13 +459,13 @@ fn e8_1_attestation_contracts_and_codes_are_registered_as_planned() {
         (
             "registry:action-codes",
             "action.attestation_bot_rejected",
-            "planned (E8.1.T3)",
+            "unreleased (E8.1.T3)",
             &[][..],
         ),
         (
             "registry:cloud-codes",
             "governance.attestation_not_current",
-            "planned (E8.1.T5)",
+            "unreleased (E8.1.T5)",
             // D6.1: the insert trigger refuses break-glass, not only native approval.
             &[
                 "references a native approval or a break-glass emergency receipt",
@@ -437,11 +475,31 @@ fn e8_1_attestation_contracts_and_codes_are_registered_as_planned() {
         (
             "registry:cloud-codes",
             "gate.policy_missing",
-            "planned (E8.1.T4)",
+            "unreleased (E8.1.T4)",
             // T4's mode mutation refuses first; the T5 evaluator is the backstop.
             &[
                 "The E8.1.T4 approval-source mode mutation raises",
                 "Separately, the E8.1.T5 evaluator",
+            ][..],
+        ),
+        (
+            "registry:cloud-codes",
+            "connect.installation_mode_conflict",
+            // T4 tag: the activation slice A0 has no roadmap counterpart, and
+            // roadmap_sync_guard reconciles only MILESTONES with EXECUTION-MAP.
+            "planned (E8.1.T4, activation slice A0)",
+            // D-13 (R2/R3): one new code, installation-scoped across
+            // Workspaces, raised by both writers of the (repository,
+            // installation, mode) triple; not an overload of
+            // `connect.permission_exceeds_manifest`.
+            &[
+                "one installation, one approval-source mode, across Workspaces",
+                "both `record_github_approval_source_policy` and `connect_github_repository_installation` raise this fixed refusal (SQLSTATE `42501`)",
+                "the connection stays healthy and no grant is involved",
+                // R3-1 owner decision: mode-before-bind, no unbind exists.
+                "the remedy is to record the mode on each repository before binding it or to use a new App installation",
+                // R4-3: the guard is symmetric, so rollback is per installation.
+                "the refusal is symmetric, so rollback to `native` is per installation",
             ][..],
         ),
         (
@@ -469,8 +527,8 @@ fn e8_1_attestation_contracts_and_codes_are_registered_as_planned() {
         let row = anchored_row(&registry, "registry:attestation-codes", code, 4);
         assert_eq!(
             &row[..3],
-            [format!("`{code}`").as_str(), "planned", slice],
-            "attestation code {code} must stay planned and owned by {slice}"
+            [format!("`{code}`").as_str(), "unreleased", slice],
+            "attestation code {code} must be unreleased and owned by {slice}"
         );
     }
     // T3 display invariant: the bound status wrapper projects null for a
