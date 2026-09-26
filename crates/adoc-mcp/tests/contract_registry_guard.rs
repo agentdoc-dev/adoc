@@ -628,8 +628,11 @@ fn e8_2_delivery_contracts_are_registered_as_planned() {
         (
             "delivery.provider_unavailable",
             &[
+                "is transiently unavailable or partial",
                 "retryable `503` returned before request registration",
                 "nothing is persisted",
+                "a definitive answer (a `404` after one retry, or a body over the byte bound) is not this code",
+                "is retained as `ingest.digest_mismatch` with `observation.provider_reason` (E8.2.F1)",
             ][..],
         ),
     ] {
@@ -659,10 +662,6 @@ fn e8_2_delivery_contracts_are_registered_as_planned() {
             "ingest.duplicate_delivery",
             "a proposal delivery report naming a commit already accepted",
         ),
-        (
-            "ingest.digest_mismatch",
-            "or whose observed changed-path set differs from or exceeds the proposal's bound patch paths",
-        ),
     ] {
         let row = anchored_row(&registry, "registry:cloud-codes", code, 3);
         assert_clauses_in_order(
@@ -671,6 +670,21 @@ fn e8_2_delivery_contracts_are_registered_as_planned() {
             &[clause],
         );
     }
+    // D8 appends the definitive-answer case after the changed-path case.
+    let row = anchored_row(
+        &registry,
+        "registry:cloud-codes",
+        "ingest.digest_mismatch",
+        3,
+    );
+    assert_clauses_in_order(
+        row[2],
+        "registry:cloud-codes row ingest.digest_mismatch",
+        &[
+            "or whose observed changed-path set differs from or exceeds the proposal's bound patch paths",
+            "or whose provider answer is definitive (a `404` after one retry, or a body over the byte bound; `observation.provider_reason`, E8.2.F1)",
+        ],
+    );
 }
 
 /// Asserts every clause occurs in `cell`, in the given order.
