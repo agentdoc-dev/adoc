@@ -950,7 +950,7 @@ Close every remaining accepted V1 P0 capability at declared maturity — second 
 
 D1 (accepted 2026-09-23): the reference block, resolver trailer and Cloud delivery report exist only for a Cloud-connected repository, decided by the explicit root-action input `cloud-proposal-resolver` (default empty); a disconnected delivery stays byte-identical to Action `v2.0.0-alpha.21`. Plan: [`E8.2-PLAN.md`](../../plans/E8.2-PLAN.md).
 
-D7 (accepted 2026-09-25): the branch-protection precondition means the observed protection profile is known and not bypassable; a connected `commit`-mode delivery to a branch whose authenticated observation proves no protection at all is allowed, and an unknown or bypassable profile refuses.
+D7 (accepted 2026-09-25): the branch-protection precondition means the observed protection profile is known and not bypassable; a connected `commit`-mode delivery to a branch whose authenticated observation proves no protection at all is allowed, and an unknown or bypassable profile refuses. The profile is that of the classic protection and the rulesets that apply to the branch (`rules/branches`); a ruleset that does not apply to the branch does not refuse (D9, 2026-09-25, [`E8.2-FOLLOWUP-PLAN.md`](../../plans/E8.2-FOLLOWUP-PLAN.md)).
 
 **Acceptance:**
 - Reference block parse-round-trips; property test proves no constructible block lacks any of the five references.
