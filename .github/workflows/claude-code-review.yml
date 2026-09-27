@@ -41,7 +41,7 @@ jobs:
 
       - name: Run Claude Code Review
         id: claude-review
-        uses: anthropics/claude-code-action@56cf60fde42f7b19c3abfd5c9c48b69a1288461f # v1.0.222
+        uses: anthropics/claude-code-action@9171db3e57d6a3140a37ddc2ba92788584e0ead6 # v1.0.234
         env:
           # Shared Mem0 memory. The repo-scoped pool is keyed off the git remote,
           # so CI lands in the same namespace as local sessions. Without the
