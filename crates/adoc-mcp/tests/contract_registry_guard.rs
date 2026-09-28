@@ -413,6 +413,13 @@ fn e8_1_attestation_contracts_and_codes_are_registered() {
         ),
         "the attestation-codes intro must state the E8.1 flip and that rows are never re-registered"
     );
+    // PR275-R1-2: the A0 flip's provenance is pinned like its siblings'.
+    assert!(
+        registry.contains(
+            "`connect.installation_mode_conflict` is `unreleased (E8.1.T4, activation slice A0)` since A0 merged to Cloud main at `7e9732a0` (cloud#172, 2026-09-28)"
+        ),
+        "the planned envelope block must record the A0 flip's merge commit"
+    );
     // The qualification plan's §6 disposition must not claim the envelopes flipped (R13).
     let qualification = read_repo_doc("docs/plans/E8.1-QUALIFICATION-PLAN.md");
     assert!(
@@ -487,7 +494,8 @@ fn e8_1_attestation_contracts_and_codes_are_registered() {
             "connect.installation_mode_conflict",
             // T4 tag: the activation slice A0 has no roadmap counterpart, and
             // roadmap_sync_guard reconciles only MILESTONES with EXECUTION-MAP.
-            "planned (E8.1.T4, activation slice A0)",
+            // A0 merged to Cloud main at `7e9732a0` (cloud#172).
+            "unreleased (E8.1.T4, activation slice A0)",
             // D-13 (R2/R3): one new code, installation-scoped across
             // Workspaces, raised by both writers of the (repository,
             // installation, mode) triple; not an overload of
