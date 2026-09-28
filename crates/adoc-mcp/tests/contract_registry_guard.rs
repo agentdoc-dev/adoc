@@ -380,8 +380,9 @@ fn anchors_cover_every_registry_table() {
 
 #[test]
 fn e8_1_attestation_contracts_and_codes_are_registered() {
-    // cloud#169 merged (e8e9c276): the E8.1 code rows carry `unreleased` and
-    // the E8.1 envelopes stay in the planned block under the block's
+    // cloud#169 merged (e8e9c276): the cloud#169 E8.1 code rows carry
+    // `unreleased` (the A1 follow-up row stays `planned` until cloud#176
+    // merges) and the E8.1 envelopes stay in the planned block under the block's
     // merged-but-unreleased prose convention (E8.1-QUALIFICATION-PLAN D-7).
     let registry = registry();
     assert!(
@@ -420,8 +421,47 @@ fn e8_1_attestation_contracts_and_codes_are_registered() {
         ),
         "the planned envelope block must record the A0 flip's merge commit"
     );
+    // PR276-R5-2: the "every E8.1 code row is unreleased" claim names its one
+    // `planned` exception, so the cloud#176 flip fails this pin with the others.
+    assert!(
+        registry.contains(
+            "The E8.1 code rows in the Action, Cloud and attestation code tables carry `unreleased` explicitly, except `gate.check_republish_read_failed`, which stays `planned (E8.1.T2, activation slice A1 follow-up)` until cloud#176 merges;"
+        ),
+        "the planned envelope block must name the E8.1 code row that is still planned"
+    );
     // The qualification plan's §6 disposition must not claim the envelopes flipped (R13).
     let qualification = read_repo_doc("docs/plans/E8.1-QUALIFICATION-PLAN.md");
+    // PR276-R1-3: the A1 follow-up code and its pending flip are recorded in §2.5.
+    // PR276-R5-1: D-7's family flip is scoped to the cloud#169 rows, not the
+    // later `planned` A1 follow-up row.
+    assert!(
+        qualification
+            .contains("| D-7 | Registry | Flip the cloud#169 E8.1 family to `unreleased` now"),
+        "D-7 must scope its flip to the cloud#169 family"
+    );
+    assert!(
+        qualification.contains("A0–A3 add two wire codes:"),
+        "the qualification plan's §2.5 must count both activation-slice wire codes"
+    );
+    assert!(
+        qualification.contains(
+            "A1's follow-up (cloud#176) adds the second: `gate.check_republish_read_failed` (`planned (E8.1.T2, activation slice A1 follow-up)`, cloud#176; flips to `unreleased` when cloud#176 merges)"
+        ),
+        "the qualification plan's §2.5 must record the A1 follow-up code and its pending flip"
+    );
+    // PR276-R4-1: the §6 disposition and D-7 inventories name it too.
+    assert!(
+        qualification.contains(
+            "`gate.check_republish_read_failed` registered `planned` by adoc#276 (§2.5), flipping to `unreleased` when cloud#176 merges"
+        ),
+        "the qualification plan's §6 registry row must name the A1 follow-up code and its pending flip"
+    );
+    assert!(
+        qualification.contains(
+            "Extended by adoc#276: one new row `gate.check_republish_read_failed` (`planned (E8.1.T2, activation slice A1 follow-up)`, §2.5); cloud#176 flips it to `unreleased`."
+        ),
+        "the qualification plan's D-7 must name the A1 follow-up code and its pending flip"
+    );
     assert!(
         qualification.contains(
             "the 12 envelopes have no status cell and stay in the planned block, recorded as merged-but-unreleased by the block note"
@@ -516,6 +556,23 @@ fn e8_1_attestation_contracts_and_codes_are_registered() {
             "planned (E5.5.T1, implemented in Cloud v0.1.0 pre-release)",
             // E8.1.T5 attested promotion reuses the native refusal.
             &["attested promotion `promote_github_attested_proposal_candidate_v1` reuses it"][..],
+        ),
+        (
+            "registry:cloud-codes",
+            "gate.check_republish_read_failed",
+            // Registered before cloud#176 merges; flips to `unreleased` then
+            // (the plan's §2.5 obligation, pinned above). PR276-R1-1: tagged
+            // with a roadmap slice, like A0.
+            "planned (E8.1.T2, activation slice A1 follow-up)",
+            // cloud#176 R1-3: its own code, not `gate.check_publish_prepare_failed`.
+            &[
+                "with the Workspace and proposal-version ids",
+                "when `github_proposal_exposure_republish_required` errors or its call rejects",
+                // PR276-R1-2/R2-1/R3-1: a failed read cannot say whether a
+                // Gate publication or an exposure exists, so it claims neither.
+                "the recorded proposal is still answered, no Gate republish or retry is queued, and a replay of the idempotent proposal command re-runs the read",
+                "not an `adoc.gate_result.v0` reason",
+            ][..],
         ),
     ] {
         let row = anchored_row(&registry, anchor, code, 3);
