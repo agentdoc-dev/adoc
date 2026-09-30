@@ -336,21 +336,27 @@ pub(crate) fn inspect_with_provider(
             .collect::<Vec<_>>(),
     )
     .map_err(|_| MigrationError::ValidationUnavailable)?;
-    let codes: std::collections::BTreeSet<_> = validated
-        .diagnostics
-        .iter()
-        .map(|diagnostic| diagnostic.code.as_str().to_owned())
-        .collect();
-    receipt.diagnostic_codes = codes
-        .into_iter()
-        .take(INSPECTION_MAX_DIAGNOSTIC_CODES)
-        .collect();
+    receipt.diagnostic_codes = bounded_codes(
+        validated
+            .diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.code.as_str().to_owned())
+            .collect(),
+    )?;
     receipt.validation_result = match validated.receipt.result() {
         ValidationResult::Pass => "pass",
         ValidationResult::Fail => "fail",
     };
     receipt.parsed_item_count = validated.parsed_item_count;
     Ok(receipt)
+}
+
+/// Distinct codes, sorted. Overflow refuses, never truncates.
+fn bounded_codes(codes: std::collections::BTreeSet<String>) -> Result<Vec<String>, MigrationError> {
+    if codes.len() > INSPECTION_MAX_DIAGNOSTIC_CODES {
+        return Err(MigrationError::OutputLimit);
+    }
+    Ok(codes.into_iter().collect())
 }
 
 use crate::domain::migration::{
@@ -855,6 +861,16 @@ pub(crate) fn qualify_with_provider(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn bounded_codes_refuses_past_64_distinct_codes() {
+        let codes = |n: usize| (0..n).map(|i| format!("code.{i:03}")).collect();
+        assert_eq!(super::bounded_codes(codes(64)).unwrap().len(), 64);
+        assert!(matches!(
+            super::bounded_codes(codes(65)),
+            Err(MigrationError::OutputLimit)
+        ));
+    }
+
     use super::*;
     use std::io::Write;
     #[test]
