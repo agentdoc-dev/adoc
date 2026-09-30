@@ -712,6 +712,8 @@ Make every observable retrieval path permission-aware and side-channel-safe, add
 - MCP vs CLI/API parity byte-identical; audience threading from gateway config verified.
 - Field-list regression guard over a fully-populated record: full governed field list preserved; supporting/prose labeled unverified; no-reliance wording on the contract.
 - No restricted class present → predicate short-circuits with byte-identical output; predicate overhead ≤10% on pilot corpora (G4 guard before any target promotion).
+- RT-08 waiver ([ADR-0069](../../adr/0069-proposal-review-read-rt08-exceptions.md), owner decision, 2026-10-01): `agentdoc.cloud.proposal_review.v0` (E8.3.T1) returns the proposed `evidence_ref` Source Object ids verbatim, graded only through their patch target, because it is implemented ahead of this slice; that is RT-08's metadata channel. Scope: that route only. Bound: the route ships in no release stage until it grades every returned `evidence_ref` with this slice's predicate and withholds the whole envelope with the same 404 when any is existence-excluded; E8.3's acceptance closes the waiver. The same waiver covers the envelope's `no_change_required` dispositions, whose findings no patch addresses (ADR-0069 §1).
+- RT-08 existence residual ([ADR-0069](../../adr/0069-proposal-review-read-rt08-exceptions.md) §3, owner decision, 2026-10-01): `agentdoc.cloud.proposal_review.v0` reports `superseded` even when the caller may read no successor: it discloses that a successor exists, never how many or which, so an approval on a superseded proposal never reads as current. Scope: that route only. No release bound.
 **Out of scope:** field-level redaction/declassification (E6.2); audit sink states, spool, embedding exclusion (E6.3); egress categories (E6.6).
 
 ### E6.2 — Field/proposition visibility + declassification
@@ -963,18 +965,20 @@ D9 amendment (accepted 2026-09-28): connected `commit`-mode delivery also refuse
 **Out of scope:** GitLab delivery/writeback parity (P1); non-Git writeback (P2).
 
 ### E8.3 — Proposal review surface
-**Repos:** `cloud` · **Depends on:** E5.1, E5.2
+**Repos:** `cloud` · **Depends on:** E5.1, E5.2, E6.1
 **Read first:** [SEMANTICS S10](SEMANTICS.md#s10-no-model-text-directly-reaches-gate-authority) · [SEMANTICS S6](SEMANTICS.md#s6-agentdoc-validation-runtime-is-authoritative) · provenance: V10.5.4 in [original roadmap](../ROADMAP-V10-2026-08-12-original.md)
 **Tracer bullets:**
-1. `E8.3.T1` — Read-only projection route serving stored proposal envelopes + governance records (field/object diff, citations, obligations, exact hashes); failing fixture asserts zero re-derivation — rendered diff/impact equals stored envelope bytes.
+1. `E8.3.T1` — Read-only projection route serving stored proposal envelopes + governance records (field/object diff with the proposed `evidence_ref` references, obligations, exact hashes; the assessment's citations are a later additive field); failing fixture asserts zero re-derivation — rendered diff/impact equals stored envelope bytes; the `authorized_targets` snapshot that grades `proposal.read` and `obligation.read` is verified first, and a snapshot that does not re-derive, or record or stored Graph Artifact bytes that do not decode, read as the 404 (a destroyed record is indistinguishable from an absent one even to its reviewers, and only Cloud's server log records it); then the digests, patch binding and `supersedes` binding are re-verified in SQL on every read and a failure returns only `governance.proposal_record_integrity_failed` (HTTP 409), the only integrity failure T5 renders; another set's digest (a successor, or the set behind an invalidation) is shown only when that set passes the same grade after its own snapshot re-derives, and `superseded` still reports that a successor exists (ADR-0069). T1 ships before E6.1 under ADR-0069; E6.1 gates E8.3's acceptance, not T1.
 2. `E8.3.T2` — Model rationale rendered in a visually distinct labeled container; one parameterized test asserts the label on every rationale rendering path.
 3. `E8.3.T3` — Approve/reject/request-change submitting the exact proposal-set hash; server authenticates the acting identity and re-validates eligibility via the E5.2 API; stale-page hash mismatch fails closed with remediation.
 4. `E8.3.T4` — Edit path produces a new proposal digest/version and visibly invalidates the prior approval (failing e2e fixture first).
-5. `E8.3.T5` — Stored envelope digest failing re-verification renders an integrity error, never partially-trusted content; capability checklist becomes executable acceptance — one test per owed UI capability, including the reconciliation-candidate review surface routed here by E1.3.
+5. `E8.3.T5` — The T1 integrity failure renders an integrity error, never partially-trusted content; capability checklist becomes executable acceptance — one test per owed UI capability, including the reconciliation-candidate review surface routed here by E1.3.
 **Acceptance:**
 - Approve and reject end-to-end from the surface; edit → new hash → prior approval visibly invalidated.
 - Stale-page approval against a superseded hash fails closed with remediation (adversarial fixture).
 - Tampered stored-digest fixture renders integrity error only (stop-ship: digest mismatch never trusted).
+- Every `evidence_ref` Source Object the T1 read returns is graded with E6.1's visibility predicate; any existence-excluded one withholds the whole envelope with the same 404 (T1 runs under ADR-0069's RT-08 waiver and ships in no release stage until this holds; E8.3 is not accepted without it).
+- Every `no_change_required` disposition the T1 envelope carries has its finding's affected objects graded with T1's own grade; any that fails withholds the whole envelope with the same 404 (ADR-0069 §1; E8.3 is not accepted without it).
 - Every rationale rendering path carries the distinct label (single parameterized test).
 - Route tests prove no authorization/domain reimplementation: all decisions originate in API/Validation Runtime; the surface never approves on behalf of a principal.
 **Out of scope:** quorum/SoD review workflows (P4); any envelope change — routes back through the owning contract slice, never a UI-side fork.
