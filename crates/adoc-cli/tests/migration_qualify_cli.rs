@@ -378,7 +378,10 @@ fn migration_v1_history_and_fresh_differ_in_identity_and_eligibility_only() {
     let prepared_history = ok_json(&prepare(root, &history));
     let prepared_fresh = ok_json(&prepare(root, &fresh));
     for (receipt, sent) in [(&prepared_history, &history), (&prepared_fresh, &fresh)] {
-        assert_eq!(receipt["schema_version"], "adoc.migration_receipt.v1");
+        assert_eq!(
+            receipt["schema_version"],
+            adoc_core::MIGRATION_RECEIPT_V1_SCHEMA_VERSION
+        );
         assert_eq!(receipt["config_profile"], "committed");
         assert_eq!(&receipt["request"], sent);
     }
@@ -546,7 +549,10 @@ fn migration_v1_no_config_is_fresh_only_via_generated_profile() {
             .all(|o| o["eligible"] == false)
     );
     let imported = ok_json(&run_command(root, &fresh, &job, "migration-import", "1"));
-    assert_eq!(imported["schema_version"], "adoc.migration_import.v1");
+    assert_eq!(
+        imported["schema_version"],
+        adoc_core::MIGRATION_IMPORT_V1_SCHEMA_VERSION
+    );
     assert_eq!(imported["sources"].as_array().unwrap().len(), 1);
     assert_eq!(imported["sources"][0]["path"], "one.adoc");
     let history = v1(&request, "recorded_history");
