@@ -602,6 +602,28 @@ fn v1_recorded_history_without_config_is_validation_unavailable() {
     }
 }
 
+#[test]
+fn symlinked_config_refuses_as_unsafe_source() {
+    let (workspace, mut request, job) = fixture();
+    let root = &workspace.root;
+    fs::rename(root.join("agentdoc.config.yaml"), root.join("real.yaml")).unwrap();
+    std::os::unix::fs::symlink("real.yaml", root.join("agentdoc.config.yaml")).unwrap();
+    git(root, &["add", "-A"]);
+    git(root, &["commit", "-qm", "symlinked config"]);
+    request["revision"]["value"] = json!(git(root, &["rev-parse", "HEAD"]));
+    for request in [request.clone(), v1(&request, "recorded_history")] {
+        for output in [
+            prepare(root, &request),
+            run_command(root, &request, &job, "migration-qualify", "1"),
+            run_command(root, &request, &job, "migration-import", "1"),
+        ] {
+            assert_eq!(output.status.code(), Some(2));
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(stderr.contains("migration.unsafe_source"), "{stderr}");
+        }
+    }
+}
+
 fn pinned_git(root: &Path, args: &[&str]) -> String {
     let out = Command::new("git")
         .arg("-C")
