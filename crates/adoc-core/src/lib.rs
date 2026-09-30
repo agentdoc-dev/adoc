@@ -1204,6 +1204,10 @@ fn resolve_migration_target(
     snapshot: &std::path::Path,
 ) -> Result<application::migration::MigrationValidationTarget, MigrationError> {
     let config_path = snapshot.join("agentdoc.config.yaml");
+    // Same rule as inspection: a config that is not a regular file never gets read.
+    if std::fs::symlink_metadata(&config_path).is_ok_and(|metadata| !metadata.is_file()) {
+        return Err(MigrationError::UnsafeSource);
+    }
     let text =
         std::fs::read_to_string(&config_path).map_err(|_| MigrationError::ValidationUnavailable)?;
     let config = parse_project_config(&text).map_err(|_| MigrationError::ValidationUnavailable)?;
@@ -1230,6 +1234,23 @@ mod tests {
 
     use super::*;
     use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider};
+
+    #[test]
+    fn resolve_migration_target_refuses_symlinked_config() {
+        let snapshot = tempfile::tempdir().expect("temp snapshot");
+        std::fs::create_dir(snapshot.path().join("docs")).expect("docs");
+        std::fs::write(
+            snapshot.path().join("real.yaml"),
+            "version: 1\nmode: strict\ndocs_path: docs\n",
+        )
+        .expect("config");
+        std::os::unix::fs::symlink("real.yaml", snapshot.path().join("agentdoc.config.yaml"))
+            .expect("symlink");
+        assert!(matches!(
+            resolve_migration_target(snapshot.path()),
+            Err(MigrationError::UnsafeSource)
+        ));
+    }
 
     #[test]
     fn worktree_status_failure_emits_resolved_snapshot_failure() {
