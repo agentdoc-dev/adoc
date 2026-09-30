@@ -1076,9 +1076,9 @@ pub use domain::managed_field_provenance::{
 
 pub use application::migration::MigrationReceipt;
 pub use domain::migration::{
-    MIGRATION_RECEIPT_SCHEMA_VERSION, MIGRATION_REQUEST_MAX_BYTES,
-    MIGRATION_REQUEST_SCHEMA_VERSION, MIGRATION_REQUEST_V1_SCHEMA_VERSION, MigrationError,
-    MigrationRequest, StartingPoint,
+    MIGRATION_RECEIPT_SCHEMA_VERSION, MIGRATION_RECEIPT_V1_SCHEMA_VERSION,
+    MIGRATION_REQUEST_MAX_BYTES, MIGRATION_REQUEST_SCHEMA_VERSION,
+    MIGRATION_REQUEST_V1_SCHEMA_VERSION, MigrationError, MigrationRequest, StartingPoint,
 };
 
 /// Prepare an exact commit from a worker-owned repository. The caller must provide
@@ -1107,7 +1107,7 @@ pub use application::migration::MigrationImportBundle;
 pub use domain::migration::{
     MIGRATION_IMPORT_JOB_MAX_BYTES, MIGRATION_IMPORT_JOB_SCHEMA_VERSION,
     MIGRATION_IMPORT_MAX_BYTES, MIGRATION_IMPORT_MAX_SOURCES, MIGRATION_IMPORT_SCHEMA_VERSION,
-    MIGRATION_VALIDATION_INVOCATION_SCHEMA_VERSION,
+    MIGRATION_IMPORT_V1_SCHEMA_VERSION, MIGRATION_VALIDATION_INVOCATION_SCHEMA_VERSION,
 };
 
 /// Produce bounded inactive candidate inputs from an exact worker-owned snapshot.
