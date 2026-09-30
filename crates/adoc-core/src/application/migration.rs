@@ -490,8 +490,13 @@ fn build_import_bundle(
             .to_str()
             .ok_or(MigrationError::UnsafeSource)?;
         let metadata = metadata.get(path).ok_or(MigrationError::InvalidJob)?;
-        let (source_record_bytes, source_binding_bytes) =
-            source_evidence(&request, &job, metadata, source.text.as_bytes())?;
+        let (source_record_bytes, source_binding_bytes) = source_evidence(
+            &request,
+            &job,
+            metadata,
+            source.text.as_bytes(),
+            "text/plain",
+        )?;
         let invocation = MigrationValidationInvocation {
             schema_version: MIGRATION_VALIDATION_INVOCATION_SCHEMA_VERSION,
             workspace_id: &request.workspace_id,
@@ -560,14 +565,8 @@ fn source_evidence(
     job: &MigrationImportJob,
     metadata: &crate::domain::migration::MigrationImportSource,
     bytes: &[u8],
+    media_type: &str,
 ) -> Result<(String, String), MigrationError> {
-    // Media type follows the bytes, not the evaluation outcome, so Cloud can
-    // materialize the same Source Record before qualification decides.
-    let media_type = if std::str::from_utf8(bytes).is_ok() {
-        "text/plain"
-    } else {
-        "application/octet-stream"
-    };
     use crate::domain::source_provenance::{
         SourceBindingCoordinates, SourceBindingInput, build_source_binding,
     };
@@ -816,8 +815,16 @@ pub(crate) fn qualify_with_provider(
             let metadata = metadata
                 .get(source.path.as_str())
                 .ok_or(MigrationError::InvalidJob)?;
+            // v1: media type follows the bytes, not the outcome, so Cloud can
+            // materialize the same Source Record before qualification decides.
+            // v0 keeps its pinned flagged-evidence bytes.
+            let media_type = if request.is_v1() && std::str::from_utf8(&source.bytes).is_ok() {
+                "text/plain"
+            } else {
+                "application/octet-stream"
+            };
             let (source_record_bytes, source_binding_bytes) =
-                source_evidence(&request, &job, metadata, &source.bytes)?;
+                source_evidence(&request, &job, metadata, &source.bytes, media_type)?;
             sources.push(FlaggedSourceEvidence {
                 path: source.path,
                 source_bytes_base64: STANDARD.encode(source.bytes),

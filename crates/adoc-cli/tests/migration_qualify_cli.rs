@@ -155,7 +155,7 @@ fn flagged_source_record_media_type_follows_bytes_not_outcome() {
     git(&workspace.root, &["add", "."]);
     git(&workspace.root, &["commit", "-qm", "invalid source"]);
     request["revision"]["value"] = json!(git(&workspace.root, &["rev-parse", "HEAD"]));
-    let output = run(&workspace.root, &request, &job);
+    let output = run(&workspace.root, &v1(&request, "recorded_history"), &job);
     assert_eq!(output.status.code(), Some(1));
     let envelope: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(envelope["outcome"], "flagged_source_evidence");
@@ -163,6 +163,24 @@ fn flagged_source_record_media_type_follows_bytes_not_outcome() {
         |i: usize| nested(&envelope["sources"][i], "source_record_bytes")["media_type"].clone();
     assert_eq!(media_type(0), "text/plain");
     assert_eq!(media_type(1), "application/octet-stream");
+}
+#[test]
+fn flagged_v0_media_type_stays_octet_stream() {
+    let (workspace, mut request, job) = fixture();
+    fs::write(workspace.root.join("docs/two.adoc"), [0xff, 0xfe]).unwrap();
+    git(&workspace.root, &["add", "."]);
+    git(&workspace.root, &["commit", "-qm", "invalid source"]);
+    request["revision"]["value"] = json!(git(&workspace.root, &["rev-parse", "HEAD"]));
+    let output = run(&workspace.root, &request, &job);
+    assert_eq!(output.status.code(), Some(1));
+    let envelope: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(envelope["outcome"], "flagged_source_evidence");
+    for source in envelope["sources"].as_array().unwrap() {
+        assert_eq!(
+            nested(source, "source_record_bytes")["media_type"],
+            "application/octet-stream"
+        );
+    }
 }
 #[test]
 fn qualification_refuses_unknown_policy_and_incomplete_coverage() {
