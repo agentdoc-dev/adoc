@@ -400,12 +400,18 @@ fn run_with_context_bytes<P: SourceProvider>(
     let reader = FsEvidenceFileReader::new(input.anchor_root.clone());
     let (compiled, parsed_items) =
         compile_counted_anchored_for_date(&snapshot, &reader, input.evaluation_date);
-    // Unparseable or unreadable sources (error-level `parse.*`/`io.*`) have no count.
+    // Only sources whose bytes did not become an AST have no count; rule
+    // violations on parsed content (raw HTML, unsafe links, …) keep it.
+    const UNPARSEABLE_CODES: &[DiagnosticCode] = &[
+        DiagnosticCode::IoUnreadableFile,
+        DiagnosticCode::IoUnreadableDirectory,
+        DiagnosticCode::ParseUnclosedFence,
+        DiagnosticCode::ParseMalformedOpenFence,
+        DiagnosticCode::ParseMalformedField,
+        DiagnosticCode::ParseMalformedPageAnnotation,
+    ];
     let parsed_item_count = (!compiled.diagnostics.iter().any(|diagnostic| {
-        diagnostic.severity == crate::domain::diagnostic::Severity::Error
-            && ["parse.", "io."]
-                .iter()
-                .any(|prefix| diagnostic.code.as_str().starts_with(prefix))
+        diagnostic.severity == Severity::Error && UNPARSEABLE_CODES.contains(&diagnostic.code)
     }))
     .then_some(parsed_items);
     let mut diagnostics = compiled.diagnostics;
