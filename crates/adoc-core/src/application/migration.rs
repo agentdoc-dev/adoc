@@ -103,7 +103,8 @@ fn validate_target(
     .map_err(|_| MigrationError::ValidationUnavailable)
 }
 /// v1 `fresh` on a source without committed config uses the generated profile;
-/// v1 `recorded_history` there refuses. v0 keeps its committed-config-only path.
+/// everything else takes the committed-config path, so v1 `recorded_history`
+/// without config refuses as `migration.validation_unavailable`, like v0.
 fn resolve_for_request(
     request: &MigrationRequest,
     root: &Path,
@@ -113,10 +114,10 @@ fn resolve_for_request(
         std::fs::symlink_metadata(root.join("agentdoc.config.yaml")),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound
     );
-    match (request.is_v1() && absent, request.starting_point()) {
-        (true, StartingPoint::Fresh) => Ok(MigrationValidationTarget::generated(root)),
-        (true, StartingPoint::RecordedHistory) => Err(MigrationError::InvalidRequest),
-        (false, _) => resolve(root),
+    if request.is_v1() && absent && request.starting_point() == StartingPoint::Fresh {
+        Ok(MigrationValidationTarget::generated(root))
+    } else {
+        resolve(root)
     }
 }
 #[derive(Debug)]

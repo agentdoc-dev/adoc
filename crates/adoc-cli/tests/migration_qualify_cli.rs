@@ -573,6 +573,35 @@ fn migration_v1_no_config_is_fresh_only_via_generated_profile() {
     assert_eq!(prepare(root, &request).status.code(), Some(2));
 }
 
+#[test]
+fn v1_recorded_history_without_config_is_validation_unavailable() {
+    let workspace = TestWorkspace::new("migration-history-no-config");
+    let root = &workspace.root;
+    git(root, &["init", "-q"]);
+    git(root, &["config", "user.email", "test@example.test"]);
+    git(root, &["config", "user.name", "Test"]);
+    fs::write(root.join("one.adoc"), "# one @doc(test.one.page)\n").unwrap();
+    git(root, &["add", "."]);
+    git(root, &["commit", "-qm", "source"]);
+    let (_, mut request, mut job) = fixture();
+    request["revision"]["value"] = json!(git(root, &["rev-parse", "HEAD"]));
+    job["sources"] =
+        json!([{"path":"one.adoc","source_record_id":"record-1","source_binding_id":"binding-1"}]);
+    let history = v1(&request, "recorded_history");
+    for output in [
+        prepare(root, &history),
+        run_command(root, &history, &job, "migration-qualify", "1"),
+        run_command(root, &history, &job, "migration-import", "1"),
+    ] {
+        assert_eq!(output.status.code(), Some(2));
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("migration.validation_unavailable"),
+            "{stderr}"
+        );
+    }
+}
+
 fn pinned_git(root: &Path, args: &[&str]) -> String {
     let out = Command::new("git")
         .arg("-C")
