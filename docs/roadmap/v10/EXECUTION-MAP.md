@@ -454,9 +454,9 @@ Dates never override stop-ship invariants.
 ## E8.3 — Proposal review surface
 
 **Repos:** `cloud`  
-**Depends on:** E5.1, E5.2  
-**Goal:** native review UI with field/object diff, citations, labeled model rationale, obligations, exact hashes, edit/approve/reject/request-change.  
-**Exit:** UI performs no authorization/domain reimplementation; API decisions/Validation Runtime remain authoritative.
+**Depends on:** E5.1, E5.2, E6.1  
+**Goal:** native review UI with field/object diff, proposed evidence references (the assessment's citations follow as a later additive read field), labeled model rationale, obligations, exact hashes, edit/approve/reject/request-change.  
+**Exit:** UI performs no authorization/domain reimplementation; API decisions/Validation Runtime remain authoritative. E6.1 gates E8.3's acceptance; T1 ships before it under ADR-0069.
 
 ## E8.4 — Processing modes at declared maturity
 
@@ -595,4 +595,4 @@ Zero tolerated:
 - migration cutover producing uncontrolled dual active authority;
 - replayed external worker result accepted for another request/revision/workspace.
 
-A violation blocks the relevant release stage regardless of aggregate metrics.
+A violation blocks the relevant release stage regardless of aggregate metrics. [ADR-0069](../../adr/0069-proposal-review-read-rt08-exceptions.md) records the exceptions accepted for the E8.3.T1 proposal review read, scoped to that route.

@@ -128,6 +128,8 @@ Unauthorized content must not leak through:
 
 Sensitive authorized results carry classification and produce `adoc.sensitive_access.v0` or its final registered successor. Unauthorized sensitive content is excluded/denied.
 
+[ADR-0069](../../adr/0069-proposal-review-read-rt08-exceptions.md) records the exceptions accepted for the E8.3.T1 proposal review read: a bounded waiver for its ungraded `evidence_ref` ids and dispositions, and an accepted supersession-existence residual.
+
 ## RT-09 — Semantic-context completeness
 
 Closed citation handles prevent fabricated citations but do not prove context completeness. Therefore semantic context records must include:

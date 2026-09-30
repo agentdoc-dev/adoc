@@ -752,6 +752,149 @@ fn e8_2_delivery_contracts_are_registered_as_planned() {
     );
 }
 
+#[test]
+fn e8_3_review_contracts_are_registered_as_planned() {
+    // E8.3.T1 is unmerged: the read and its integrity code stay planned.
+    let registry = registry();
+    let id = "agentdoc.cloud.proposal_review.v0";
+    let row = anchored_row(&registry, "registry:envelopes-planned", id, 4);
+    assert_eq!(
+        &row[..3],
+        [format!("`{id}`").as_str(), "cloud", "E8.3.T1"],
+        "{id} must stay a planned cloud envelope owned by E8.3.T1"
+    );
+    assert_clauses_in_order(
+        row[3],
+        &format!("envelope row {id}"),
+        &[
+            "as verbatim `adoc.proposal.v0` bytes",
+            "the review diff is the envelope's own proposed change list, against each patch's `base_hash` or against nothing for `create_object`, carrying the proposed `evidence_ref` Source Object references inside the patch changes; v0 carries no pre-change values and no semantic-assessment payload, so the assessment's citations and findings are not served by this read",
+            "its successor digests (`superseded` is true when any successor exists; `superseded_by` lists only the successors the caller may read, each graded with this same grade, `obligation.read` included deliberately though a successor returns no obligations, after its own target snapshot re-derives by the same rule, and a successor failing either is omitted, a failed snapshot being logged; each approval and attestation carries at most one invalidation, listed with the invalidating set's digest only when that set passes the same check and otherwise with a null, which an invalidation caused by a digest failure also carries; the read never answers 404 because of another set, since `supersedes` is only shape-checked and any proposer could otherwise withdraw a reviewer's access; `superseded` discloses that a successor exists, never how many or which, an RT-08 existence residual ADR-0069 accepts; the grade checks that the caller may read the claiming set, not that its proposer could supersede the set it names, so a forged set can set `superseded` and is listed when the caller may read it, and constraining who may claim `supersedes` is outside E8.3)",
+            "the stored approval-command facts (scope, the open approval-stage proof obligations whose subject is one of the target objects, so the `obligation.read` grade covers every returned subject, policy version)",
+            "holding `proposal.read` and, because it returns proof obligations, `obligation.read` on every target object of the set (a Workspace-wide grant covers them all, an object-scoped deny of either withholds the whole envelope; withholding the envelope rather than only its obligations is deliberate, one fail-closed answer, so a reviewer must hold both to see or approve the proposal; this read does not grade `proposal.review`, which no registered surface uses yet, and which commands it gates is E8.3.T3's decision)",
+            "the Proposal Record binds no Source Record or ACL snapshot and this read returns no canonical field values, only proposed changes and each target's object id and knowledge kind, so its `proposal.read` and `obligation.read` grades treat the source-ACL ceiling and object/field visibility as `not_applicable`; a read that returned canonical or pre-change values would run both stages against each target",
+            "the proposed `evidence_ref` Source Object ids are returned verbatim and graded only through their patch target, because T1 is implemented ahead of E6.1 under the RT-08 waiver ADR-0069 records, which scopes it to this route and bars the route from every release stage until it grades them; E8.3 depends on E6.1 and is not accepted until this read grades every referenced Source Object with E6.1's predicate and withholds the whole envelope with the same 404 when any is existence-excluded",
+            "the envelope's `no_change_required` dispositions (each a finding id and acceptance-receipt digest for a finding no patch addresses, whose affected objects can lie outside the target objects) are returned verbatim under the same ADR-0069 waiver and bound: the route ships in no release stage until it grades every disposition finding's affected objects with this same grade and withholds the whole envelope with the same 404 when any fails",
+            "a non-member, a member lacking `proposal.read` or `obligation.read` on any target object, and an unknown or malformed digest all read as the same HTTP 404 that carries no registered code, with the body `{\"error\":\"not_found\"}`",
+            "neither `workspace.cross_tenant_denied` nor `api.forbidden` is emitted",
+            "the grade runs first, on the stored `authorized_targets` snapshot, and that snapshot is re-derived right after it and before every other check: it must re-derive as exactly the set's target objects, each patch's re-derived `target` with its knowledge kind, taken from the patch for `create_object` and otherwise from the Graph Artifact bytes Cloud stored at admission with the version's assessment ingestion, found by the version row's stored ingestion id (never by a record binding, never from the live graph); when it does not, or the record bytes or those Graph Artifact bytes do not decode, the caller reads the same 404 (consequential uncertainty fails closed, ADR-0057), so a destroyed record is indistinguishable from an absent one even to an entitled reviewer, and only Cloud's server log records `governance.proposal_record_integrity_failed` with the pre-grade location; so a caller not entitled reads the 404 whatever the stored bytes are and only a caller entitled on the stored snapshot can observe the 409; that snapshot is bound to the bytes by re-derivation, not authenticated, and the digests checked after it are unkeyed integrity checks against corruption, not an authorization boundary: a database writer able to rewrite the bytes and the snapshot together could recompute every digest and could equally write the grant itself",
+            "then the record digest, the embedded set digest, the embedded patch binding, the `supersedes` binding and the stored ordered-patch set digest are re-verified in SQL on every read",
+            "this verification covers the Proposal Record; the approvals, attestations, invalidations and successor digests are returned as the stored rows, protected by their own write-time constraints and immutability guards (only each disclosed set's target snapshot is re-derived, for its grade), and re-verifying them on read is a later additive check",
+            "`verified` (HTTP 200) or `failed` (HTTP 409, a conflict between the request and the stored state",
+            "returns only the `governance.proposal_record_integrity_failed` variant with no envelope content",
+            "computes no eligibility, validity or approval and writes nothing",
+        ],
+    );
+    // The 404 body the row cites is registered on the sibling row too.
+    let sibling = "agentdoc.cloud.proposal_delivery_status.v0";
+    let row = anchored_row(&registry, "registry:envelopes-planned", sibling, 4);
+    assert_clauses_in_order(
+        row[3],
+        &format!("envelope row {sibling}"),
+        &[
+            "returned only to a Workspace member, and a non-member or an unknown or malformed digest reads as HTTP 404 with the codeless body `{\"error\":\"not_found\"}`",
+        ],
+    );
+    let code = "governance.proposal_record_integrity_failed";
+    let row = anchored_row(&registry, "registry:cloud-codes", code, 3);
+    assert_eq!(
+        &row[..2],
+        [format!("`{code}`").as_str(), "planned (E8.3.T1)"],
+        "registry:cloud-codes row {code} must stay planned by E8.3.T1"
+    );
+    assert_clauses_in_order(
+        row[2],
+        &format!("registry:cloud-codes row {code}"),
+        &[
+            "is one of the closed set `record_digest`, `embedded_set_digest`, `patch_binding`, `supersedes_digest` or `stored_set_digest` (the stored ordered patches), checked in that order once the target snapshot has re-derived",
+            "a requested record whose target snapshot fails never returns this code: the caller reads the 404 and Cloud only logs it, with a log-only `location` of `record_bytes` (the record does not decode), `graph_bytes` (the stored Graph Artifact does not decode) or `authorized_targets` (the snapshot does not re-derive), checked in that order before the wire locations",
+            "a disclosed set (a successor, or the set behind an invalidation) whose snapshot fails the same way is logged with the same log-only `location` against that set's `proposal_version_id`, while the caller reads the projection without that set's digest",
+            "so E8.3.T5 renders only the wire locations",
+            "stage `proposal_record_read` (this code's own failure stage, not the K8 `required_at` vocabulary its obligations carry)",
+            "`write_occurred: false`",
+            "never the envelope, a digest value or a partial projection",
+            "E8.3.T5 renders it",
+            "distinct from `gate.proposal_hash_mismatch`",
+        ],
+    );
+
+    // The row cites the RT-08 waiver; it lives where the invariant does.
+    let milestones = read_repo_doc("docs/roadmap/v10/MILESTONES.md");
+    let e6_1 = heading_section(&milestones, "MILESTONES.md", "### E6.1 ", "\n### ");
+    assert_clauses_in_order(
+        e6_1,
+        "MILESTONES.md E6.1 acceptance",
+        &[
+            "RT-08 waiver ([ADR-0069](../../adr/0069-proposal-review-read-rt08-exceptions.md), owner decision, 2026-10-01)",
+            "`agentdoc.cloud.proposal_review.v0` (E8.3.T1) returns the proposed `evidence_ref` Source Object ids verbatim, graded only through their patch target",
+            "Scope: that route only.",
+            "Bound: the route ships in no release stage until it grades every returned `evidence_ref` with this slice's predicate and withholds the whole envelope with the same 404 when any is existence-excluded",
+            "E8.3's acceptance closes the waiver. The same waiver covers the envelope's `no_change_required` dispositions, whose findings no patch addresses (ADR-0069 §1).",
+            "RT-08 existence residual ([ADR-0069](../../adr/0069-proposal-review-read-rt08-exceptions.md) §3, owner decision, 2026-10-01): `agentdoc.cloud.proposal_review.v0` reports `superseded` even when the caller may read no successor",
+        ],
+    );
+    // ... and E8.3's acceptance is what the waiver names as closing it.
+    let e8_3 = heading_section(&milestones, "MILESTONES.md", "### E8.3 ", "\n### ");
+    assert_clauses_in_order(
+        e8_3,
+        "MILESTONES.md E8.3 acceptance",
+        &[
+            "Every `evidence_ref` Source Object the T1 read returns is graded with E6.1's visibility predicate; any existence-excluded one withholds the whole envelope with the same 404",
+            "T1 runs under ADR-0069's RT-08 waiver and ships in no release stage until this holds; E8.3 is not accepted without it",
+            "Every `no_change_required` disposition the T1 envelope carries has its finding's affected objects graded with T1's own grade; any that fails withholds the whole envelope with the same 404 (ADR-0069 §1; E8.3 is not accepted without it).",
+        ],
+    );
+    // T1 ships ahead of E6.1; the map says E6.1 gates acceptance only.
+    assert_clauses_in_order(
+        e8_3,
+        "MILESTONES.md E8.3 T1",
+        &[
+            "another set's digest (a successor, or the set behind an invalidation) is shown only when that set passes the same grade after its own snapshot re-derives, and `superseded` still reports that a successor exists (ADR-0069)",
+            "T1 ships before E6.1 under ADR-0069; E6.1 gates E8.3's acceptance, not T1",
+        ],
+    );
+    let map = read_repo_doc("docs/roadmap/v10/EXECUTION-MAP.md");
+    let map_e8_3 = heading_section(&map, "EXECUTION-MAP.md", "## E8.3 ", "\n## ");
+    assert_clauses_in_order(
+        map_e8_3,
+        "EXECUTION-MAP.md E8.3",
+        &["E6.1 gates E8.3's acceptance; T1 ships before it under ADR-0069"],
+    );
+    // The ADR, which outranks RED-TEAM-CLOSURE, carries both exceptions.
+    let adr = read_repo_doc("docs/adr/0069-proposal-review-read-rt08-exceptions.md");
+    assert_clauses_in_order(
+        &adr,
+        "ADR-0069",
+        &[
+            "**Status:** Accepted",
+            "exceptions to the permanent stop-ship invariant",
+            "no patch addresses",
+            "Scope: that route only.",
+            "E8.3's acceptance closes the waiver.",
+            "The read never answers 404",
+            "The `supersedes` claim is unauthenticated",
+            "no slice owns that yet",
+            "is accepted with no release bound",
+        ],
+    );
+    // RT-08 and the stop-ship list point at the ADR that excepts them.
+    let pointer = "[ADR-0069](../../adr/0069-proposal-review-read-rt08-exceptions.md) records the exceptions accepted for the E8.3.T1 proposal review read";
+    let red_team = read_repo_doc("docs/roadmap/v10/RED-TEAM-CLOSURE.md");
+    let rt_08 = heading_section(&red_team, "RED-TEAM-CLOSURE.md", "## RT-08 ", "\n## ");
+    assert_clauses_in_order(rt_08, "RED-TEAM-CLOSURE.md RT-08", &[pointer]);
+    let stop_ship = heading_section(
+        &map,
+        "EXECUTION-MAP.md",
+        "# Permanent stop-ship invariants",
+        "\n# ",
+    );
+    assert_clauses_in_order(
+        stop_ship,
+        "EXECUTION-MAP.md stop-ship invariants",
+        &[pointer],
+    );
+}
+
 /// Asserts every clause occurs in `cell`, in the given order.
 fn assert_clauses_in_order(cell: &str, row: &str, clauses: &[&str]) {
     let positions: Vec<usize> = clauses
