@@ -98,7 +98,7 @@ impl MigrationRequest {
             Some(MIGRATION_REQUEST_V1_SCHEMA_VERSION) => true,
             _ => return Err(MigrationError::InvalidRequest),
         };
-        let has_v1_field = value.as_object().is_none_or(|object| {
+        let has_v1_field = value.as_object().is_some_and(|object| {
             MIGRATION_REQUEST_V1_FIELDS
                 .iter()
                 .any(|field| object.contains_key(*field))
