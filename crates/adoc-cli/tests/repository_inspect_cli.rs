@@ -255,6 +255,21 @@ fn generated_profile_selects_only_adoc_sources() {
 }
 
 #[test]
+fn parsed_item_count_survives_rule_violations() {
+    let source = format!("{DOC}\n[bad](javascript:alert(1))\n");
+    let (dir, request) = repo(&[("one.adoc", source.as_str())]);
+    let receipt = receipt(&dir.root, &request);
+    assert!(
+        receipt["diagnostic_codes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|code| code == "parse.unsafe_link"),
+        "{receipt}"
+    );
+    assert_eq!(receipt["parsed_item_count"], 2, "{receipt}");
+}
+#[test]
 fn parsed_item_count_counts_failed_graphs_and_nulls_unparseable_sources() {
     let (dup, request) = repo(&[("one.adoc", DOC), ("two.adoc", DOC)]);
     let failed = receipt(&dup.root, &request);
