@@ -81,6 +81,26 @@ pub(crate) struct QualifiedMigrationObject {
     reasons: Vec<QualificationReason>,
 }
 
+impl QualifiedMigrationObject {
+    fn new(
+        node: &GraphKnowledgeObjectNode,
+        source: &MigrationImportSource,
+        binding: SourceBindingCoordinates,
+        reasons: Vec<QualificationReason>,
+    ) -> Self {
+        Self {
+            object_id: node.id.clone(),
+            content_hash: node.content_hash.clone(),
+            source_path: source.path.clone(),
+            object_source_binding: binding,
+            source_record_id: source.source_record_id.clone(),
+            source_binding_id: source.source_binding_id.clone(),
+            eligible: reasons.is_empty(),
+            reasons,
+        }
+    }
+}
+
 /// Inputs come from the actual full-snapshot validator. Application signal facts
 /// enter as domain data; this module never depends on an application/query type.
 pub(crate) fn evaluate(
@@ -121,6 +141,16 @@ pub(crate) fn evaluate(
             .source_binding
             .clone()
             .ok_or(MigrationError::ValidationUnavailable)?;
+        // Fresh never reads authored history and never grants eligibility.
+        if version == MIGRATION_FRESH_QUALIFICATION_POLICY_VERSION {
+            output.push(QualifiedMigrationObject::new(
+                node,
+                source,
+                binding,
+                vec![QualificationReason::simple(ReasonCode::FreshReviewRequired)],
+            ));
+            continue;
+        }
         let mapped = mapping
             .apply_import_mapping(&node.kind, node.status.as_deref(), None)
             .map_err(|_| MigrationError::ValidationUnavailable)?
@@ -162,20 +192,9 @@ pub(crate) fn evaluate(
                 diagnostic_codes: codes.into_iter().collect(),
             });
         }
-        if version == MIGRATION_FRESH_QUALIFICATION_POLICY_VERSION {
-            // ponytail: history reasons computed then replaced; fresh never grants eligibility.
-            reasons = vec![QualificationReason::simple(ReasonCode::FreshReviewRequired)];
-        }
-        output.push(QualifiedMigrationObject {
-            object_id: node.id.clone(),
-            content_hash: node.content_hash.clone(),
-            source_path: source.path.clone(),
-            object_source_binding: binding,
-            source_record_id: source.source_record_id.clone(),
-            source_binding_id: source.source_binding_id.clone(),
-            eligible: reasons.is_empty(),
-            reasons,
-        });
+        output.push(QualifiedMigrationObject::new(
+            node, source, binding, reasons,
+        ));
     }
     output.sort_by(|a, b| a.object_id.cmp(&b.object_id));
     Ok(output)
@@ -297,6 +316,29 @@ mod tests {
             result[0].reasons[1].related_object_ids,
             vec![contradiction.id]
         );
+    }
+    #[test]
+    fn fresh_policy_output_ignores_evidence_diagnostics() {
+        let mut claim = knowledge_object("test.claim", "bogus_kind", None, "sha256:original");
+        claim.evidence = vec![GraphEvidence::object_ref("source_code", "test.source")];
+        let evidence = Diagnostic::warning(DiagnosticCode::EvidenceHashDrift, "changed")
+            .with_object_id("test.source");
+        let result = evaluate(
+            &[&claim],
+            &sources(),
+            &QualificationFreshness::default(),
+            &[evidence],
+            MIGRATION_FRESH_QUALIFICATION_POLICY_VERSION,
+        )
+        .unwrap();
+        assert!(!result[0].eligible);
+        assert!(matches!(
+            result[0].reasons.as_slice(),
+            [QualificationReason {
+                code: ReasonCode::FreshReviewRequired,
+                ..
+            }]
+        ));
     }
     #[test]
     fn migration_qualification_native_evidence_uncertainty_propagates_only_to_references() {
