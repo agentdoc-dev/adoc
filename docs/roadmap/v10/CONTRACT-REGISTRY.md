@@ -3,14 +3,14 @@
 **Status:** Accepted — canonical wire inventory (E0.3)
 **Date:** 2026-08-22
 **Registry version:** 1
-**Authority:** [`EXECUTION-MAP.md`](EXECUTION-MAP.md) §E0.3 · corrections provenance [`RED-TEAM-CLOSURE.md §RT-21`](RED-TEAM-CLOSURE.md#rt-21--contract-inventory-corrections-from-original-pr-review)
-**Guards:** `crates/adoc-mcp/tests/contract_registry_guard.rs` (`adoc`) and the completeness-scan CI referencing this file from `agentdoc-dev/action` and `agentdoc-dev/cloud` (E0.3.T5)
+**Authority:** [`EXECUTION-MAP.md`](https://github.com/agentdoc-dev/cloud/blob/main/docs/roadmap/EXECUTION-MAP.md) (private repository) §E0.3 · corrections provenance [`RED-TEAM-CLOSURE.md §RT-21`](RED-TEAM-CLOSURE.md#rt-21--contract-inventory-corrections-from-original-pr-review)
+**Guards:** `crates/adoc-mcp/tests/contract_registry_guard.rs` (`adoc`), the completeness-scan CI referencing this file from `agentdoc-dev/action` and `agentdoc-dev/cloud` (E0.3.T5), and `scripts/roadmap-authority.py` in `agentdoc-dev/cloud`, which checks every code the execution map and milestones cite against this file at the commit Cloud pins (`ADOC_REGISTRY_REF`)
 
 ## Registry rule
 
 No externally observable V1 wire code or contract exists outside this registry (E0.3 exit gate). A new envelope, Diagnostic Code, event code, state vocabulary entry, retention class, or replay posture ships only together with its row here; the guards fail any repository emitting a code this file does not carry.
 
-The executable planning surface this registry governs is `docs/roadmap/v10`; preserved historical documents (non-executable per [`EXECUTION-MAP.md`](EXECUTION-MAP.md) §1) may cite retired codes as provenance without a row here.
+The executable planning surface this registry governs is `docs/roadmap/v10` in this repository together with the execution map and milestones in `agentdoc-dev/cloud` (`docs/roadmap/`, private); preserved historical documents (non-executable per [`EXECUTION-MAP.md`](https://github.com/agentdoc-dev/cloud/blob/main/docs/roadmap/EXECUTION-MAP.md#3-authority-and-planning-precedence) §3) may cite retired codes as provenance without a row here.
 
 Field vocabularies enclosed by an envelope (statuses, enum-valued fields) are governed by that envelope's schema and registered through its row; vocabularies observable independently of a single envelope are registered explicitly in the vocabulary sections at the end of this file.
 

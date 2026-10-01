@@ -51,7 +51,7 @@ env:
 # Deliberately NOT here, so nobody re-derives them:
 #
 #   * A `changes`/paths-filter lane. crates/adoc-mcp/tests/docs_manifest_guard.rs
-#     and roadmap_sync_guard.rs are ADR-0041 docs-truth guards that read
+#     and contract_registry_guard.rs are ADR-0041 docs-truth guards that read
 #     docs/reference/*.md and docs/roadmap/v10/*.md, and examples/markdown-pilot/**/*.md
 #     are test inputs. A `!**/*.md` filter would report green on exactly the
 #     PRs those guards exist to catch. Markdown is source in this repo.

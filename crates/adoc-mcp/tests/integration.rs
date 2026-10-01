@@ -14,5 +14,4 @@ mod docs_manifest_guard;
 mod gateway_audit;
 mod manifest_guard;
 mod mcp_adapter;
-mod roadmap_sync_guard;
 mod stdio_dogfood;

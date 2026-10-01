@@ -2,7 +2,7 @@
 
 **Status:** Founder-approved decisions through 2026-09-01
 **Product amendment:** [`../../product/PRD-v1.1-amendment.md`](../../product/PRD-v1.1-amendment.md) / ADR-0056  
-**Executable plan:** [`EXECUTION-MAP.md`](EXECUTION-MAP.md)
+**Executable plan:** [`EXECUTION-MAP.md`](https://github.com/agentdoc-dev/cloud/blob/main/docs/roadmap/EXECUTION-MAP.md) (`agentdoc-dev/cloud`, private)
 
 The 2026-08-12 planning session produced D01–D35. The 2026-08-13 red-team produced D36–D39 and second-order closure requirements. The 2026-09-01 pilot-scope review produced D40. B1–B6 are no longer pending: ADR-0056 accepts them. ADR-0057 accepts D36–D39.
 
@@ -93,7 +93,7 @@ Keep visible: custom role/policy language; conditional/risk-aware grants; separa
 
 ## Implementation and historical authority
 
-[`../ROADMAP-V10.md`](../ROADMAP-V10.md) is the concise current V10 entry point. New work uses `E*` slices from [`EXECUTION-MAP.md`](EXECUTION-MAP.md); [`RED-TEAM-CLOSURE.md`](RED-TEAM-CLOSURE.md) supplies mandatory constraints.
+The [cloud roadmap](https://github.com/agentdoc-dev/cloud/blob/main/docs/roadmap/README.md) (private `agentdoc-dev/cloud` repository, `docs/roadmap/`) is the current V10 entry point. New work uses `E*` slices from [`EXECUTION-MAP.md`](https://github.com/agentdoc-dev/cloud/blob/main/docs/roadmap/EXECUTION-MAP.md); [`RED-TEAM-CLOSURE.md`](RED-TEAM-CLOSURE.md) supplies mandatory constraints.
 
 The exact original 4,816-line V10 draft remains in the latest checkout at [`../ROADMAP-V10-2026-08-12-original.md`](../ROADMAP-V10-2026-08-12-original.md). It is retained for detailed implementation research, threat analysis, test matrices, failure modes and provenance, but its legacy `V10.x` slices are non-executable.
 

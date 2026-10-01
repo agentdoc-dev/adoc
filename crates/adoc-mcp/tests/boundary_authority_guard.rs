@@ -5,7 +5,10 @@
 //! ADR-0055 must acknowledge the amendment in the same line (name ADR-0056,
 //! or say amended/superseded) or be a pinned allow-listed rule quotation.
 //! `ROADMAP-V10-2026-08-12-original.md` and `archive/` are preserved history
-//! (see `docs/roadmap/archive/README.md`) and exempt.
+//! (see `docs/roadmap/archive/README.md`) and exempt. The execution map and
+//! milestones moved to the single roadmap in `agentdoc-dev/cloud`; the
+//! map/milestones half of these checks runs there
+//! (`scripts/roadmap-authority.py`).
 //!
 //! Slice E0.2 extends the guard to the four managed-product invariants
 //! (ADR-0057, D36–D39): the ADR's invariant statements and its verbatim
@@ -28,11 +31,7 @@ const HISTORICAL_ORIGINAL: &str = "ROADMAP-V10-2026-08-12-original.md";
 /// they state rule 8 or describe this guard's own seeded fixture. Pinned
 /// exactly (file + trimmed line): editing one is a guard failure that
 /// forces re-review, never silent un-guarding.
-const ALLOWED_ADR_0055_LINES: &[(&str, &str)] = &[(
-    "docs/roadmap/v10/MILESTONES.md",
-    "- Doc guard fails on a seeded fixture line calling B3 \"ADR-0055 accepted\"; \
-     passes on the repaired tree.",
-)];
+const ALLOWED_ADR_0055_LINES: &[(&str, &str)] = &[];
 
 /// Lines that legitimately combine close/criterion/by-construction because
 /// they state the PR #143 acceptance-wording rule itself. Same pinning
@@ -49,22 +48,12 @@ const ALLOWED_CRITERION_CLOSURE_LINES: &[(&str, &str)] = &[
         "- PR description no longer claims 19/20 acceptance criteria are closed \
          \u{201c}by construction\u{201d};",
     ),
-    (
-        "docs/roadmap/v10/MILESTONES.md",
-        "3. `E0.1.T3` — Sweep acceptance wording per PR #143: no planned slice text \
-         claims to \"close\" a PRD acceptance criterion by construction; criteria map to \
-         planned work until implementation/evidence exists; extend the T1 check to guard \
-         the phrasing.",
-    ),
 ];
 
 /// Lines that legitimately state a permissive-default signature because
 /// they describe this guard's own seeded fixture. Same pinning discipline
 /// as `ALLOWED_ADR_0055_LINES`.
-const ALLOWED_PERMISSIVE_DEFAULT_LINES: &[(&str, &str)] = &[(
-    "docs/roadmap/v10/MILESTONES.md",
-    "- Doc guard fails on a seeded fixture stating a permissive-default resolution.",
-)];
+const ALLOWED_PERMISSIVE_DEFAULT_LINES: &[(&str, &str)] = &[];
 
 /// The annex deference lines, pinned exactly like the allow-lists:
 /// rewriting one into different — or contradictory — deference fails the

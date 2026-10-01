@@ -111,7 +111,7 @@ A small vertical slice that starts with `.adoc` input and ends with runnable CLI
 _Avoid_: horizontal layer milestone, infrastructure-only phase
 
 **V10 Planning Milestone**:
-A deliberate second sense of "milestone" for the V10 planning layer: a phase-sized grouping of `E*` slices (E0–E9) in `docs/roadmap/v10/MILESTONES.md`, anchored to release stages. The **Tracer-Bullet Milestone** vertical-cut discipline is preserved inside each grouping at the `E*.Tn` tracer-bullet level.
+A deliberate second sense of "milestone" for the V10 planning layer: a phase-sized grouping of `E*` slices (E0–E9) in the cloud roadmap's [`MILESTONES.md`](https://github.com/agentdoc-dev/cloud/blob/main/docs/roadmap/MILESTONES.md) (private repository `agentdoc-dev/cloud`), anchored to release stages. The **Tracer-Bullet Milestone** vertical-cut discipline is preserved inside each grouping at the `E*.Tn` tracer-bullet level.
 _Avoid_: using this sense outside the V10 planning documents, phase groupings without tracer-bullet decomposition
 
 **V0 Implementation Stack**:

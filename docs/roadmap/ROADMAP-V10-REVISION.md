@@ -2,7 +2,7 @@
 
 **Status:** Draft, normative planning revision; G1A scope superseded by D40
 **Date:** 2026-08-12  
-**Supersedes conflicting statements in:** [`ROADMAP-V10.md`](ROADMAP-V10.md)  
+**Supersedes conflicting statements in:** [`ROADMAP-V10.md`](ROADMAP-V10-2026-08-12-original.md)  
 **Locked product boundary:** `docs/product/PRD-v1.0.md` / ADR-0055, as amended by [`../product/PRD-v1.1-amendment.md`](../product/PRD-v1.1-amendment.md) / ADR-0056  
 **Decision register:** [`v10/DECISION-REGISTER.md`](v10/DECISION-REGISTER.md)
 

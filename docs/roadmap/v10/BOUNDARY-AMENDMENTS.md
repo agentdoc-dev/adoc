@@ -43,4 +43,4 @@ ADR-0057 fixes four implementation invariants:
 
 ## Current implementation authority
 
-These boundary questions are no longer blockers requiring founder input. Implementation follows [`EXECUTION-MAP.md`](EXECUTION-MAP.md) and the red-team closure requirements. Any future change to B1–B6 requires another explicit product decision.
+These boundary questions are no longer blockers requiring founder input. Implementation follows [`EXECUTION-MAP.md`](https://github.com/agentdoc-dev/cloud/blob/main/docs/roadmap/EXECUTION-MAP.md) (private repository) and the red-team closure requirements. Any future change to B1–B6 requires another explicit product decision.

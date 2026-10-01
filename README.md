@@ -108,4 +108,4 @@ HTML can be filtered by audience. The canonical graph is **not** an audience-fil
 
 Bug reports, examples, documentation improvements, and focused code changes are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md) for setup, checks, and help. Report vulnerabilities privately through [SECURITY.md](SECURITY.md).
 
-The [product index](docs/product/README.md) and [roadmap](docs/roadmap/ROADMAP-V10.md) describe the project's direction. AgentDoc is [MIT licensed](LICENSE), including revisions predating the license file.
+The [product index](docs/product/README.md) and [roadmap](docs/roadmap/ROADMAP.md) describe the project's direction. AgentDoc is [MIT licensed](LICENSE), including revisions predating the license file.

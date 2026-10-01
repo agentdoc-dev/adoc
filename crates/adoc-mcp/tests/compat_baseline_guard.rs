@@ -1,25 +1,30 @@
-//! Docs-truth guard (E0.4): `docs/roadmap/v10/COMPATIBILITY.md` carries one
-//! row per multi-repo execution-map slice — contract owner, min–max tested
-//! producer-consumer versions, owning release train — atop the verified
-//! 2026-08-13 baseline, and no executable planning surface reverts to the
-//! superseded Action alpha.18 baseline or uses a historical Cloud phase
-//! label as a release gate. The parse targets slice headings, bold field
-//! labels, and pinned HTML comment anchors, never free prose.
+//! Docs-truth guard (E0.4): each row of `docs/roadmap/v10/COMPATIBILITY.md`
+//! names a contract owner, min–max tested producer-consumer versions and an
+//! owning release train consistent with its own repos cell, atop the verified
+//! 2026-08-13 baseline, and no v10 annex reverts to the superseded Action
+//! alpha.18 baseline or uses a historical Cloud phase label as a release
+//! gate. That the table has exactly one row per multi-repo execution-map
+//! slice is checked in agentdoc-dev/cloud (`scripts/roadmap-authority.py`),
+//! where the execution map lives, against the commit Cloud pins as
+//! `ADOC_REGISTRY_REF` (ADR-0070). The parse targets table cells and pinned
+//! HTML comment anchors, never free prose.
 
 use crate::support;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fs;
 use std::ops::RangeInclusive;
 use std::path::PathBuf;
 
 const COMPATIBILITY: &str = "docs/roadmap/v10/COMPATIBILITY.md";
-const EXECUTION_MAP: &str = "docs/roadmap/v10/EXECUTION-MAP.md";
 
 /// The cross-repo delivery order: the owning release train of a slice is
 /// the LAST involved repository in this order (Cloud last; web claims
 /// update only after the release they describe).
 const DELIVERY_ORDER: &[&str] = &["adoc", "action", "cloud", "web"];
+
+/// Rows in the `compat:slice-rows` block today.
+const ROW_FLOOR: usize = 47;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -69,98 +74,14 @@ fn anchored_block<'doc>(doc: &'doc str, doc_name: &str, anchor: &str) -> &'doc s
     &doc[anchored_span(doc, doc_name, anchor)]
 }
 
-/// Repositories a slice's `**Repos:**` field names, in delivery order.
-/// `all` means every implementation repository (plus `web` when named).
+/// Repositories a row's repos cell names, in delivery order.
 fn repos_named(field: &str) -> Vec<&'static str> {
-    let lower = field.to_lowercase();
-    let mentions = |name: &str| {
-        lower.match_indices(name).any(|(index, _)| {
-            let before_ok = index == 0 || !lower.as_bytes()[index - 1].is_ascii_alphanumeric();
-            let after = lower.as_bytes().get(index + name.len());
-            before_ok && !after.is_some_and(|byte| byte.is_ascii_alphanumeric())
-        })
-    };
-    if mentions("all") {
-        let mut named = vec!["adoc", "action", "cloud"];
-        if mentions("web") {
-            named.push("web");
-        }
-        return named;
-    }
+    let tokens: Vec<&str> = field.split(',').map(str::trim).collect();
     DELIVERY_ORDER
         .iter()
         .copied()
-        .filter(|name| mentions(name))
+        .filter(|name| tokens.contains(name))
         .collect()
-}
-
-/// `slice id → repos` for every execution-map slice involving two or more
-/// repositories — the set the compatibility table must cover exactly.
-// ponytail: first **Repos:** line per slice wins and only `## E<n>.<n>`
-// headings are slices — the map's uniform structure; a decoy earlier prose
-// line or a three-part slice id would need parser work only if the map
-// ever adopts them.
-fn multi_repo_slices(map: &str) -> BTreeMap<String, Vec<&'static str>> {
-    if let Some(opener) = support::doc_scan::unclosed_fence(map) {
-        panic!("{EXECUTION_MAP}:{opener}: fence never closes — slices past it are invisible");
-    }
-    let mut slices = BTreeMap::new();
-    let mut total = 0usize;
-    let mut current: Option<String> = None;
-    let close_slice = |current: &mut Option<String>| {
-        if let Some(open_id) = current.take() {
-            panic!(
-                "{EXECUTION_MAP}: slice {open_id} has no parseable **Repos:** field — \
-                 a format drift here would silently exempt the slice from the table"
-            );
-        }
-    };
-    for (_, line) in support::doc_scan::structural_lines(map) {
-        if let Some(rest) = line.strip_prefix("## ") {
-            close_slice(&mut current);
-            let id = rest.split_whitespace().next().unwrap_or_default();
-            let is_slice = id
-                .strip_prefix('E')
-                .is_some_and(|numbers| numbers.split('.').count() == 2)
-                && id[1..].chars().all(|c| c.is_ascii_digit() || c == '.');
-            if is_slice {
-                total += 1;
-                current = Some(id.to_string());
-            }
-        } else if let (Some(id), Some((_, field))) =
-            (current.as_ref(), line.split_once("**Repos:**"))
-        {
-            // Every repository the field NAMES (backticked) must be one the
-            // delivery order knows — an unrecognised name would otherwise be
-            // silently dropped and its party never appear in the table
-            // (E8.5's future component repository is the live case).
-            for token in field.split('`').skip(1).step_by(2) {
-                assert!(
-                    DELIVERY_ORDER.contains(&token),
-                    "{EXECUTION_MAP}: slice {id} names repository {token:?}, which the \
-                     delivery order does not know — add it to DELIVERY_ORDER or the \
-                     slice silently ships with an uncovered party"
-                );
-            }
-            let repos = repos_named(field);
-            assert!(
-                !repos.is_empty(),
-                "{EXECUTION_MAP}: slice {id} names no known repository in its \
-                 **Repos:** field: {field:?}"
-            );
-            if repos.len() >= 2 {
-                slices.insert(id.clone(), repos);
-            }
-            current = None; // first Repos line per slice wins
-        }
-    }
-    close_slice(&mut current);
-    assert!(
-        total > 60 && slices.len() > 20,
-        "only {total} slices / {} multi-repo parsed from {EXECUTION_MAP} — the parse drifted",
-        slices.len()
-    );
-    slices
 }
 
 struct CompatRow {
@@ -205,55 +126,59 @@ fn compat_rows(table_block: &str) -> BTreeMap<String, CompatRow> {
     rows
 }
 
-/// The uncovered/stale differences between the map's multi-repo slices and
-/// the table rows — empty exactly when the table is row-complete.
-fn row_completeness_mismatches(
-    slices: &BTreeMap<String, Vec<&'static str>>,
-    rows: &BTreeMap<String, CompatRow>,
-) -> Vec<String> {
-    let slice_ids: BTreeSet<&String> = slices.keys().collect();
-    let row_ids: BTreeSet<&String> = rows.keys().collect();
-    slice_ids
-        .difference(&row_ids)
-        .map(|id| format!("multi-repo slice {id} has no compatibility row"))
-        .chain(
-            row_ids
-                .difference(&slice_ids)
-                .map(|id| format!("row {id} does not match a multi-repo slice in the map")),
-        )
-        .collect()
-}
-
+/// The row-per-slice half runs where the execution map lives; the annex must
+/// keep naming that guard, and ADR-0070 the hand-over and its residual.
 #[test]
-fn every_multi_repo_slice_has_exactly_one_row() {
-    let slices = multi_repo_slices(&read_repo_doc(EXECUTION_MAP));
+fn the_cloud_handover_is_named_in_the_annex_and_the_adr() {
     let compatibility = compatibility();
-    let rows = compat_rows(anchored_block(
-        &compatibility,
-        COMPATIBILITY,
-        "compat:slice-rows",
-    ));
-    let mismatches = row_completeness_mismatches(&slices, &rows);
     assert!(
-        mismatches.is_empty(),
-        "compatibility table is not row-complete against {EXECUTION_MAP}:\n{}",
-        mismatches.join("\n")
+        compatibility.contains("`scripts/roadmap-authority.py` in `agentdoc-dev/cloud`"),
+        "{COMPATIBILITY}: the Guard line must name the Cloud check that owns the row-per-slice rule"
+    );
+    let adr = read_repo_doc("docs/adr/0070-single-product-roadmap-in-cloud.md");
+    assert!(
+        compatibility.contains("0070-single-product-roadmap-in-cloud.md")
+            && adr.contains("Accepted residual: pin lag")
+            && adr.contains("`scripts/roadmap-authority.py`")
+            && adr.contains("`boundary_authority_guard`"),
+        "{COMPATIBILITY} must cite ADR-0070, which must name the Cloud check, every guard \
+         that handed rules over and the pin-lag residual"
     );
 }
 
 #[test]
 fn rows_name_owner_versions_and_owning_train() {
-    let slices = multi_repo_slices(&read_repo_doc(EXECUTION_MAP));
     let compatibility = compatibility();
     let rows = compat_rows(anchored_block(
         &compatibility,
         COMPATIBILITY,
         "compat:slice-rows",
     ));
+    // Which rows are owed is checked in Cloud (ADR-0070); the floor makes a
+    // local deletion loud at once. Lower it deliberately with any removal.
+    assert!(
+        rows.len() >= ROW_FLOOR,
+        "only {} rows parsed from {COMPATIBILITY} (expected at least {ROW_FLOOR}) — a row \
+         was deleted or the parse drifted; lower the pin deliberately with the removal",
+        rows.len()
+    );
     for (id, row) in &rows {
-        let Some(repos) = slices.get(id) else {
-            continue; // stale rows are `every_multi_repo_slice_has_exactly_one_row`'s report
-        };
+        // Every name in the cell must be one the delivery order knows: an
+        // unknown party must fail, not vanish from the derived repo list.
+        for token in row.repos.split(',').map(str::trim) {
+            assert!(
+                DELIVERY_ORDER.contains(&token),
+                "{id}: repos cell names {token:?}, which the delivery order does not \
+                 know — an unknown party must fail, not vanish from the comparison"
+            );
+        }
+        let repos = repos_named(&row.repos);
+        // The table is cross-repo only: a single-repo row would satisfy the
+        // owner and train checks below vacuously.
+        assert!(
+            repos.len() >= 2,
+            "{id}: repos cell names {repos:?} — a compatibility row needs at least two repositories"
+        );
         assert!(
             repos.contains(&row.owner.as_str()),
             "{id}: contract owner {:?} is not an involved repository {repos:?}",
@@ -264,21 +189,6 @@ fn rows_name_owner_versions_and_owning_train() {
             *repos.last().unwrap(),
             "{id}: owning release train must be the last involved repository \
              in the delivery order (Cloud last, web after)"
-        );
-        // Exact in both directions: an extra repo in the cell is the same
-        // silent divergence from the map as a missing one.
-        for token in row.repos.split(',').map(str::trim) {
-            assert!(
-                DELIVERY_ORDER.contains(&token),
-                "{id}: repos cell names {token:?}, which the delivery order does not \
-                 know — an unknown party must fail, not vanish from the comparison"
-            );
-        }
-        assert_eq!(
-            repos_named(&row.repos),
-            *repos,
-            "{id}: repos cell does not mirror the map's involved repositories: {:?}",
-            row.repos
         );
         let segments: Vec<&str> = row.versions.split('·').map(str::trim).collect();
         for repo in DELIVERY_ORDER {
@@ -305,44 +215,12 @@ fn rows_name_owner_versions_and_owning_train() {
             } else {
                 assert!(
                     segment.is_none(),
-                    "{id}: versions cell names {repo}, which the map does not involve: {:?}",
+                    "{id}: versions cell names {repo}, which the repos cell does not involve: {:?}",
                     row.versions
                 );
             }
         }
     }
-}
-
-#[test]
-fn deleting_a_row_fires_the_lint() {
-    let slices = multi_repo_slices(&read_repo_doc(EXECUTION_MAP));
-    let compatibility = compatibility();
-    let block = anchored_block(&compatibility, COMPATIBILITY, "compat:slice-rows");
-    let doctored: String = block
-        .lines()
-        .filter(|line| !line.starts_with("| `E0.3`"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    let mismatches = row_completeness_mismatches(&slices, &compat_rows(&doctored));
-    assert!(
-        mismatches.iter().any(|m| m.contains("E0.3")),
-        "removing the E0.3 row must be reported as a missing row"
-    );
-}
-
-#[test]
-fn a_stale_row_fires_the_lint() {
-    let slices = multi_repo_slices(&read_repo_doc(EXECUTION_MAP));
-    let compatibility = compatibility();
-    let block = anchored_block(&compatibility, COMPATIBILITY, "compat:slice-rows");
-    // E0.1 is a single-repo slice, so a row for it is stale by construction.
-    let doctored =
-        format!("{block}\n| `E0.1` | adoc, cloud | adoc | adoc 0.3.4 · Cloud scaffold | cloud |");
-    let mismatches = row_completeness_mismatches(&slices, &compat_rows(&doctored));
-    assert!(
-        mismatches.iter().any(|m| m.contains("E0.1")),
-        "a row for a single-repo slice must be reported as stale"
-    );
 }
 
 #[test]
@@ -530,7 +408,7 @@ fn true_up_records_shipped_not_shipped_and_the_o01_allocation() {
     }
 }
 
-/// Every executable v10 planning document, `(file name, content)`.
+/// Every `docs/roadmap/v10` annex, `(file name, content)`.
 fn v10_documents() -> Vec<(String, String)> {
     let dir = repo_root().join("docs/roadmap/v10");
     let mut documents: Vec<(String, String)> = fs::read_dir(&dir)

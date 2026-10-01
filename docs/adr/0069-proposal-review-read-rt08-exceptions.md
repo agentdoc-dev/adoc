@@ -9,9 +9,11 @@
 E8.3.T1 is the Cloud session read that serves a stored Proposal Record for
 review. `RED-TEAM-CLOSURE.md` RT-08 forbids unauthorized content leaking
 through result bodies or metadata, result counts, or graph edge and neighbour
-existence, and `EXECUTION-MAP.md` lists side-channel disclosure among the
-permanent stop-ship invariants. Milestone acceptance checks yield to both
-(`EXECUTION-MAP.md` §1). An accepted ADR outranks them, so the exceptions
+existence, and the
+[execution map](https://github.com/agentdoc-dev/cloud/blob/main/docs/roadmap/EXECUTION-MAP.md)
+(§22; private repository) lists side-channel disclosure among the permanent
+stop-ship invariants. Milestone acceptance checks yield to both (execution
+map §3). An accepted ADR outranks them, so the exceptions
 below are recorded here as exceptions to the permanent stop-ship invariant,
 scoped to this one route.
 
@@ -68,10 +70,13 @@ Two parts of the read do not meet RT-08 in full:
 
 ## Consequences
 
-- `CONTRACT-REGISTRY.md` and `MILESTONES.md` §E6.1 and §E8.3 cite this ADR
-  rather than recording the exceptions themselves.
+- `CONTRACT-REGISTRY.md` and the milestones (`MILESTONES.md` §E6.1 and §E8.3,
+  in `agentdoc-dev/cloud` since 2026-10-01) cite this ADR rather than
+  recording the exceptions themselves.
   `contract_registry_guard::e8_3_review_contracts_are_registered_as_planned`
-  pins the citations and the decisions here.
+  pins the registry rows, the RT-08 pointer and the decisions here;
+  `scripts/roadmap-authority.py` in `agentdoc-dev/cloud` pins the
+  `MILESTONES.md` citations.
 - Removing either exception (grading `evidence_ref`, or a supersession signal
   that hides the existence bit) is an additive change that supersedes the
   matching decision in this ADR.
