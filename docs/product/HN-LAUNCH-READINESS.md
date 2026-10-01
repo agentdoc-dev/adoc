@@ -17,7 +17,7 @@ A contributor should find setup, checks, contribution expectations, and help.
 
 This scoped work does not change the accepted Product V1 direction in the
 [product index](README.md), [CONTEXT.md](../../CONTEXT.md), or the existing
-[V10 execution map](../roadmap/v10/EXECUTION-MAP.md).
+[V10 execution map](https://github.com/agentdoc-dev/cloud/blob/main/docs/roadmap/EXECUTION-MAP.md) (private repository).
 
 Evidence: [launch audit](../audits/2026-09-18-hn-launch-readiness.md).
 Delivery order and combined milestone handoffs: [launch roadmap](../roadmap/HN-LAUNCH-READINESS.md).

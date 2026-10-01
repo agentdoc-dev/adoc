@@ -5,7 +5,7 @@ Local candidate work, automated checks, and independent review are complete. Pub
 
 [Requirements/domain](../product/HN-LAUNCH-READINESS.md) ·
 [Audit/evidence](../audits/2026-09-18-hn-launch-readiness.md).
-Existing product work continues under [V10 execution map](v10/EXECUTION-MAP.md).
+Existing product work continues under [V10 execution map](https://github.com/agentdoc-dev/cloud/blob/main/docs/roadmap/EXECUTION-MAP.md) (private repository).
 HN IDs cover launch preparation only, not a replacement for E* engineering slices.
 This file is the roadmap index and **combined milestone handoff document**.
 

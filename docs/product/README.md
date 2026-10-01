@@ -42,13 +42,13 @@ ADR-0057 fixes four implementation invariants: workspace-qualified managed Objec
 ## Precedence
 
 1. Shipped behavior: code, tests, accepted implementation ADRs, released contracts.
-2. Active implementation sequence: `docs/roadmap/v10/EXECUTION-MAP.md` for Product V1 work.
+2. Active implementation sequence: the [Product V1 execution map](https://github.com/agentdoc-dev/cloud/blob/main/docs/roadmap/EXECUTION-MAP.md) in the cloud roadmap (private repository `agentdoc-dev/cloud`).
 3. Forward Product V1 direction: PRD v1.1 amendment for changed clauses, then PRD v1.0 for everything else.
 4. Historical numbered citations: PRD v0.2 (`PRD.md`).
 
 Where PRD v1.0 or the v1.1 amendment changes the forward product direction relative to earlier cycles, it does not retroactively redefine shipped behavior.
 
-The original `docs/roadmap/ROADMAP-V10.md` is historical research/detail only after this amendment; new implementation work uses `E*` slices from `docs/roadmap/v10/EXECUTION-MAP.md`.
+The original V10 draft (`docs/roadmap/ROADMAP-V10-2026-08-12-original.md`) is historical research/detail only after this amendment; new implementation work uses `E*` slices from the [execution map](https://github.com/agentdoc-dev/cloud/blob/main/docs/roadmap/EXECUTION-MAP.md) (private repository).
 
 ## Migration plan
 
@@ -56,7 +56,7 @@ Before replacing the unversioned historical `PRD.md` file:
 
 1. accept PRD v1.0 (done — ADR-0055);
 2. accept the Product V1 amendment (done — ADR-0056 Accepted);
-3. re-cut the active implementation sequence against the amended boundary (done by `docs/roadmap/v10/EXECUTION-MAP.md` in PR #143);
+3. re-cut the active implementation sequence against the amended boundary (done by the V10 execution map in PR #143; the map moved to the [cloud roadmap](https://github.com/agentdoc-dev/cloud/blob/main/docs/roadmap/README.md) (private repository) on 2026-10-01);
 4. migrate/version old bare `PRD §N` citations using the v1.0 crosswalk (Appendix D of `PRD-v1.0.md` is the mechanical input for this migration);
 5. decide the final archive name/path for PRD v0.2 and historical roadmaps;
 6. only then rename/consolidate canonical product documents.

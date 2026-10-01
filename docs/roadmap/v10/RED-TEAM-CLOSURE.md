@@ -11,7 +11,7 @@ This file turns the 2026-08-13 adversarial review into explicit implementation r
 
 The original `ROADMAP-V10.md` remains research/source material, not the executable slice authority.
 
-The only executable V10 sequence is [`EXECUTION-MAP.md`](EXECUTION-MAP.md). Any old V10 slice is non-executable unless the execution map explicitly carries its requirement forward.
+The only executable V10 sequence is [`EXECUTION-MAP.md`](https://github.com/agentdoc-dev/cloud/blob/main/docs/roadmap/EXECUTION-MAP.md) (private repository). Any old V10 slice is non-executable unless the execution map explicitly carries its requirement forward.
 
 Precedence inside the V10 planning package:
 

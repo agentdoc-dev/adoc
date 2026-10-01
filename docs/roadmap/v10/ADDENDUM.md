@@ -54,7 +54,7 @@ Authority mode does not imply synchronization success. A connector may be author
 
 `ROADMAP-V10-REVISION.md` §19 item 3 describes the **required before-ready correction** to the root `README.md` pointer. That correction has landed on this branch: commits `d25fbc1` and `953729b` replaced all three V9 roadmap references (lines 65, 660, and 728) with V10 pointers. The earlier note that the GitHub write path had rejected the replacement is historical; no commit was rewritten to achieve the fix.
 
-The canonical roadmap entry inside `docs/roadmap/` is [`../ROADMAP-V10.md`](../ROADMAP-V10.md), and the executable sequence is [`EXECUTION-MAP.md`](EXECUTION-MAP.md).
+Since 2026-10-01 the canonical roadmap entry is the [cloud roadmap](https://github.com/agentdoc-dev/cloud/blob/main/docs/roadmap/README.md) (private `agentdoc-dev/cloud` repository, `docs/roadmap/`), and the executable sequence is its [`EXECUTION-MAP.md`](https://github.com/agentdoc-dev/cloud/blob/main/docs/roadmap/EXECUTION-MAP.md).
 
 ## 4. Historical-roadmap preservation decision — RESOLVED
 
@@ -62,7 +62,7 @@ The physical treatment of the original V10 draft is no longer open.
 
 The latest repository tree preserves the exact original 4,816-line V10 document at [`../ROADMAP-V10-2026-08-12-original.md`](../ROADMAP-V10-2026-08-12-original.md), using the same Git blob (`a84551c8861977c1383209e35ec127fb60e56391`) introduced in PR #143's first commit.
 
-The file remains beside the other roadmaps so its original relative links keep their intended base path. [`../ROADMAP-V10.md`](../ROADMAP-V10.md) is now the concise current entry point, and [`EXECUTION-MAP.md`](EXECUTION-MAP.md) is the only executable V10 slice sequence.
+The file remains beside the other roadmaps so its original relative links keep their intended base path. The [cloud roadmap](https://github.com/agentdoc-dev/cloud/blob/main/docs/roadmap/README.md) (private repository) is now the current entry point, and its [`EXECUTION-MAP.md`](https://github.com/agentdoc-dev/cloud/blob/main/docs/roadmap/EXECUTION-MAP.md) is the only executable V10 slice sequence.
 
 This establishes the documentation rule going forward:
 

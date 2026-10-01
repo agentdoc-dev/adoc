@@ -6,7 +6,7 @@ Archived material is deliberately retained in the **current repository tree**. E
 
 ## Authority
 
-Archived roadmaps are **not executable implementation authority**. For current Product V1 work, start at [`../v10/README.md`](../v10/README.md) and follow [`../v10/EXECUTION-MAP.md`](../v10/EXECUTION-MAP.md).
+Archived roadmaps are **not executable implementation authority**. For current Product V1 work, start at the [cloud roadmap](https://github.com/agentdoc-dev/cloud/blob/main/docs/roadmap/README.md) (private `agentdoc-dev/cloud` repository, `docs/roadmap/`; the public contract annexes are in [`../v10/`](../v10/)) and follow its [execution map](https://github.com/agentdoc-dev/cloud/blob/main/docs/roadmap/EXECUTION-MAP.md).
 
 When historical material conflicts with current product decisions, ADRs, contracts, or the execution map, the current authority wins. Historical text is kept unchanged so its reasoning and provenance remain inspectable.
 

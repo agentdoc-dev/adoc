@@ -1,5 +1,12 @@
 # AgentDoc Roadmap
 
+**Status:** this file is the OSS CLI roadmap: the V0–V9 record and its Next/Later pointers.
+Product V1 work (`E*` slices and Cloud UI `U*` cards) is planned in one roadmap
+kept in the private `agentdoc-dev/cloud` repository under `docs/roadmap/`:
+[README](https://github.com/agentdoc-dev/cloud/blob/main/docs/roadmap/README.md) (private repository), ROADMAP, [EXECUTION-MAP](https://github.com/agentdoc-dev/cloud/blob/main/docs/roadmap/EXECUTION-MAP.md) and [MILESTONES](https://github.com/agentdoc-dev/cloud/blob/main/docs/roadmap/MILESTONES.md).
+The public Product V1 contract annexes stay here under `v10/`; see
+[Product V1 contract annexes](#product-v1-contract-annexes).
+
 Launch preparation: [Hacker News readiness roadmap and milestone handoffs](HN-LAUNCH-READINESS.md)
 cover repository presentation, onboarding, and release readiness. The proposed HN
 slices do not replace the existing product engineering sequence.
@@ -10,7 +17,7 @@ Intel macOS is deferred for launch.
 
 This roadmap converts the broad PRD into small tracer-bullet milestones. A milestone is not complete just because one subsystem exists; it is complete when a user can start with `.adoc` source, run the `adoc` CLI, receive useful diagnostics, and get both human HTML and graph JSON outputs.
 
-The initial product is a local CLI for native AgentDoc authoring in Git repositories. The compiler, graph artifact, local retrieval loop, hybrid search, graph traversal, retrieval evaluation harness, local workflow, agent patch validation/application, local MCP gateway, team CI diff/review, Markdown compatibility mode, the V5 Expanded Knowledge Model, lifecycle automation, V1.7 prose retrieval, V8.1 Markdown migration, the V8.3 composite CI Action, V8.5 evidence anchors, and the V9.1–V9.3 slices ([ROADMAP-V9.md](ROADMAP-V9.md)) — canonical source identity and portable hashes (graph v5), deterministic change assessment with exact-SHA receipts, advisory knowledge disposition, cited semantic review, canonical patch proposals, human-governed delivery, and full post-change knowledge synchronization — are implemented. The V9.4 evidence track (V9.4.1–V9.4.4) never started and is restaged into V10, carrying the V7.2 (ADR-0042) and V8.2 pilot-evidence debt by name; V8.4 contract/health work remains uncompleted as written. The detailed next-cycle implementation handoff is [ROADMAP-V10.md](ROADMAP-V10.md), whose executable plan is the `E*` slice sequence in [v10/EXECUTION-MAP.md](v10/EXECUTION-MAP.md); it builds the Cloud-first product-V1 boundary accepted by ADR-0055 as amended by [`../product/PRD-v1.1-amendment.md`](../product/PRD-v1.1-amendment.md) / ADR-0056 — contract spine and provider-neutral assessment first, then a thin Cloud control plane and the governance trust chain, with permission-aware retrieval and sensitive-access audit in scope per PRD §36 item 12 — and keeps the managed multi-repository runtime and Enterprise programs gated behind evidence.
+The initial product is a local CLI for native AgentDoc authoring in Git repositories. The compiler, graph artifact, local retrieval loop, hybrid search, graph traversal, retrieval evaluation harness, local workflow, agent patch validation/application, local MCP gateway, team CI diff/review, Markdown compatibility mode, the V5 Expanded Knowledge Model, lifecycle automation, V1.7 prose retrieval, V8.1 Markdown migration, the V8.3 composite CI Action, V8.5 evidence anchors, and the V9.1–V9.3 slices ([ROADMAP-V9.md](ROADMAP-V9.md)) — canonical source identity and portable hashes (graph v5), deterministic change assessment with exact-SHA receipts, advisory knowledge disposition, cited semantic review, canonical patch proposals, human-governed delivery, and full post-change knowledge synchronization — are implemented. The V9.4 evidence track (V9.4.1–V9.4.4) never started and is restaged into V10, carrying the V7.2 (ADR-0042) and V8.2 pilot-evidence debt by name; V8.4 contract/health work remains uncompleted as written. The next cycle, Product V1, is planned in the cloud roadmap; its executable plan is the `E*` slice sequence in the [execution map](https://github.com/agentdoc-dev/cloud/blob/main/docs/roadmap/EXECUTION-MAP.md) (private repository). It builds the Cloud-first product-V1 boundary accepted by ADR-0055 as amended by [`../product/PRD-v1.1-amendment.md`](../product/PRD-v1.1-amendment.md) / ADR-0056 — contract spine and provider-neutral assessment first, then a thin Cloud control plane and the governance trust chain, with permission-aware retrieval and sensitive-access audit in scope per PRD §36 item 12 — and keeps the managed multi-repository runtime and Enterprise programs gated behind evidence.
 
 V0 implementation stack: Rust for the `adoc` CLI, parser, validator, compiler, HTML renderer, and graph JSON emitter. The Rust project starts as a Cargo workspace with `crates/adoc-cli` for command-line behavior and `crates/adoc-core` for reusable compiler behavior. Future editor, web, and agent integrations should consume the compiled artifacts or core library rather than own the source grammar.
 
@@ -61,15 +68,46 @@ Implemented:
 
 Next:
 
-- [ROADMAP-V10.md](ROADMAP-V10.md): the Cloud-first product-V1 cycle, implemented as the `E*` slice sequence in [v10/EXECUTION-MAP.md](v10/EXECUTION-MAP.md) with the engineer hand-off layer in [v10/MILESTONES.md](v10/MILESTONES.md) — contract spine and provider-neutral assessment first, then the Cloud control plane and governance trust chain, with permission-aware retrieval resolved in-cycle (E6.1).
+- Product V1, the Cloud-first V10 cycle: the `E*` slice sequence in the [execution map](https://github.com/agentdoc-dev/cloud/blob/main/docs/roadmap/EXECUTION-MAP.md) (private repository), decomposed into tracer bullets in [MILESTONES](https://github.com/agentdoc-dev/cloud/blob/main/docs/roadmap/MILESTONES.md) — contract spine and provider-neutral assessment first, then the Cloud control plane and governance trust chain, with permission-aware retrieval resolved in-cycle (E6.1).
 - V7.2 dogfood evidence remains governed by accepted ADR-0042 and its `docs/pilots/dogfood/report.md`; that mandatory track, alongside the V8.2 external-pilot debt, now runs as the E9.3/E9.4 evidence cohorts against frozen evidence contracts (historical provenance: V10.8.1 and the V10.1.7 ledger) rather than claiming either complete retroactively.
 - V8.4 contract/health work is re-scoped only through a V10 vertical slice/ADR when required; the absent design/contract documents and conflicting historical ADR reservation are not treated as shipped.
 
 Later:
 
 - Composition and advanced graphs (formerly "V6"): `@include`, nested typed blocks, custom schema registry, automated contradiction detection. Postponed until the editing loop and full vocabulary are proven in real use; un-gating is measured by the V7.2 pilot report ([ROADMAP-V7.md](ROADMAP-V7.md) Later section).
-- Managed multi-repository knowledge, workspace-wide identity, Agent Use Receipts, the managed agent runtime, and one demand-gated connector are the Gated Successor Program — Managed Multi-Repository Runtime in [ROADMAP-V10.md](ROADMAP-V10.md); ROADMAP-V9's V10-program outlines remain the historical record. Permission-aware retrieval left this list: it is in-cycle V10 scope (E6.1; historical provenance: V10.6), per PRD §36 item 12.
-- Customer-controlled zero-egress deployment, enterprise identity (SSO/RBAC), tamper-resistant audit, SIEM export, retention administration, and residency are the Gated Successor Program — Enterprise / Zero-Egress in [ROADMAP-V10.md](ROADMAP-V10.md); ROADMAP-V9's V11-program outlines remain the historical record.
+- Managed multi-repository knowledge, workspace-wide identity, Agent Use Receipts, the managed agent runtime, and one demand-gated connector are the Gated Successor Program — Managed Multi-Repository Runtime, defined (historical, not executable) in the [original V10 draft](ROADMAP-V10-2026-08-12-original.md#gated-successor-program--managed-multi-repository-runtime-post-v1-formerly-the-v9-era-v10-program); the Product V1 execution map's gated program P2 carries the demand-gated connector; no post-V1 program schedules the rest of it yet. ROADMAP-V9's V10-program outlines remain the historical record. Permission-aware retrieval left this list: it is in-cycle V10 scope (E6.1; historical provenance: V10.6), per PRD §36 item 12.
+- Customer-controlled zero-egress deployment, enterprise identity (SSO/RBAC), tamper-resistant audit, SIEM export, retention administration, and residency are the Gated Successor Program — Enterprise / Zero-Egress, defined (historical, not executable) in the [original V10 draft](ROADMAP-V10-2026-08-12-original.md#gated-successor-program--enterprise--zero-egress-post-v1-formerly-the-v9-era-v11-program); the Product V1 execution map's gated programs P3 and P4 carry the zero-egress semantic stack and the enterprise administration items. ROADMAP-V9's V11-program outlines remain the historical record.
+
+## Product V1 contract annexes
+
+The Product V1 contract annexes stay public in this repository, next to the code
+and guards that bind them. Other repositories fetch them by path, so their paths
+do not change.
+
+- [v10/CONTRACT-REGISTRY.md](v10/CONTRACT-REGISTRY.md): canonical inventory of wire contracts and codes.
+- [v10/COMPATIBILITY.md](v10/COMPATIBILITY.md): cross-repository baseline and release compatibility table.
+- [v10/DECISION-REGISTER.md](v10/DECISION-REGISTER.md): founder-approved decision index.
+- [v10/RED-TEAM-CLOSURE.md](v10/RED-TEAM-CLOSURE.md): mandatory security, runtime and evidence requirements.
+- [v10/AUTHORIZATION.md](v10/AUTHORIZATION.md): identity, authorization, ACLs and groups.
+- [v10/KNOWLEDGE-MODEL.md](v10/KNOWLEDGE-MODEL.md): canonical knowledge, migration, state, hashing, proof and retention.
+- [v10/SEMANTICS.md](v10/SEMANTICS.md): semantic assessment, validation and processing.
+- [v10/CONNECTORS-API.md](v10/CONNECTORS-API.md): source control, connectors and the Cloud API.
+- [v10/RELEASE-EVIDENCE.md](v10/RELEASE-EVIDENCE.md): release stages, operations and evidence.
+- [v10/BOUNDARY-AMENDMENTS.md](v10/BOUNDARY-AMENDMENTS.md): resolution register for the B1–B6 boundary amendments.
+- [v10/ADDENDUM.md](v10/ADDENDUM.md): connector authority modes and documentation-state decisions.
+
+[ROADMAP-V10-REVISION.md](ROADMAP-V10-REVISION.md) is the earlier reconciliation narrative.
+
+The exact original 4,816-line V10 draft is kept at
+[ROADMAP-V10-2026-08-12-original.md](ROADMAP-V10-2026-08-12-original.md). It is
+byte-for-byte identical to the draft in PR #143's first commit (blob
+`a84551c8861977c1383209e35ec127fb60e56391`) and sits in this directory so its
+relative links keep their base path (its four links to the former
+`ROADMAP-V10.md` entry point, removed on 2026-10-01, no longer resolve). It is research material and is not executable: do
+not implement its legacy `V10.x` slices; where it conflicts with current Product
+V1 decisions or the execution map, current authority wins. Older documents that
+say "the original `ROADMAP-V10.md`" mean this file. The
+[archive policy](archive/README.md) covers historical documents.
 
 ## V0: Native CLI Compiler
 

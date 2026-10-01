@@ -20,7 +20,7 @@ Rust workspace (edition 2024, rust 1.95): `adoc-core` (domain), `adoc-cli`, `ado
 ## Architecture
 - DDD + Hexagonal Architecture must be followed. Domain and application logic live in `adoc-core`, free of I/O; `adoc-cli`, `adoc-mcp`, and `adoc-local` are adapters that depend inward. New behavior starts as a domain concept, never as adapter-local logic.
 - Use the ubiquitous language defined in `CONTEXT.md` (Knowledge Object, Graph Artifact, Strict Mode, …) in code, tests, and docs. Read the relevant entries before naming new domain concepts; never use the terms its `_Avoid_` lists reject.
-- Architectural decisions are recorded in `docs/adr/` — consult them before changing direction, and add an ADR when you make a new one. The active roadmap is `docs/roadmap/ROADMAP-V10.md`.
+- Architectural decisions are recorded in `docs/adr/` — consult them before changing direction, and add an ADR when you make a new one. Product V1 is planned in `agentdoc-dev/cloud` under `docs/roadmap/` (README, ROADMAP, EXECUTION-MAP, MILESTONES; ADR-0070); the OSS CLI roadmap stays at `docs/roadmap/ROADMAP.md`; contract annexes: `docs/roadmap/v10/`.
 
 ## Code quality
 - Write idiomatic, modern Rust and follow Clean Code and SOLID.

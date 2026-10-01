@@ -3,7 +3,9 @@
 //! envelope schema-version id or Diagnostic Code may be emitted by `adoc`
 //! source or tests without a registry row, and no shipped registry row may
 //! outlive the code that emitted it. The parse targets pinned HTML comment
-//! anchors and backticked first table cells, never free prose.
+//! anchors and backticked first table cells, never free prose. Checks that
+//! read the execution map or milestones run in `agentdoc-dev/cloud`
+//! (`scripts/roadmap-authority.py`), where those documents live.
 
 use crate::support;
 
@@ -533,7 +535,9 @@ fn e8_1_attestation_contracts_and_codes_are_registered() {
             "registry:cloud-codes",
             "connect.installation_mode_conflict",
             // T4 tag: the activation slice A0 has no roadmap counterpart, and
-            // roadmap_sync_guard reconciles only MILESTONES with EXECUTION-MAP.
+            // the roadmap sync check (agentdoc-dev/cloud,
+            // `scripts/roadmap-authority.py`) reconciles only MILESTONES with
+            // EXECUTION-MAP.
             // A0 merged to Cloud main at `7e9732a0` (cloud#172).
             "unreleased (E8.1.T4, activation slice A0)",
             // D-13 (R2/R3): one new code, installation-scoped across
@@ -818,48 +822,8 @@ fn e8_3_review_contracts_are_registered_as_planned() {
         ],
     );
 
-    // The row cites the RT-08 waiver; it lives where the invariant does.
-    let milestones = read_repo_doc("docs/roadmap/v10/MILESTONES.md");
-    let e6_1 = heading_section(&milestones, "MILESTONES.md", "### E6.1 ", "\n### ");
-    assert_clauses_in_order(
-        e6_1,
-        "MILESTONES.md E6.1 acceptance",
-        &[
-            "RT-08 waiver ([ADR-0069](../../adr/0069-proposal-review-read-rt08-exceptions.md), owner decision, 2026-10-01)",
-            "`agentdoc.cloud.proposal_review.v0` (E8.3.T1) returns the proposed `evidence_ref` Source Object ids verbatim, graded only through their patch target",
-            "Scope: that route only.",
-            "Bound: the route ships in no release stage until it grades every returned `evidence_ref` with this slice's predicate and withholds the whole envelope with the same 404 when any is existence-excluded",
-            "E8.3's acceptance closes the waiver. The same waiver covers the envelope's `no_change_required` dispositions, whose findings no patch addresses (ADR-0069 §1).",
-            "RT-08 existence residual ([ADR-0069](../../adr/0069-proposal-review-read-rt08-exceptions.md) §3, owner decision, 2026-10-01): `agentdoc.cloud.proposal_review.v0` reports `superseded` even when the caller may read no successor",
-        ],
-    );
-    // ... and E8.3's acceptance is what the waiver names as closing it.
-    let e8_3 = heading_section(&milestones, "MILESTONES.md", "### E8.3 ", "\n### ");
-    assert_clauses_in_order(
-        e8_3,
-        "MILESTONES.md E8.3 acceptance",
-        &[
-            "Every `evidence_ref` Source Object the T1 read returns is graded with E6.1's visibility predicate; any existence-excluded one withholds the whole envelope with the same 404",
-            "T1 runs under ADR-0069's RT-08 waiver and ships in no release stage until this holds; E8.3 is not accepted without it",
-            "Every `no_change_required` disposition the T1 envelope carries has its finding's affected objects graded with T1's own grade; any that fails withholds the whole envelope with the same 404 (ADR-0069 §1; E8.3 is not accepted without it).",
-        ],
-    );
-    // T1 ships ahead of E6.1; the map says E6.1 gates acceptance only.
-    assert_clauses_in_order(
-        e8_3,
-        "MILESTONES.md E8.3 T1",
-        &[
-            "another set's digest (a successor, or the set behind an invalidation) is shown only when that set passes the same grade after its own snapshot re-derives, and `superseded` still reports that a successor exists (ADR-0069)",
-            "T1 ships before E6.1 under ADR-0069; E6.1 gates E8.3's acceptance, not T1",
-        ],
-    );
-    let map = read_repo_doc("docs/roadmap/v10/EXECUTION-MAP.md");
-    let map_e8_3 = heading_section(&map, "EXECUTION-MAP.md", "## E8.3 ", "\n## ");
-    assert_clauses_in_order(
-        map_e8_3,
-        "EXECUTION-MAP.md E8.3",
-        &["E6.1 gates E8.3's acceptance; T1 ships before it under ADR-0069"],
-    );
+    // The MILESTONES E6.1/E8.3 and execution-map E8.3/stop-ship halves of
+    // this check run in agentdoc-dev/cloud (`scripts/roadmap-authority.py`).
     // The ADR, which outranks RED-TEAM-CLOSURE, carries both exceptions.
     let adr = read_repo_doc("docs/adr/0069-proposal-review-read-rt08-exceptions.md");
     assert_clauses_in_order(
@@ -875,24 +839,18 @@ fn e8_3_review_contracts_are_registered_as_planned() {
             "The `supersedes` claim is unauthenticated",
             "no slice owns that yet",
             "is accepted with no release bound",
+            "`scripts/roadmap-authority.py` in `agentdoc-dev/cloud` pins the",
         ],
+    );
+    assert!(
+        registry.contains("the execution map and milestones in `agentdoc-dev/cloud`"),
+        "{REGISTRY}: the governed planning surface must name the Cloud roadmap"
     );
     // RT-08 and the stop-ship list point at the ADR that excepts them.
     let pointer = "[ADR-0069](../../adr/0069-proposal-review-read-rt08-exceptions.md) records the exceptions accepted for the E8.3.T1 proposal review read";
     let red_team = read_repo_doc("docs/roadmap/v10/RED-TEAM-CLOSURE.md");
-    let rt_08 = heading_section(&red_team, "RED-TEAM-CLOSURE.md", "## RT-08 ", "\n## ");
+    let rt_08 = annex_section(&red_team, "RED-TEAM-CLOSURE.md", "## RT-08 ");
     assert_clauses_in_order(rt_08, "RED-TEAM-CLOSURE.md RT-08", &[pointer]);
-    let stop_ship = heading_section(
-        &map,
-        "EXECUTION-MAP.md",
-        "# Permanent stop-ship invariants",
-        "\n# ",
-    );
-    assert_clauses_in_order(
-        stop_ship,
-        "EXECUTION-MAP.md stop-ship invariants",
-        &[pointer],
-    );
 }
 
 /// Asserts every clause occurs in `cell`, in the given order.
@@ -1997,7 +1955,7 @@ fn group_vocabularies_match_the_e2_4_registry() {
 }
 
 #[test]
-fn group_retention_rules_match_the_e2_4_authority() {
+fn group_retention_rules_match_authorization_a7() {
     let schema: serde_json::Value = serde_json::from_str(&read_repo_doc(
         "docs/agent/v0/schema/adoc.authorization_decision.v0.schema.json",
     ))
@@ -2291,27 +2249,8 @@ fn group_retention_rules_match_the_e2_4_authority() {
         a7.contains(pending_retention_claim),
         "AUTHORIZATION.md §A7 must retain the pending-window endpoints"
     );
-    let milestones = read_repo_doc("docs/roadmap/v10/MILESTONES.md");
-    let e2_4 = heading_section(&milestones, "MILESTONES.md", "### E2.4 ", "\n### ");
-    assert!(
-        e2_4.contains(pending_retention_claim),
-        "the E2.4 exit gate must retain the pending-window endpoints"
-    );
-    assert!(
-        e2_4.contains(source_timing_claim),
-        "the E2.4 exit gate must retain source timing endpoints"
-    );
-    assert!(
-        e2_4.contains(event_polarity_claim)
-            && e2_4.contains(positive_absence_claim)
-            && e2_4.contains(removal_membership_claim)
-            && e2_4.contains(removal_cap_doc_claim)
-            && e2_4.contains(no_prior_cap_claim)
-            && e2_4.contains(born_inert_claim)
-            && e2_4.contains(contradiction_claim)
-            && e2_4.contains(resync_bound_claim),
-        "the E2.4 exit gate must make current state authoritative and bound contradictions"
-    );
+    // The MILESTONES E2.4 exit-gate half of these checks runs in
+    // agentdoc-dev/cloud (`scripts/roadmap-authority.py`).
     for state in schema["$defs"]["membershipUnavailabilityState"]["enum"]
         .as_array()
         .expect("membership-unavailability states are an enum")
@@ -2321,8 +2260,8 @@ fn group_retention_rules_match_the_e2_4_authority() {
             .expect("membership-unavailability states are strings");
         let token = format!("`{state}`");
         assert!(
-            a7.contains(&token) && e2_4.contains(&token),
-            "A7 and E2.4 must define registered unavailability state {state:?}"
+            a7.contains(&token),
+            "A7 must define registered unavailability state {state:?}"
         );
     }
     let empty_absence_claim = "necessary but not sufficient condition for an empty array";
@@ -2331,67 +2270,38 @@ fn group_retention_rules_match_the_e2_4_authority() {
             .as_str()
             .expect("membership absence completeness is documented")
             .contains(empty_absence_claim)
-            && a7.contains(empty_absence_claim)
-            && e2_4.contains(empty_absence_claim),
+            && a7.contains(empty_absence_claim),
         "group presence must not erase a different group's confirmed absence"
     );
     let oidc_epoch_claim = "Claim-only `oidc_group` instead opens a grant-conferring epoch after provider-configuration validation";
     assert!(
-        a7.contains(oidc_epoch_claim) && e2_4.contains(oidc_epoch_claim),
+        a7.contains(oidc_epoch_claim),
         "claim-only OIDC must not wait for an impossible resynchronization"
     );
-    for (surface_name, surface) in [("AUTHORIZATION.md §A7", a7), ("MILESTONES.md E2.4", e2_4)] {
-        for claim in [
-            "versioned freshness policy retained by the exact binding",
-            "requires `fresh_until` to equal that recomputation",
-            "shorter of retained `fresh_until`",
-            "shorter policy caps existing observations immediately",
-            "connector unavailability cannot extend",
-            "effective deadline must follow `effective_at`",
-            freshness_history_claim,
-            scheduled_refresh_claim,
-            distinct_policy_claim,
-            failed_reenable_claim,
-            membership_unavailable_claim,
-            group_name_history_claim,
-            membership_absence_claim,
-            membership_unavailability_claim,
-        ] {
-            assert!(
-                surface.contains(claim),
-                "{surface_name} must define membership retention and replay: {claim}"
-            );
-        }
+    for claim in [
+        "versioned freshness policy retained by the exact binding",
+        "requires `fresh_until` to equal that recomputation",
+        "shorter of retained `fresh_until`",
+        "shorter policy caps existing observations immediately",
+        "connector unavailability cannot extend",
+        "effective deadline must follow `effective_at`",
+        freshness_history_claim,
+        scheduled_refresh_claim,
+        distinct_policy_claim,
+        failed_reenable_claim,
+        membership_unavailable_claim,
+        group_name_history_claim,
+        membership_absence_claim,
+        membership_unavailability_claim,
+    ] {
+        assert!(
+            a7.contains(claim),
+            "AUTHORIZATION.md §A7 must define membership retention and replay: {claim}"
+        );
     }
     assert!(
-        e2_4.contains(source_kind_binding_claim),
-        "E2.4.T2 must reject a source kind that differs from the retained binding"
-    );
-    assert!(
-        e2_4.contains(observation_link_claim)
-            && e2_4.contains(source_record_binding_claim)
-            && e2_4.contains(source_subject_claim),
-        "E2.4.T2 must reject observation or source-record substitution"
-    );
-    assert!(
-        e2_4.contains(manual_membership_binding_claim),
-        "E2.4.T1 must reject a manual membership from another principal or group"
-    );
-    assert!(
-        e2_4.contains("does not equal the commit or completion instant of the event or run identified by that same"),
-        "E2.4.T2 must reject an observation made effective by a different event or run"
-    );
-    assert!(
-        e2_4.contains(transition_latitude_claim),
-        "E2.4.T2 must reject routine sweeps that cross an epoch boundary"
-    );
-    assert!(
-        a7.contains(link_lifecycle_claim)
-            && a7.contains(link_endpoint_claim)
-            && e2_4.contains(link_lifecycle_claim)
-            && e2_4.contains(link_endpoint_claim)
-            && e2_4.contains(link_principal_claim),
-        "A7 and E2.4 must reject wrong-principal and inactive identity links"
+        a7.contains(link_lifecycle_claim) && a7.contains(link_endpoint_claim),
+        "A7 must reject wrong-principal and inactive identity links"
     );
     let oidc_claim = "freshly issued and verified ID token";
     let oidc_timing_claim =
@@ -2409,9 +2319,7 @@ fn group_retention_rules_match_the_e2_4_authority() {
     let registry_group_sources =
         support::doc_scan::anchored_block(&registry_doc, REGISTRY, "registry:group-source-kinds");
     assert!(
-        a7.contains(oidc_claim)
-            && e2_4.contains(oidc_claim)
-            && registry_group_sources.contains(oidc_claim),
+        a7.contains(oidc_claim) && registry_group_sources.contains(oidc_claim),
         "OIDC group membership must define claim-only freshness and recovery"
     );
     assert!(
@@ -2430,7 +2338,6 @@ fn group_retention_rules_match_the_e2_4_authority() {
     assert!(
         effective_at.contains(oidc_lifetime_claim)
             && a7.contains(oidc_lifetime_claim)
-            && e2_4.contains(oidc_lifetime_claim)
             && registry_group_sources.contains(oidc_lifetime_claim),
         "claim-only OIDC membership must not outlive its exact identity session"
     );
@@ -2440,8 +2347,7 @@ fn group_retention_rules_match_the_e2_4_authority() {
             .expect("principal identity-session replay is documented")
             .contains(oidc_session_binding_claim)
             && effective_at.contains(oidc_session_binding_claim)
-            && a7.contains(oidc_session_binding_claim)
-            && e2_4.contains(oidc_session_binding_claim),
+            && a7.contains(oidc_session_binding_claim),
         "claim-only OIDC must bind the observation to the evaluated identity session"
     );
     assert!(
@@ -2450,21 +2356,15 @@ fn group_retention_rules_match_the_e2_4_authority() {
             .expect("principal identity-session ownership is documented")
             .contains(oidc_human_claim)
             && a7.contains(oidc_human_claim)
-            && e2_4.contains(oidc_human_claim)
             && registry_group_sources.contains(oidc_human_claim),
         "claim-only OIDC group membership must be human-session-only"
     );
     assert!(
         a7.contains(relink_recovery_claim)
-            && e2_4.contains(relink_recovery_claim)
             && a7.contains(oidc_recovery_claim)
-            && e2_4.contains(oidc_recovery_claim)
             && a7.contains(relink_outcome_claim)
-            && e2_4.contains(relink_outcome_claim)
             && a7.contains(relink_retry_claim)
-            && e2_4.contains(relink_retry_claim)
-            && a7.contains(relink_retention_claim)
-            && e2_4.contains(relink_retention_claim),
+            && a7.contains(relink_retention_claim),
         "relink recovery must refresh event-driven memberships without treating OIDC as a connector"
     );
 }
@@ -2574,14 +2474,8 @@ fn obligations_table_pins_o01() {
         "{DECISION_REGISTER}: O-01's \"Owed at\" cell must name an executable \
          `E<major>.<minor> slice start`, got {owed_at:?}"
     );
-    let slice_id = owed_at.strip_suffix(" slice start").unwrap_or_default();
-    let map = read_repo_doc("docs/roadmap/v10/EXECUTION-MAP.md");
-    let heading = format!("## {slice_id} ");
-    assert!(
-        support::doc_scan::structural_lines(&map).any(|(_, line)| line.starts_with(&heading)),
-        "{DECISION_REGISTER}: O-01 is owed at {slice_id}, but the execution map \
-         has no such slice — the obligation points at nothing"
-    );
+    // That the slice exists in the execution map is checked in
+    // agentdoc-dev/cloud (`scripts/roadmap-authority.py`).
 }
 
 #[test]
@@ -2691,21 +2585,11 @@ fn bot_attestation_family_has_one_documented_wrapper_mapping() {
 /// The annex section opened by `heading` (a `## …` line), up to the next
 /// `## ` heading or EOF. Loud when the heading is missing.
 fn annex_section<'doc>(doc: &'doc str, doc_name: &str, heading: &str) -> &'doc str {
-    heading_section(doc, doc_name, heading, "\n## ")
-}
-
-/// The section opened by `heading`, up to `next_heading` or EOF.
-fn heading_section<'doc>(
-    doc: &'doc str,
-    doc_name: &str,
-    heading: &str,
-    next_heading: &str,
-) -> &'doc str {
     let start = doc
         .find(heading)
         .unwrap_or_else(|| panic!("{doc_name} lost its `{heading}` section"));
     let body = &doc[start + heading.len()..];
-    match body.find(next_heading) {
+    match body.find("\n## ") {
         Some(end) => &body[..end],
         None => body,
     }

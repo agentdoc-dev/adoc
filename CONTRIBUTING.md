@@ -63,7 +63,8 @@ reproduction, expected behavior, and actual behavior where applicable.
 Do not disclose vulnerabilities in public issues. Follow
 [SECURITY.md](SECURITY.md) for private reporting.
 
-Start with the [current product index](docs/product/README.md) and
-[V10 execution map](docs/roadmap/v10/EXECUTION-MAP.md) when proposing product changes.
+Start with the [current product index](docs/product/README.md) and the
+[Product V1 contract annexes](docs/roadmap/ROADMAP.md#product-v1-contract-annexes) when proposing product changes.
+Maintainers sequence the work in a private execution map; the annexes are its public contracts.
 The [roadmap](docs/roadmap/ROADMAP.md) records planned work; it is not a promise
 that an idea will be accepted or scheduled.

@@ -77,7 +77,8 @@ Facts checked in code (all load-bearing for §3–§4):
    for envelope ids; adding root files that only hold `mod` lines is harmless.
    No guard asserts on test *binary* names. No doc guard scans `--test` strings
    (`docs_manifest_guard` reads `docs/reference/*.md`; `roadmap_sync_guard` reads
-   `docs/roadmap/v10/*.md`; neither contains `--test`).
+   `docs/roadmap/v10/*.md`; neither contains `--test`). `roadmap_sync_guard` was
+   deleted on 2026-10-01 (ADR-0070).
 8. **Binary-name consumers** (`--test <file>`) outside historical docs:
    `.github/workflows/ci.yml:197` (FastEmbed lane), `CLAUDE.md:11`,
    `docs/design/v1-retrieval.md:284,290`, `docs/guides/markdown-pilot.md:6,109`,

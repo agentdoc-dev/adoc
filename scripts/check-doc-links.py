@@ -61,7 +61,7 @@ def check(files):
 def main():
     root = Path(__file__).resolve().parents[1]
     files = [root / name for name in ("README.md", "CONTRIBUTING.md", "SECURITY.md",
-             "docs/product/README.md", "docs/roadmap/v10/README.md")]
+             "docs/product/README.md", "docs/roadmap/ROADMAP.md")]
     files += sorted((root / "docs/guides").glob("*.md"))
     files += sorted((root / "docs/reference").glob("*.md"))
     errors = check(files)

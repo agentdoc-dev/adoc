@@ -2,8 +2,8 @@
 
 **Status:** Accepted — executable compatibility record (E0.4)  
 **Date:** 2026-08-22  
-**Authority:** [`EXECUTION-MAP.md`](EXECUTION-MAP.md) §E0.4 · [`RED-TEAM-CLOSURE.md §RT-22`](RED-TEAM-CLOSURE.md#rt-22--action-baseline-and-maturity) · [`§RT-02`](RED-TEAM-CLOSURE.md#rt-02--cross-repository-execution-ownership)  
-**Guard:** `crates/adoc-mcp/tests/compat_baseline_guard.rs`
+**Authority:** [`EXECUTION-MAP.md`](https://github.com/agentdoc-dev/cloud/blob/main/docs/roadmap/EXECUTION-MAP.md) (private repository) §E0.4 · [`RED-TEAM-CLOSURE.md §RT-22`](RED-TEAM-CLOSURE.md#rt-22--action-baseline-and-maturity) · [`§RT-02`](RED-TEAM-CLOSURE.md#rt-02--cross-repository-execution-ownership)  
+**Guard:** `crates/adoc-mcp/tests/compat_baseline_guard.rs` (row shape and baseline) and `scripts/roadmap-authority.py` in `agentdoc-dev/cloud` (one row per multi-repo slice of the execution map, checked at the commit Cloud pins as `ADOC_REGISTRY_REF`; [ADR-0070](../../adr/0070-single-product-roadmap-in-cloud.md))
 
 ## Verified baseline (2026-08-13 audit)
 
@@ -17,7 +17,7 @@ Every cross-repo slice names exactly one contract owner and one owning release t
 
 ## Compatibility table
 
-One row per multi-repo slice in the execution map. Until a slice ships its first tested cross-repo pair, its row carries the verified baseline above as both the minimum and maximum tested producer-consumer versions; the owning slice updates its row with the tested versions at slice completion — deleting a row instead of updating it fails the guard. In a versions cell, a single value means minimum = maximum; a genuine range writes an en dash between the tested endpoints, e.g. `adoc` 0.3.4–0.5.0.
+One row per multi-repo slice in the execution map. Until a slice ships its first tested cross-repo pair, its row carries the verified baseline above as both the minimum and maximum tested producer-consumer versions; the owning slice updates its row with the tested versions at slice completion — deleting a row instead of updating it fails the row floor in `compat_baseline_guard` here at once, and the Cloud row-per-slice check when Cloud advances its pin to that commit. In a versions cell, a single value means minimum = maximum; a genuine range writes an en dash between the tested endpoints, e.g. `adoc` 0.3.4–0.5.0.
 E8.5's GitLab CI component has no named home repository yet; its row covers the named contract parties (`adoc`, `cloud`) and gains the component repository's versions when E8.5 names it at slice start.
 
 <!-- compat:slice-rows -->
