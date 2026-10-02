@@ -128,7 +128,7 @@ Unauthorized content must not leak through:
 
 Sensitive authorized results carry classification and produce `adoc.sensitive_access.v0` or its final registered successor. Unauthorized sensitive content is excluded/denied.
 
-[ADR-0069](../../adr/0069-proposal-review-read-rt08-exceptions.md) records the exceptions accepted for the E8.3.T1 proposal review read: a bounded waiver for its ungraded `evidence_ref` ids and dispositions, and an accepted supersession-existence residual.
+[ADR-0069](../../adr/0069-proposal-review-read-rt08-exceptions.md) records the exceptions accepted for the E8.3.T1 proposal review read: a bounded waiver for its ungraded `evidence_ref` ids and dispositions, closed by [ADR-0071](../../adr/0071-proposal-review-read-grades-references.md), and an accepted supersession-existence residual. ADR-0071 also records that the read returns graded reference ids without a classification and records no `adoc.sensitive_access.v0` event, an exception scoped to that route.
 
 ## RT-09 — Semantic-context completeness
 

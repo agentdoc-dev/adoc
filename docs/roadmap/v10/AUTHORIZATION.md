@@ -123,6 +123,8 @@ sensitive + unauthorized
     → no restricted content returned
 ```
 
+[ADR-0071](../../adr/0071-proposal-review-read-grades-references.md) Decision 7 excepts one route: the Cloud proposal review read returns a graded reference id inside a proposal's own bytes without a classification and without a sensitive-access event, and returns no body or field value of the referenced object.
+
 A governed declassification may broaden visibility only through an authorized Governance Event recording:
 
 - exact object/version/fields;

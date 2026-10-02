@@ -773,17 +773,25 @@ fn e8_3_review_contracts_are_registered_as_planned() {
         &[
             "as verbatim `adoc.proposal.v0` bytes",
             "the review diff is the envelope's own proposed change list, against each patch's `base_hash` or against nothing for `create_object`, carrying the proposed `evidence_ref` Source Object references inside the patch changes; v0 carries no pre-change values and no semantic-assessment payload, so the assessment's citations and findings are not served by this read",
-            "its successor digests (`superseded` is true when any successor exists; `superseded_by` lists only the successors the caller may read, each graded with this same grade, `obligation.read` included deliberately though a successor returns no obligations, after its own target snapshot re-derives by the same rule, and a successor failing either is omitted, a failed snapshot being logged; each approval and attestation carries at most one invalidation, listed with the invalidating set's digest only when that set passes the same check and otherwise with a null, which an invalidation caused by a digest failure also carries; the read never answers 404 because of another set, since `supersedes` is only shape-checked and any proposer could otherwise withdraw a reviewer's access; `superseded` discloses that a successor exists, never how many or which, an RT-08 existence residual ADR-0069 accepts; the grade checks that the caller may read the claiming set, not that its proposer could supersede the set it names, so a forged set can set `superseded` and is listed when the caller may read it, and constraining who may claim `supersedes` is outside E8.3)",
+            "its successor digests (`superseded` is true when any successor exists; `superseded_by` lists only the successors the caller may read, each graded with this same grade and the reference grade below, `obligation.read` included deliberately though a successor returns no obligations, after its own target snapshot re-derives by the same rule, and a successor failing any of these is omitted, a failed snapshot being logged; each approval and attestation carries at most one invalidation, listed with the invalidating set's digest only when that set passes the same check and otherwise with a null, which an invalidation caused by a digest failure also carries; the read never answers 404 because of another set, since `supersedes` is only shape-checked and any proposer could otherwise withdraw a reviewer's access; `superseded` discloses that a successor exists, never how many or which, an RT-08 existence residual ADR-0069 accepts; the grade checks that the caller may read the claiming set, not that its proposer could supersede the set it names, so a forged set can set `superseded` and is listed when the caller may read it, and constraining who may claim `supersedes` is outside E8.3)",
             "the stored approval-command facts (scope, the open approval-stage proof obligations whose subject is one of the target objects, so the `obligation.read` grade covers every returned subject, policy version)",
             "holding `proposal.read` and, because it returns proof obligations, `obligation.read` on every target object of the set (a Workspace-wide grant covers them all, an object-scoped deny of either withholds the whole envelope; withholding the envelope rather than only its obligations is deliberate, one fail-closed answer, so a reviewer must hold both to see or approve the proposal; this read does not grade `proposal.review`, which no registered surface uses yet, and which commands it gates is E8.3.T3's decision)",
             "the Proposal Record binds no Source Record or ACL snapshot and this read returns no canonical field values, only proposed changes and each target's object id and knowledge kind, so its `proposal.read` and `obligation.read` grades treat the source-ACL ceiling and object/field visibility as `not_applicable`; a read that returned canonical or pre-change values would run both stages against each target",
-            "the proposed `evidence_ref` Source Object ids are returned verbatim and graded only through their patch target, because T1 is implemented ahead of E6.1 under the RT-08 waiver ADR-0069 records, which scopes it to this route and bars the route from every release stage until it grades them; E8.3 depends on E6.1 and is not accepted until this read grades every referenced Source Object with E6.1's predicate and withholds the whole envelope with the same 404 when any is existence-excluded",
-            "the envelope's `no_change_required` dispositions (each a finding id and acceptance-receipt digest for a finding no patch addresses, whose affected objects can lie outside the target objects) are returned verbatim under the same ADR-0069 waiver and bound: the route ships in no release stage until it grades every disposition finding's affected objects with this same grade and withholds the whole envelope with the same 404 when any fails",
+            "the read also grades the Knowledge Objects the envelope names outside its targets and withholds the whole envelope with the same 404 when any fails (ADR-0071, which closes the ADR-0069 §1 waiver)",
+            "every `evidence_ref` item, of any patch kind, that names a `knowledge_object` node of the Graph Artifact stored at admission is a referenced Source Object, every `create_object` placement anchor (`placement.after`, an existing object) is graded the same way, and such a node passes only when its authored `visibility` class (absent means `public`) is within the caller's retrieval audience (the caller's latest `managed_retrieval_policy_revisions` row, else `public`) and the caller holds `knowledge.read` on the node's object id and knowledge kind",
+            "so the audience is the whole class half; a policy that adds exclusions must apply them here too",
+            "an item that names no node is free text and is not graded",
+            "page ids, placement paths and `impacts` paths name source pages and paths, not Knowledge Objects, and are not graded",
+            "inline `[[object.id]]` references in a proposed body are body text that Cloud does not resolve at admission, and are not graded",
+            "has its finding resolved in the semantic assessment stored with the same ingestion, and each affected object graded with this read's own `proposal.read` and `obligation.read` grade",
+            "an unknown visibility class, a node without a kind, an id naming more than one node, a finding or affected object that does not resolve, a missing evidence row, or Graph Artifact or assessment bytes that do not decode read as the same 404 and are only logged",
+            "on the requested set this reference grade runs after the Proposal Record verifies (below), so the envelope it grades is the verified record and a 409 carries no reference, while a disclosed set's envelope has only passed its own snapshot re-derivation, and the Graph Artifact and assessment it resolves against are the stored admission bytes, whose digests are write-time constraints this read does not re-check, so the grade never raises on decodable JSON",
+            "a graded reference id is returned inside the envelope bytes without a classification and the read records no `adoc.sensitive_access.v0` event, a route-scoped RT-08 exception ADR-0071 records",
             "a non-member, a member lacking `proposal.read` or `obligation.read` on any target object, and an unknown or malformed digest all read as the same HTTP 404 that carries no registered code, with the body `{\"error\":\"not_found\"}`",
             "neither `workspace.cross_tenant_denied` nor `api.forbidden` is emitted",
             "the grade runs first, on the stored `authorized_targets` snapshot, and that snapshot is re-derived right after it and before every other check: it must re-derive as exactly the set's target objects, each patch's re-derived `target` with its knowledge kind, taken from the patch for `create_object` and otherwise from the Graph Artifact bytes Cloud stored at admission with the version's assessment ingestion, found by the version row's stored ingestion id (never by a record binding, never from the live graph); when it does not, or the record bytes or those Graph Artifact bytes do not decode, the caller reads the same 404 (consequential uncertainty fails closed, ADR-0057), so a destroyed record is indistinguishable from an absent one even to an entitled reviewer, and only Cloud's server log records `governance.proposal_record_integrity_failed` with the pre-grade location; so a caller not entitled reads the 404 whatever the stored bytes are and only a caller entitled on the stored snapshot can observe the 409; that snapshot is bound to the bytes by re-derivation, not authenticated, and the digests checked after it are unkeyed integrity checks against corruption, not an authorization boundary: a database writer able to rewrite the bytes and the snapshot together could recompute every digest and could equally write the grant itself",
             "then the record digest, the embedded set digest, the embedded patch binding, the `supersedes` binding and the stored ordered-patch set digest are re-verified in SQL on every read",
-            "this verification covers the Proposal Record; the approvals, attestations, invalidations and successor digests are returned as the stored rows, protected by their own write-time constraints and immutability guards (only each disclosed set's target snapshot is re-derived, for its grade), and re-verifying them on read is a later additive check",
+            "this verification covers the Proposal Record; the approvals, attestations, invalidations and successor digests are returned as the stored rows, protected by their own write-time constraints and immutability guards (only each disclosed set's target snapshot is re-derived and its references graded, for its grade), and re-verifying them on read is a later additive check",
             "`verified` (HTTP 200) or `failed` (HTTP 409, a conflict between the request and the stored state",
             "returns only the `governance.proposal_record_integrity_failed` variant with no envelope content",
             "computes no eligibility, validity or approval and writes nothing",
@@ -812,7 +820,8 @@ fn e8_3_review_contracts_are_registered_as_planned() {
         &[
             "is one of the closed set `record_digest`, `embedded_set_digest`, `patch_binding`, `supersedes_digest` or `stored_set_digest` (the stored ordered patches), checked in that order once the target snapshot has re-derived",
             "a requested record whose target snapshot fails never returns this code: the caller reads the 404 and Cloud only logs it, with a log-only `location` of `record_bytes` (the record does not decode), `graph_bytes` (the stored Graph Artifact does not decode) or `authorized_targets` (the snapshot does not re-derive), checked in that order before the wire locations",
-            "a disclosed set (a successor, or the set behind an invalidation) whose snapshot fails the same way is logged with the same log-only `location` against that set's `proposal_version_id`, while the caller reads the projection without that set's digest",
+            "once the wire locations verify, the reference grade (ADR-0071) logs, and the caller reads the 404, with a log-only `location` of `graph_bytes` (here also when the evidence row holding the Graph Artifact is missing), `assessment_bytes` (the stored semantic assessment does not decode), `evidence_ref` (a referenced node, an `evidence_ref` item or a placement anchor, has an unknown visibility class or no kind, or the id names more than one node) or `disposition_findings` (a disposition's finding, or one of its affected objects, does not resolve to exactly one entry), while a reference the caller may not see is a plain 404 that logs nothing",
+            "a disclosed set (a successor, or the set behind an invalidation) whose snapshot or reference grade fails the same way is logged with the same log-only `location` against that set's `proposal_version_id`, while the caller reads the projection without that set's digest",
             "so E8.3.T5 renders only the wire locations",
             "stage `proposal_record_read` (this code's own failure stage, not the K8 `required_at` vocabulary its obligations carry)",
             "`write_occurred: false`",
@@ -830,7 +839,7 @@ fn e8_3_review_contracts_are_registered_as_planned() {
         &adr,
         "ADR-0069",
         &[
-            "**Status:** Accepted",
+            "**Status:** Accepted; Decision 1 superseded by [ADR-0071](0071-proposal-review-read-grades-references.md)",
             "exceptions to the permanent stop-ship invariant",
             "no patch addresses",
             "Scope: that route only.",
@@ -842,6 +851,28 @@ fn e8_3_review_contracts_are_registered_as_planned() {
             "`scripts/roadmap-authority.py` in `agentdoc-dev/cloud` pins the",
         ],
     );
+    // ADR-0071 closes the ADR-0069 Decision 1 waiver by grading the references.
+    let adr = read_repo_doc("docs/adr/0071-proposal-review-read-grades-references.md");
+    assert_clauses_in_order(
+        &adr,
+        "ADR-0071",
+        &[
+            "**Status:** Accepted",
+            "**Supersedes:** [ADR-0069](0069-proposal-review-read-rt08-exceptions.md) Decision 1",
+            "every placement anchor is",
+            "is within the caller's retrieval",
+            "the caller holds `knowledge.read` on the node's object",
+            "sends\n   no `excluded_object_ids`, so the audience is the whole class half today",
+            "with the read's own grade, `proposal.read` and `obligation.read`",
+            "A reference the caller may not see logs nothing.",
+            "On the requested set, the grade runs after the Proposal Record",
+            "grade never raises on decodable JSON",
+            "is disclosed only when that set also passes this grade",
+            "An `evidence_ref` item that names no node is not graded.",
+            "reference in a proposed body is body text: Cloud does not resolve it at",
+            "No sensitive-access event: a route-scoped RT-08 exception.",
+        ],
+    );
     assert!(
         registry.contains("the execution map and milestones in `agentdoc-dev/cloud`"),
         "{REGISTRY}: the governed planning surface must name the Cloud roadmap"
@@ -850,7 +881,23 @@ fn e8_3_review_contracts_are_registered_as_planned() {
     let pointer = "[ADR-0069](../../adr/0069-proposal-review-read-rt08-exceptions.md) records the exceptions accepted for the E8.3.T1 proposal review read";
     let red_team = read_repo_doc("docs/roadmap/v10/RED-TEAM-CLOSURE.md");
     let rt_08 = annex_section(&red_team, "RED-TEAM-CLOSURE.md", "## RT-08 ");
-    assert_clauses_in_order(rt_08, "RED-TEAM-CLOSURE.md RT-08", &[pointer]);
+    assert_clauses_in_order(
+        rt_08,
+        "RED-TEAM-CLOSURE.md RT-08",
+        &[
+            pointer,
+            "records no `adoc.sensitive_access.v0` event, an exception scoped to that route",
+        ],
+    );
+    let authorization = read_repo_doc("docs/roadmap/v10/AUTHORIZATION.md");
+    let a4 = annex_section(&authorization, "AUTHORIZATION.md", "## A4. ");
+    assert_clauses_in_order(
+        a4,
+        "AUTHORIZATION.md A4",
+        &[
+            "[ADR-0071](../../adr/0071-proposal-review-read-grades-references.md) Decision 7 excepts one route",
+        ],
+    );
 }
 
 /// Asserts every clause occurs in `cell`, in the given order.

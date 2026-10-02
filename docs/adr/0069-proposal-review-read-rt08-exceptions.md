@@ -1,6 +1,6 @@
 # ADR-0069: RT-08 Exceptions for the Proposal Review Read
 
-**Status:** Accepted
+**Status:** Accepted; Decision 1 superseded by [ADR-0071](0071-proposal-review-read-grades-references.md)
 **Date:** 2026-10-01
 **Slice:** E8.3.T1 (registry row `agentdoc.cloud.proposal_review.v0`)
 
