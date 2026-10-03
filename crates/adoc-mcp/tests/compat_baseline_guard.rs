@@ -24,7 +24,7 @@ const COMPATIBILITY: &str = "docs/roadmap/v10/COMPATIBILITY.md";
 const DELIVERY_ORDER: &[&str] = &["adoc", "action", "cloud", "web"];
 
 /// Rows in the `compat:slice-rows` block today.
-const ROW_FLOOR: usize = 47;
+const ROW_FLOOR: usize = 48;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
