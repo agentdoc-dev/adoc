@@ -5,6 +5,9 @@ mod infrastructure;
 pub use application::portable_projection::{
     MAX_PORTABLE_PROJECTION_BYTES, run_portable_projection,
 };
+pub use application::render_object::{
+    MAX_RENDER_OBJECT_BYTES, RENDER_OBJECT_SCHEMA_VERSION, run_render_object,
+};
 
 use std::path::PathBuf;
 

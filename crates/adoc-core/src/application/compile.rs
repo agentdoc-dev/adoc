@@ -162,9 +162,32 @@ fn run_compile_pipeline<P: SourceProvider>(
 
 fn run_compile_pipeline_counted<P: SourceProvider>(
     provider: &P,
+    build_options: Option<BuildOptions<'_>>,
+    today: NaiveDate,
+    anchor: Option<&dyn EvidenceFileReader>,
+) -> (CompileResult, usize) {
+    run_compile_pipeline_gated(provider, build_options, today, anchor, &|_| true)
+}
+
+/// Compile for one object's render check (issue 286): artifacts are produced
+/// even when errors remain, provided `blocks` rejects none of them, so the
+/// renderer can verify the round trip of an object whose cross-object
+/// references are resolved elsewhere.
+pub(crate) fn compile_tolerating_for_date<P: SourceProvider>(
+    provider: &P,
+    today: NaiveDate,
+    blocks: &dyn Fn(&Diagnostic) -> bool,
+) -> CompileResult {
+    run_compile_pipeline_gated(provider, None, today, None, blocks).0
+}
+
+/// `blocks` decides which diagnostics withhold artifacts (errors only).
+fn run_compile_pipeline_gated<P: SourceProvider>(
+    provider: &P,
     mut build_options: Option<BuildOptions<'_>>,
     today: NaiveDate,
     anchor: Option<&dyn EvidenceFileReader>,
+    blocks: &dyn Fn(&Diagnostic) -> bool,
 ) -> (CompileResult, usize) {
     // Refuse unresolved authority before source inspection or embedding setup.
     if let Some(policy) = build_options
@@ -224,6 +247,7 @@ fn run_compile_pipeline_counted<P: SourceProvider>(
         build_options.as_mut(),
         Some(today),
         repository_identity,
+        blocks,
     );
     let artifacts = artifact_result.artifacts;
     diagnostics.extend(artifact_result.diagnostics);
@@ -354,6 +378,7 @@ fn build_artifacts(workspace: &WorkspaceAst, diagnostics: &[Diagnostic]) -> Opti
         None,
         None,
         crate::domain::graph::GraphRepositoryIdentity::standalone(),
+        &|_| true,
     )
     .artifacts
 }
@@ -369,10 +394,11 @@ fn build_artifacts_for_build(
     mut build_options: Option<&mut BuildOptions<'_>>,
     today: Option<NaiveDate>,
     repository_identity: crate::domain::graph::GraphRepositoryIdentity,
+    blocks: &dyn Fn(&Diagnostic) -> bool,
 ) -> ArtifactBuildResult {
     if diagnostics
         .iter()
-        .any(|diagnostic| diagnostic.severity == Severity::Error)
+        .any(|diagnostic| diagnostic.severity == Severity::Error && blocks(diagnostic))
     {
         return ArtifactBuildResult {
             artifacts: None,

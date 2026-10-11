@@ -74,6 +74,7 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _ = DiagnosticCode::LifecycleInvalidExpiresAt;
     let _ = DiagnosticCode::IdDuplicate;
     let _ = DiagnosticCode::IdInvalid;
+    let _ = DiagnosticCode::RenderMemberNotRepresentable;
     let _ = DiagnosticCode::RefBroken;
     let _ = DiagnosticCode::IoUnreadableFile;
     let _ = DiagnosticCode::IoUnreadableDirectory;

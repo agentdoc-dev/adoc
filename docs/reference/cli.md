@@ -167,6 +167,15 @@ assessment:
 
 The block is intentionally absent from `adoc init`. Adding it requires a V9.2.1-capable binary because older strict config parsers reject unknown keys.
 
+`adoc render-object --input <json-file> --out <file>`:
+
+- renders one Knowledge Object's authored graph-node members as its `.adoc` block, for a caller that holds structured fields but no source file
+- input is `adoc.render_object.v0` JSON: `schema_version`, `id`, `kind`, `status`, `severity`, `trust`, `body`, `visibility`, `field_visibility`, `fields`, `relations` (`depends_on`, `supersedes`, `related_to`), `impacts`, `approved_by`, `allowed_actions`, `forbidden_actions`, `contradiction_claims`, `evidence` (`kind` plus `value` or `reference`); only `schema_version`, `id`, `kind` and `body` are required
+- placement and derived graph members (`content_hash`, `page_id`, `source_span`, `source_binding`, `effective_status`, `effective_reason`, `evidence_quality`) are rejected as unknown members
+- output is exactly one block with no prose or page heading, deterministic (fields sorted by key); `adoc build` on a project containing it yields a node equal to the input on every authored member
+- an unknown member, another `schema_version`, or a kind/status/field the compiler rejects exits `2` with `error[code]` on stderr and writes no file; a member the block cannot carry for that kind or status (the rebuilt node must equal the input on every authored member) is refused with `render.member_not_representable`, never altered; `relations` and `evidence` entries reject unknown members too, and a partial `relations` is accepted; references to other objects are not resolved here (`adoc check` on the project does that)
+- reuses the block writer behind `adoc patch --apply` `create_object`
+
 `adoc search`:
 
 - reads compiled artifacts; it does not compile source

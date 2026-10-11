@@ -69,6 +69,7 @@ This table inventories the implemented `adoc` release-train surfaces (CLI, MCP s
 | `agentdoc.connector_capabilities.v0` | shipped | adoc 0.4.x | Action adapter manifests; Cloud capability-policy validation (E4.5) | exact-match reader; binds one claimed publisher and exact adapter version to a non-empty capability-name-keyed manifest, making duplicate authoritative capability identities unrepresentable; each value carries one version, closed maturity and processing-mode vocabularies, explicit dependency/contract ranges, limitations, deployment modes, and optional qualification evidence; `ga` structurally requires an evidence reference, while Cloud independently authenticates publisher/qualification authority; overall stage is display-only and never policy input |
 | `adoc.portable_projection_input.v0` | unreleased | Cloud E6.6.T5 retained-byte adapter | adoc 0.4.x pure core and bounded CLI | exact-match private input; native-derived history completeness, exact UTF-8 node and retained event bytes, original decimal workspace ordinals and preservation references; no caller-computed lifecycle or authority claims |
 | `adoc.portable_projection.v0` | unreleased | adoc 0.4.x pure core and bounded CLI | Cloud E6.6.T5 archive writer | exact-match complete/partial/failed envelope; existing lifecycle mapping/projection version 1 and strict workspace compiler; canonical identity bindings and explicit losses; valid partial/failed outcomes preserve native records |
+| `adoc.render_object.v0` | unreleased | Cloud M4.1 edit validation (issue 286) | adoc `render-object` pure core and CLI | exact-match input; every authored graph-node member (placement and derived members rejected); output is one deterministic `.adoc` block whose build is node-equal to the input |
 | `adoc.migration_request.v0` | shipped | adoc 0.4.0 | adoc 0.4.0 CLI and Cloud E7.1 worker; MCP schema resource | exact-match portable preparation request; bounded complete source bindings and explicit evaluation date; full nonzero lowercase Git commit SHA-1 only; Cloud transport wrapper remains separate |
 | `adoc.migration_receipt.v0` | shipped | adoc 0.4.0 | Cloud E7.1 worker; MCP schema resource | exact-match validator-only prepare receipt; binds exact request bytes digest, detached commit validation receipt and full diagnostics; grants no import, promotion or cutover authority |
 | `adoc.migration_request.v1` | unreleased | adoc 0.4.x (U3.3 P3a) | U3.3 P3b Cloud E7 worker; MCP schema resource | exact-match successor adding `inspection_id`, `inspection_digest` and `starting_point` (`recorded_history`\|`fresh`); mode participates in request digest; v0 stays recorded-history only and refuses v1 fields |
@@ -452,6 +453,7 @@ Explicit mapping (RT-21, like the attestation family): `audit.persistence_failed
 | `task.overdue` |
 | `validation.context_artifact_drift` |
 | `projection.unavailable` |
+| `render.member_not_representable` |
 | `privacy.export_digest_mismatch` |
 | `migration.invalid_request` |
 | `migration.exact_revision_required` |
