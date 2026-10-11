@@ -101,7 +101,12 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                         },
                 } => commands::repository_inspect(request, repository, runtime_binary_digest),
                 Commands::PortableProject => commands::portable_project(),
-                Commands::RenderObject { input, out } => commands::render_object(input, out),
+                Commands::RenderObject {
+                    input,
+                    out,
+                    into,
+                    append,
+                } => commands::render_object(input, out, into, append),
                 Commands::ManagedRetrieve {
                     require_sensitive_classification: _,
                     require_field_projection: _,

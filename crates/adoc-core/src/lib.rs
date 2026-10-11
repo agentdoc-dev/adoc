@@ -7,6 +7,7 @@ pub use application::portable_projection::{
 };
 pub use application::render_object::{
     MAX_RENDER_OBJECT_BYTES, RENDER_OBJECT_SCHEMA_VERSION, run_render_object,
+    run_render_object_into,
 };
 
 use std::path::PathBuf;

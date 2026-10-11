@@ -513,9 +513,15 @@ pub(crate) enum Commands {
         /// JSON file holding the adoc.render_object.v0 document.
         #[arg(long)]
         input: PathBuf,
-        /// File to write the rendered block to.
+        /// File to write the rendered block (or, with --into, the patched file) to.
         #[arg(long)]
         out: PathBuf,
+        /// Patch the block with the input's `id` into this `.adoc` file instead of writing the bare block.
+        #[arg(long)]
+        into: Option<PathBuf>,
+        /// With --into: add the block at the end of the file when its ID is absent (refused when present).
+        #[arg(long, requires = "into")]
+        append: bool,
     },
     /// Runtime port for an explicitly authorized managed corpus; always emits retrieval JSON.
     #[command(display_order = 104)]

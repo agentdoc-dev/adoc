@@ -454,6 +454,11 @@ Explicit mapping (RT-21, like the attestation family): `audit.persistence_failed
 | `validation.context_artifact_drift` |
 | `projection.unavailable` |
 | `render.member_not_representable` |
+| `render.into_id_absent` |
+| `render.into_id_present` |
+| `render.into_id_duplicate` |
+| `render.into_file_too_large` |
+| `render.into_file_unparsable` |
 | `privacy.export_digest_mismatch` |
 | `migration.invalid_request` |
 | `migration.exact_revision_required` |

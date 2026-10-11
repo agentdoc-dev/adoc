@@ -127,6 +127,16 @@ diagnostic_codes! {
         "Consult the preserved native records and projection loss report; regenerate after resolving unavailable source or history.";
     RenderMemberNotRepresentable = "render.member_not_representable" =>
         "Fix or drop the named member in the render-object input; the block must rebuild to exactly the input's authored members.";
+    RenderIntoIdAbsent = "render.into_id_absent" =>
+        "Pass --append to add the object to the --into file, or fix the input `id`.";
+    RenderIntoIdPresent = "render.into_id_present" =>
+        "Drop --append to replace the object's existing block, or fix the input `id`.";
+    RenderIntoIdDuplicate = "render.into_id_duplicate" =>
+        "Give each object a unique ID in the --into file before patching it.";
+    RenderIntoFileUnparsable = "render.into_file_unparsable" =>
+        "Fix the --into file so it is UTF-8 and parses without errors (close every typed block and code fence); nothing was patched.";
+    RenderIntoFileTooLarge = "render.into_file_too_large" =>
+        "Patch a file of at most 1 MiB.";
     PrivacyExportDigestMismatch = "privacy.export_digest_mismatch" =>
         "Preserve the authorized corruption finding; never repair a retained digest during export.";
     IdDuplicate = "id.duplicate" =>

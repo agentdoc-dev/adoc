@@ -47,6 +47,7 @@ mod procedure_cli;
 mod proposal_record_cli;
 mod question_cli;
 mod render_object;
+mod render_object_into;
 mod repository_inspect_cli;
 mod retrieval_pilot;
 mod retrieval_policy_errors_cli;

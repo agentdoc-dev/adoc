@@ -75,6 +75,11 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _ = DiagnosticCode::IdDuplicate;
     let _ = DiagnosticCode::IdInvalid;
     let _ = DiagnosticCode::RenderMemberNotRepresentable;
+    let _ = DiagnosticCode::RenderIntoIdAbsent;
+    let _ = DiagnosticCode::RenderIntoIdPresent;
+    let _ = DiagnosticCode::RenderIntoIdDuplicate;
+    let _ = DiagnosticCode::RenderIntoFileTooLarge;
+    let _ = DiagnosticCode::RenderIntoFileUnparsable;
     let _ = DiagnosticCode::RefBroken;
     let _ = DiagnosticCode::IoUnreadableFile;
     let _ = DiagnosticCode::IoUnreadableDirectory;
