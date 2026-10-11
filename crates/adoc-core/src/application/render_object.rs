@@ -13,7 +13,9 @@ use crate::domain::graph::{
 use crate::domain::identity::ObjectId;
 use crate::domain::source::SourceFile;
 use crate::domain::source_edit::planner::{CreateInsertion, plan_create_object};
+use crate::domain::source_edit::{LineEnding, SourceEditPlan, SpanEdit};
 use crate::domain::value_objects::evidence::Evidence;
+use crate::infrastructure::parser::layout::typed_block_layouts;
 use crate::infrastructure::source::in_memory::InMemorySourceProvider;
 
 use super::compile::compile_tolerating_for_date;
@@ -277,6 +279,18 @@ fn authored(node: &GraphKnowledgeObjectNode) -> Value {
 /// Deterministic: fields sort by key, one trailing newline. The compiled
 /// block must rebuild to exactly the input's authored members.
 pub fn run_render_object(bytes: &[u8]) -> Result<String, Vec<Diagnostic>> {
+    render(bytes).map(|rendered| rendered.block)
+}
+
+/// A validated render: the node and block fields stay available for
+/// `--into --append`, which re-plans the block against the target file.
+struct Rendered {
+    node: GraphKnowledgeObjectNode,
+    fields: BTreeMap<String, String>,
+    block: String,
+}
+
+fn render(bytes: &[u8]) -> Result<Rendered, Vec<Diagnostic>> {
     if bytes.len() > MAX_RENDER_OBJECT_BYTES {
         return Err(refusal(
             DiagnosticCode::IoArtifactMalformed,
@@ -396,7 +410,11 @@ pub fn run_render_object(bytes: &[u8]) -> Result<String, Vec<Diagnostic>> {
         })
         .unwrap_or_default();
     match rebuilt.as_slice() {
-        [only] if only.id == node.id && authored(only) == authored(&node) => Ok(block),
+        [only] if only.id == node.id && authored(only) == authored(&node) => Ok(Rendered {
+            node,
+            fields,
+            block,
+        }),
         [only] if only.id == node.id => Err(not_representable(format!(
             "object `{}` does not rebuild to the input's authored members; a member is not representable for this kind or status",
             node.id
@@ -405,5 +423,104 @@ pub fn run_render_object(bytes: &[u8]) -> Result<String, Vec<Diagnostic>> {
             "the block did not compile to exactly one object `{}`",
             node.id
         ))),
+    }
+}
+
+/// Issue 291: patch one object's block into `file`. The block whose ID equals
+/// the input's `id` is replaced by its span; with `append` an absent ID is
+/// inserted at the end of the file instead. Every other byte of `file` is
+/// kept, and a CRLF file stays CRLF. Refusals write nothing (the caller owns
+/// the write).
+pub fn run_render_object_into(
+    input: &[u8],
+    file: &[u8],
+    append: bool,
+) -> Result<String, Vec<Diagnostic>> {
+    if file.len() > MAX_RENDER_OBJECT_BYTES {
+        return Err(vec![Diagnostic::error(
+            DiagnosticCode::RenderIntoFileTooLarge,
+            "render-object --into file exceeds its size bound",
+        )]);
+    }
+    let rendered = render(input)?;
+    let id = &rendered.node.id;
+    let unparsable = |message: &str| {
+        vec![Diagnostic::error(
+            DiagnosticCode::RenderIntoFileUnparsable,
+            message,
+        )]
+    };
+    let text = std::str::from_utf8(file)
+        .map_err(|_| unparsable("render-object --into file is not UTF-8"))?;
+    let source_of = |text: &str| {
+        SourceFile::new_with_identity_path(
+            "render-object-into.adoc".into(),
+            text.to_string(),
+            "render-object-into.adoc".into(),
+        )
+    };
+    let source = source_of(text);
+    let (layouts, has_errors) = typed_block_layouts(&source, id);
+    if has_errors {
+        return Err(unparsable(
+            "the --into file does not parse without errors; fix it before patching",
+        ));
+    }
+    let into_error = |code, message: String| vec![Diagnostic::error(code, message)];
+    let plan = match (layouts.as_slice(), append) {
+        ([], true) => plan_create_object(
+            text,
+            CreateInsertion::EndOfFile,
+            &rendered.node.kind,
+            id,
+            rendered.node.status.as_deref(),
+            &rendered.fields,
+            &rendered.node.body,
+        )?,
+        ([], false) => {
+            return Err(into_error(
+                DiagnosticCode::RenderIntoIdAbsent,
+                format!("object `{id}` is not in the --into file; pass --append to add it"),
+            ));
+        }
+        ([only], false) => {
+            // The rendered block is LF; convert it to the file's convention.
+            // Its body lines never carry `\r` (the writer strips them).
+            let block = rendered.block.trim_end_matches('\n');
+            let replacement = match LineEnding::detect(text) {
+                LineEnding::Lf => block.to_string(),
+                LineEnding::CrLf => block.replace('\n', "\r\n"),
+            };
+            SourceEditPlan::new(vec![SpanEdit {
+                byte_range: only.open_fence.start..only.close_fence.end,
+                replacement,
+            }])
+            .map_err(|_| unparsable("the block could not be spliced into the --into file"))?
+        }
+        ([_], true) => {
+            return Err(into_error(
+                DiagnosticCode::RenderIntoIdPresent,
+                format!("object `{id}` is already in the --into file; drop --append to replace it"),
+            ));
+        }
+        (many, _) => {
+            return Err(into_error(
+                DiagnosticCode::RenderIntoIdDuplicate,
+                format!(
+                    "object `{id}` appears {} times in the --into file; fix the duplicate first",
+                    many.len()
+                ),
+            ));
+        }
+    };
+    let patched = plan
+        .splice(text)
+        .map_err(|_| unparsable("the block could not be spliced into the --into file"))?;
+    // Defence in depth: the result must parse cleanly with the ID exactly once.
+    match typed_block_layouts(&source_of(&patched), id) {
+        (found, false) if found.len() == 1 => Ok(patched),
+        _ => Err(unparsable(
+            "the patched file would not parse with the object exactly once; nothing written",
+        )),
     }
 }

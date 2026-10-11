@@ -167,7 +167,7 @@ assessment:
 
 The block is intentionally absent from `adoc init`. Adding it requires a V9.2.1-capable binary because older strict config parsers reject unknown keys.
 
-`adoc render-object --input <json-file> --out <file>`:
+`adoc render-object --input <json-file> --out <file> [--into <adoc-file> [--append]]`:
 
 - renders one Knowledge Object's authored graph-node members as its `.adoc` block, for a caller that holds structured fields but no source file
 - input is `adoc.render_object.v0` JSON: `schema_version`, `id`, `kind`, `status`, `severity`, `trust`, `body`, `visibility`, `field_visibility`, `fields`, `relations` (`depends_on`, `supersedes`, `related_to`), `impacts`, `approved_by`, `allowed_actions`, `forbidden_actions`, `contradiction_claims`, `evidence` (`kind` plus `value` or `reference`); only `schema_version`, `id`, `kind` and `body` are required
@@ -175,6 +175,9 @@ The block is intentionally absent from `adoc init`. Adding it requires a V9.2.1-
 - output is exactly one block with no prose or page heading, deterministic (fields sorted by key); `adoc build` on a project containing it yields a node equal to the input on every authored member
 - an unknown member, another `schema_version`, or a kind/status/field the compiler rejects exits `2` with `error[code]` on stderr and writes no file; a member the block cannot carry for that kind or status (the rebuilt node must equal the input on every authored member) is refused with `render.member_not_representable`, never altered; `relations` and `evidence` entries reject unknown members too, and a partial `relations` is accepted; references to other objects are not resolved here (`adoc check` on the project does that)
 - reuses the block writer behind `adoc patch --apply` `create_object`
+- `--into <adoc-file>` writes the patched file to `--out` instead of the bare block (issue 291): the file is parsed alone, the typed block whose ID equals the input `id` is replaced by exactly its span, and every other byte (prose, other blocks) stays identical; a CRLF file stays CRLF; `--into` itself is never modified, and `--out` must differ from `--input` and `--into`
+- `--append` (needs `--into`) inserts the block at the end of the file when the ID is absent
+- exit `2`, a diagnostic on stderr, empty stdout and no `--out` file for: the ID absent without `--append` (`render.into_id_absent`), the ID present with `--append` (`render.into_id_present`), duplicate IDs of the input `id` in the file (`render.into_id_duplicate`), the `--into` file over 1 MiB (`render.into_file_too_large`), not UTF-8 or not parsing without errors, such as an unclosed typed block or code fence (`render.into_file_unparsable`); the patched result is re-parsed and must carry the ID exactly once, or it is refused with the same code; the input document over 1 MiB keeps `io.artifact_malformed`
 
 `adoc search`:
 

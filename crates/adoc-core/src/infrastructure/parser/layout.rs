@@ -18,13 +18,32 @@ use super::parse_page;
 /// id is `target_id`, or `None` when no such block parses out of the current
 /// text (the caller treats that as source drift).
 pub(crate) fn typed_block_layout(source: &SourceFile, target_id: &str) -> Option<TypedBlockLayout> {
-    let (page, _diagnostics) = parse_page(source);
-    page.blocks.iter().find_map(|block| match block {
-        BlockAst::KnowledgeObjectPending(pending) if pending.id_text == target_id => {
-            Some(layout_from_pending(pending))
-        }
-        _ => None,
-    })
+    typed_block_layouts(source, target_id).0.into_iter().next()
+}
+
+/// Every typed block in `source` whose id is `target_id`, in source order
+/// (more than one means the file carries a duplicate ID), and whether the
+/// parse reported an error. With an error, an empty result may mean a broken
+/// block rather than an absent one; callers on unvalidated bytes must refuse.
+pub(crate) fn typed_block_layouts(
+    source: &SourceFile,
+    target_id: &str,
+) -> (Vec<TypedBlockLayout>, bool) {
+    let (page, diagnostics) = parse_page(source);
+    let has_errors = diagnostics
+        .iter()
+        .any(|d| d.severity == crate::domain::diagnostic::Severity::Error);
+    let layouts = page
+        .blocks
+        .iter()
+        .filter_map(|block| match block {
+            BlockAst::KnowledgeObjectPending(pending) if pending.id_text == target_id => {
+                Some(layout_from_pending(pending))
+            }
+            _ => None,
+        })
+        .collect();
+    (layouts, has_errors)
 }
 
 fn layout_from_pending(pending: &ParsedTypedBlock) -> TypedBlockLayout {
