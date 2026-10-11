@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
-use crate::domain::graph::{GraphArtifactDocument, GraphKnowledgeObjectNode};
+use crate::domain::graph::{GraphArtifactDocument, GraphKnowledgeObjectNode, GraphRelations};
 use crate::domain::hashing::sha256_prefixed;
 use crate::domain::identity::ObjectId;
 use crate::domain::lifecycle_mapping::{FlatProjection, LifecycleMappingContract};
@@ -20,11 +20,11 @@ use crate::domain::managed_state::{
 use crate::domain::reconciliation::PolicyVersion;
 use crate::domain::source::SourceFile;
 use crate::domain::source_edit::planner::{CreateInsertion, plan_create_object};
-use crate::domain::value_objects::evidence::Evidence;
 use crate::infrastructure::artifact::graph_json::graph_knowledge_object_content_hash;
 use crate::infrastructure::source::in_memory::InMemorySourceProvider;
 
 use super::compile::compile_with_provider_for_date;
+use super::render_object::node_block_fields;
 
 pub const MAX_PORTABLE_PROJECTION_BYTES: usize = 64 * 1024 * 1024;
 const MAX_OBJECTS: usize = 4096;
@@ -395,71 +395,14 @@ fn candidate(
     Ok(candidate)
 }
 
-fn insert(
-    fields: &mut BTreeMap<String, String>,
-    key: &str,
-    value: String,
-) -> Result<(), DiagnosticCode> {
-    if fields.get(key).is_some_and(|existing| existing != &value) {
-        return Err(DiagnosticCode::PortableProjectionUnavailable);
-    }
-    fields.insert(key.into(), value);
-    Ok(())
-}
-
-fn list(
-    fields: &mut BTreeMap<String, String>,
-    key: &str,
-    values: &[String],
-) -> Result<(), DiagnosticCode> {
-    if !values.is_empty() {
-        if values
-            .iter()
-            .any(|value| value.contains([',', '[', ']', '\n', '\r']))
-        {
-            return Err(DiagnosticCode::PortableProjectionUnavailable);
-        }
-        insert(fields, key, format!("[{}]", values.join(", ")))?;
-    }
-    Ok(())
-}
-
 fn render(candidate: &mut Candidate, ids: &BTreeSet<String>) -> Result<(), DiagnosticCode> {
     let unavailable = DiagnosticCode::PortableProjectionUnavailable;
-    let mut fields = candidate.node.fields.clone();
-    // Status comes solely from the existing projection policy.
-    fields.remove("status");
-    for (name, carrier) in [
-        ("severity", &candidate.node.severity),
-        ("trust", &candidate.node.trust),
-        ("visibility", &candidate.node.visibility),
-    ] {
-        if let Some(value) = carrier {
-            insert(&mut fields, name, value.clone())?;
-        }
-    }
-    if let Some(visibility) = &candidate.node.field_visibility {
-        insert(
-            &mut fields,
-            "field_visibility",
-            visibility
-                .iter()
-                .map(|(key, value)| format!("{key}={value}"))
-                .collect::<Vec<_>>()
-                .join(", "),
-        )?;
-    }
     for (name, values) in [
         ("depends_on", candidate.node.relations.depends_on.clone()),
         ("supersedes", candidate.node.relations.supersedes.clone()),
         ("related_to", candidate.node.relations.related_to.clone()),
     ] {
-        let retained: Vec<_> = values
-            .iter()
-            .filter(|id| ids.contains(*id))
-            .cloned()
-            .collect();
-        if retained.len() != values.len() {
+        if values.iter().any(|id| !ids.contains(id)) {
             candidate.loss(
                 "withheld_reference",
                 format!(
@@ -467,17 +410,6 @@ fn render(candidate: &mut Candidate, ids: &BTreeSet<String>) -> Result<(), Diagn
                 ),
             );
         }
-        fields.remove(name);
-        list(&mut fields, name, &retained)?;
-    }
-    for (name, values) in [
-        ("impacts", &candidate.node.impacts),
-        ("approved_by", &candidate.node.approved_by),
-        ("allowed_actions", &candidate.node.allowed_actions),
-        ("forbidden_actions", &candidate.node.forbidden_actions),
-        ("claims", &candidate.node.contradiction_claims),
-    ] {
-        list(&mut fields, name, values)?;
     }
     if candidate
         .node
@@ -487,30 +419,22 @@ fn render(candidate: &mut Candidate, ids: &BTreeSet<String>) -> Result<(), Diagn
     {
         return Err(unavailable);
     }
-    let mut evidence_refs = Vec::new();
-    for evidence in &candidate.node.evidence {
-        match (&evidence.value, &evidence.reference) {
-            (None, Some(reference)) if ids.contains(reference) => {
-                evidence_refs.push(reference.clone())
-            }
-            (Some(value), None) => {
-                let field = ["source", "test", "reviewed_by", "external_url"]
-                    .into_iter()
-                    .find(|field| {
-                        Evidence::from_field(field, value)
-                            .and_then(|value| value.kind())
-                            .is_some_and(|kind| kind.as_str() == evidence.kind)
-                    });
-                if let Some(field) = field {
-                    insert(&mut fields, field, value.clone())?;
-                } else {
-                    return Err(unavailable);
-                }
-            }
-            _ => return Err(unavailable),
-        }
-    }
-    list(&mut fields, "evidence_ref", &evidence_refs)?;
+    let retain = |values: &[String]| -> Vec<String> {
+        values
+            .iter()
+            .filter(|id| ids.contains(*id))
+            .cloned()
+            .collect()
+    };
+    let relations = GraphRelations {
+        depends_on: retain(&candidate.node.relations.depends_on),
+        supersedes: retain(&candidate.node.relations.supersedes),
+        related_to: retain(&candidate.node.relations.related_to),
+    };
+    // Status comes solely from the existing projection policy.
+    let mut node = candidate.node.clone();
+    node.fields.remove("status");
+    let fields = node_block_fields(&node, &relations, &|id| ids.contains(id))?;
     let plan = plan_create_object(
         "",
         CreateInsertion::EndOfFile,

@@ -13,6 +13,8 @@ mod patch;
 mod portable_project;
 mod proposal_record;
 pub(crate) use portable_project::portable_project;
+mod render_object;
+pub(crate) use render_object::render_object;
 mod review;
 mod search;
 mod semantic_executor;

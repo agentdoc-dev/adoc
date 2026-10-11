@@ -125,6 +125,8 @@ diagnostic_codes! {
         "Use `YYYY-MM-DD` for `expires_at`, or remove the field.";
     PortableProjectionUnavailable = "projection.unavailable" =>
         "Consult the preserved native records and projection loss report; regenerate after resolving unavailable source or history.";
+    RenderMemberNotRepresentable = "render.member_not_representable" =>
+        "Fix or drop the named member in the render-object input; the block must rebuild to exactly the input's authored members.";
     PrivacyExportDigestMismatch = "privacy.export_digest_mismatch" =>
         "Preserve the authorized corruption finding; never repair a retained digest during export.";
     IdDuplicate = "id.duplicate" =>

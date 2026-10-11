@@ -507,6 +507,16 @@ pub(crate) enum Commands {
     /// Project an authorized retained corpus; bounded JSON on stdin and stdout.
     #[command(display_order = 103)]
     PortableProject,
+    /// Render one object's authored graph-node members (adoc.render_object.v0 JSON) as its `.adoc` block.
+    #[command(display_order = 105)]
+    RenderObject {
+        /// JSON file holding the adoc.render_object.v0 document.
+        #[arg(long)]
+        input: PathBuf,
+        /// File to write the rendered block to.
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Runtime port for an explicitly authorized managed corpus; always emits retrieval JSON.
     #[command(display_order = 104)]
     ManagedRetrieve {
