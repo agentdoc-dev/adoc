@@ -81,7 +81,7 @@ Relation values can be a single Object ID, a comma-separated list, or a bracket 
 
 Object references use `[[object.id]]` in prose, headings, list items, and typed object bodies. References are rendered as HTML links and preserved as citeable source text in graph JSON object bodies.
 
-Page annotations are optional. IDs must be lowercase dot-separated kebab-case values with at least two segments, such as `product.area`. If the first heading does not include `@doc(id)`, the compiler derives the page identity from the file path and applies the same ID grammar.
+Page annotations are optional. IDs must be lowercase dot-separated kebab-case values with at least two segments, such as `product.area`. If the first heading does not include `@doc(id)`, the compiler derives the page identity from the file path and applies the same ID grammar. When that derived ID breaks the grammar (a root `README.md` derives `readme`), a page without Knowledge Objects is skipped with `warning[source.skipped_invalid_path_id]`; a page that holds Knowledge Objects fails with `error[id.invalid]`.
 
 Raw HTML is rejected in strict mode:
 

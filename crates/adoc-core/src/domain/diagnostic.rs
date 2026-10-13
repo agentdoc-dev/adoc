@@ -143,6 +143,8 @@ diagnostic_codes! {
         "Give each object a unique ID across the compiled workspace.";
     IdInvalid = "id.invalid" =>
         "Use a valid Object ID with lowercase segments separated by dots.";
+    SourceSkippedInvalidPathId = "source.skipped_invalid_path_id" =>
+        "Add a valid @doc(id) to the page heading, or rename the file so its path gives at least two ID segments; until then the file is not built.";
     RefBroken = "ref.broken" =>
         "Update the reference to an existing object ID or remove the reference.";
     IoUnreadableFile = "io.unreadable_file" =>

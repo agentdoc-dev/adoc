@@ -1,1 +1,7 @@
 # Notes
+
+::claim notes.first
+status: draft
+--
+A page holding knowledge still needs a valid page ID.
+::

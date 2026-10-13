@@ -289,8 +289,14 @@ fn load_pages<P: SourceProvider>(provider: &P) -> (Vec<(SourceFile, PageAst)>, V
             Ok(source) => {
                 let pipeline = pipeline_for(source.mode());
                 let (page, parse_diagnostics) = (pipeline.parse)(&source);
+                // cloud#521: a file without a valid page ID is left out, not fatal.
+                let skipped = parse_diagnostics.iter().any(|diagnostic| {
+                    diagnostic.code == DiagnosticCode::SourceSkippedInvalidPathId
+                });
                 diagnostics.extend(parse_diagnostics);
-                parsed.push((source, page));
+                if !skipped {
+                    parsed.push((source, page));
+                }
             }
             Err(load_error) => diagnostics.push(load_error_diagnostic(load_error)),
         }
@@ -815,8 +821,8 @@ mod tests {
     #[test]
     fn assemble_workspace_drops_sources_and_keeps_pages_in_order() {
         let provider = InMemorySourceProvider::new()
-            .with_source(source_file("a.adoc", "# A\n"))
-            .with_source(source_file("b.adoc", "# B\n"));
+            .with_source(source_file("team/a.adoc", "# A\n"))
+            .with_source(source_file("team/b.adoc", "# B\n"));
 
         let (parsed, _) = load_pages(&provider);
         let workspace = assemble_workspace(parsed);
@@ -829,7 +835,7 @@ mod tests {
     #[test]
     fn build_artifacts_returns_some_when_no_errors() {
         let provider =
-            InMemorySourceProvider::new().with_source(source_file("guide.adoc", "# Guide\n"));
+            InMemorySourceProvider::new().with_source(source_file("team/guide.adoc", "# Guide\n"));
         let (parsed, _) = load_pages(&provider);
         let workspace = assemble_workspace(parsed);
 

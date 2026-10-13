@@ -115,10 +115,10 @@ fn invalid_derived_page_id_diagnostic(
     error: DerivedPageIdError,
 ) -> Diagnostic {
     use crate::domain::diagnostic::DiagnosticCode;
-    Diagnostic::error(
-        DiagnosticCode::IdInvalid,
+    Diagnostic::warning(
+        DiagnosticCode::SourceSkippedInvalidPathId,
         format!(
-            "Path-derived page ID `{}` is invalid; rename the source path so it satisfies the Object ID grammar",
+            "Path-derived page ID `{}` is invalid; the file is not built",
             error.value
         ),
     )
