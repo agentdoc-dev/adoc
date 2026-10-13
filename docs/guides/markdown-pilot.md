@@ -89,17 +89,18 @@ the canonical guidance for this lives in the
   documented in `crates/adoc-core/src/infrastructure/parser/markdown.rs`.
 - **Markdown at the docs root with a single-segment basename.**
   `README.md` at the top level of a scanned directory produces the
-  path-derived ID `readme`, which fails the Object ID grammar. Place
-  overview content inside a subdirectory (the pilot uses
-  `tutorials/overview.md`). Relaxing this for prose-only pages is a
-  candidate for V4.6+.
+  path-derived ID `readme`, which breaks the Object ID grammar, so the
+  page is skipped with `warning[source.skipped_invalid_path_id]` and not
+  built. Place overview content inside a subdirectory (the pilot uses
+  `tutorials/overview.md`).
 
 ## Updating the Pilot
 
 When adding a fixture file:
 
 1. Add the file at a path that yields a valid two-segment path-derived
-   ID (e.g., `<subdir>/<page>.md`).
+   ID (e.g., `<subdir>/<page>.md`); a single-segment path is skipped and
+   never reaches the budget.
 2. If the file introduces a new diagnostic-triggering construct, update
    the budget table above **and** the exact-match assertions in
    `crates/adoc-cli/tests/markdown_pilot.rs`.

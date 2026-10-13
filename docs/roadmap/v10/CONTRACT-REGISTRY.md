@@ -449,6 +449,7 @@ Explicit mapping (RT-21, like the attestation family): `audit.persistence_failed
 | `semantic_context.failed` |
 | `semantic_context.insufficient_context` |
 | `semantic_context.invalid_document` |
+| `source.skipped_invalid_path_id` |
 | `store.retention_floor_violation` |
 | `task.overdue` |
 | `validation.context_artifact_drift` |

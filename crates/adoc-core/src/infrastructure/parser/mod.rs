@@ -23,7 +23,7 @@ use builders::{CodeBlockBuilder, ListBuilder, ParagraphBuilder};
 use state::ParseState;
 
 use crate::domain::ast::{BlockAst, HeadingAst, ListKind, PageAst};
-use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
+use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::identity::{ObjectId, PageId};
 use crate::domain::inline::{self as domain_inline, InlineOrigin};
 use crate::domain::source::{DerivedPageIdError, SourceFile, derive_page_id};
@@ -183,7 +183,22 @@ pub(crate) fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
     if !has_explicit_page_identity {
         match derived_page_id {
             Ok(id) => page.id = id,
-            Err(error) => diagnostics.push(invalid_derived_page_id_diagnostic(source, error)),
+            Err(error) => {
+                // A failed typed block leaves no block behind, so a page with
+                // any parse error may hold knowledge too: keep the error.
+                let keep_error = diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.severity == Severity::Error)
+                    || page.blocks.iter().any(|block| {
+                        matches!(
+                            block,
+                            BlockAst::KnowledgeObject(_) | BlockAst::KnowledgeObjectPending(_)
+                        )
+                    });
+                diagnostics.push(invalid_derived_page_id_diagnostic(
+                    source, error, keep_error,
+                ));
+            }
         }
     }
     (page, diagnostics)
@@ -314,17 +329,30 @@ fn consume_heading(
     }));
 }
 
+/// cloud#521: a clean prose-only page without a valid ID is skipped with a
+/// warning; a page holding Knowledge Objects or a parse error still fails.
 fn invalid_derived_page_id_diagnostic(
     source: &SourceFile,
     error: DerivedPageIdError,
+    keep_error: bool,
 ) -> Diagnostic {
-    Diagnostic::error(
-        DiagnosticCode::IdInvalid,
-        format!(
-            "Path-derived page ID `{}` is invalid; add a valid @doc(id) annotation or rename the source path",
-            error.value
-        ),
-    )
+    if keep_error {
+        Diagnostic::error(
+            DiagnosticCode::IdInvalid,
+            format!(
+                "Path-derived page ID `{}` is invalid; add a valid @doc(id) annotation or rename the source path",
+                error.value
+            ),
+        )
+    } else {
+        Diagnostic::warning(
+            DiagnosticCode::SourceSkippedInvalidPathId,
+            format!(
+                "Path-derived page ID `{}` is invalid; the file is not built",
+                error.value
+            ),
+        )
+    }
     .with_span(source.span_for_line_columns(1, 1, 1))
     .with_object_id(&error.value)
     .with_help(crate::domain::identity::OBJECT_ID_GRAMMAR_HELP)

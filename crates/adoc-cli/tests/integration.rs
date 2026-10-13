@@ -12,6 +12,7 @@ mod apply_loop;
 mod assess_changes_cli;
 mod billing_pilot;
 mod build_audience_cli;
+mod build_path_id_skip_cli;
 mod check_cli;
 mod config_cli;
 mod constraint_cli;

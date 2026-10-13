@@ -348,7 +348,9 @@ fn compile_workspace_rejects_invalid_explicit_page_id() {
 }
 
 #[test]
-fn compile_workspace_rejects_invalid_path_derived_page_id() {
+fn compile_workspace_skips_prose_page_with_invalid_path_derived_page_id() {
+    // cloud#521: a prose-only page without a valid ID is left out with a
+    // warning instead of failing the whole compilation.
     let workspace = TestWorkspace::new("invalid-path-derived-page-id");
     let source = workspace.write(
         "guide.adoc",
@@ -357,14 +359,10 @@ fn compile_workspace_rejects_invalid_path_derived_page_id() {
 
     let result = compile_workspace(CompileInput { root: source });
 
-    assert!(
-        result.has_errors(),
-        "invalid derived page ID should fail compilation"
-    );
-    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    assert!(!result.has_errors(), "a skipped prose page is not an error");
     assert_eq!(result.diagnostics.len(), 1);
     let diagnostic = &result.diagnostics[0];
-    assert_eq!(diagnostic.code, DiagnosticCode::IdInvalid);
+    assert_eq!(diagnostic.code, DiagnosticCode::SourceSkippedInvalidPathId);
     assert!(
         diagnostic.message.contains("guide"),
         "diagnostic should quote the invalid derived ID: {}",
