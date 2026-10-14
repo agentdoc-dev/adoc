@@ -12,7 +12,7 @@ autotests = false
 
 [dependencies]
 tracing = "0.1"
-adoc-core = { path = "../adoc-core" }
+adoc-core = { path = "../adoc-core", default-features = false }
 chrono = { version = "0.4.42", default-features = false, features = ["clock"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"

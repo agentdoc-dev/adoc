@@ -136,6 +136,12 @@ jobs:
       - name: Lint without default features
         run: cargo clippy -p adoc-core --no-default-features --all-targets --locked -- -D warnings
 
+      # The Cloud runtime archive (native-build.yml) ships this configuration.
+      # No --all-targets: test targets pull adoc-core's default features back in
+      # through the dev-dependency.
+      - name: Lint the Cloud runtime configuration
+        run: cargo clippy -p adoc-cli --no-default-features --locked -- -D warnings
+
       # NOT redundant with the test lane. crates/adoc-cli dev-depends on
       # adoc-core with features = ["test-embedding-provider"], so the binary
       # `cargo test` produces honours ADOC_TEST_EMBEDDING_PROVIDER and swaps in
