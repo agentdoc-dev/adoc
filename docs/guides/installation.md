@@ -1,6 +1,6 @@
 # Install AgentDoc
 
-## Current source preview (0.4.0)
+## Current source (1.0.0-alpha.2)
 
 Use this route for the current README and MCP gateway. Rust 1.95.0 and native
 build tools are required: Xcode Command Line Tools on macOS, or a C/C++ compiler,
@@ -16,7 +16,7 @@ export PATH="$PWD/target/release:$PATH"
 adoc --version
 ```
 
-The last command prints `adoc 0.4.0`. The PATH change lasts for this shell; keep
+The last command prints `adoc 1.0.0-alpha.2`. The PATH change lasts for this shell; keep
 this checkout or install both executables persistently with Cargo:
 
 ```sh
@@ -83,8 +83,8 @@ rerun `check`; failed validation does not make the source valid by skipping buil
 | Windows | Source build qualification only | No release artifact |
 
 The matrix describes build/release routes, not a claim that a future archive has
-already been published. [Version compatibility](releases.md) separates the 0.4.0
-source preview (graph v6/search v2) from published 0.3.4 (graph v5/search v1).
+already been published. [Version compatibility](releases.md) separates the 1.x
+prereleases (graph v6/search v2) from published 0.3.4 (graph v5/search v1).
 Current 0.3.4 archives contain the CLI only; do not expect an MCP binary inside.
 
 Download only from [GitHub releases](https://github.com/agentdoc-dev/adoc/releases).
