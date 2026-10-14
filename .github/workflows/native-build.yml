@@ -12,8 +12,10 @@ env:
 
 jobs:
   build:
-    name: Build (${{ matrix.target }})
+    name: Build (${{ matrix.target }}${{ matrix.package && format(', {0}', matrix.package) || '' }})
     runs-on: ${{ matrix.runner }}
+    # An empty container runs the job on the runner itself.
+    container: ${{ matrix.container }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -21,11 +23,34 @@ jobs:
         include:
           - runner: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+          # The Cloud runtime: `adoc` alone, without local embeddings, built on
+          # Amazon Linux 2023 (glibc 2.34), the OS of Vercel's Node functions.
+          # The default build needs glibc 2.39 and the prebuilt ONNX runtime
+          # behind embeddings needs 2.38, so neither starts there. Cloud runs
+          # adoc with --no-embeddings only.
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            container: amazonlinux:2023
+            max-glibc: "2.34"
+            package: adoc-cloud-runtime
+            cargo-args: -p adoc-cli --no-default-features
+            binaries: adoc
           - runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
           - runner: macos-15
             target: aarch64-apple-darwin
     steps:
+      # Before checkout, which needs git. bash makes later steps run under
+      # `bash -e` as on the other runners; the container's root does not own
+      # the mounted workspace, so git needs it marked safe. rustup then
+      # installs the rust-toolchain.toml toolchain in rust-setup.
+      - name: Prepare the Amazon Linux build host
+        if: matrix.container == 'amazonlinux:2023'
+        run: |
+          dnf install -y --setopt=install_weak_deps=False gcc gcc-c++ make bash perl perl-Digest-SHA openssl-devel git tar gzip file python3 findutils binutils
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -42,40 +67,67 @@ jobs:
           uname -sm
           git rev-parse HEAD
       - name: Build CLI and MCP gateway
-        run: cargo build --release --locked -p adoc-cli -p adoc-mcp
+        run: cargo build --release --locked ${{ matrix.cargo-args || '-p adoc-cli -p adoc-mcp' }}
       - name: Identify the candidate version
         id: version
         run: echo "version=v$(./target/release/adoc --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
       - name: Verify release tag matches the binary
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         run: test "$GITHUB_REF_NAME" = "v$(./target/release/adoc --version | awk '{print $2}')"
+      - name: Verify the glibc floor
+        if: matrix.max-glibc
+        env:
+          MAX_GLIBC: ${{ matrix.max-glibc }}
+          BINARIES: ${{ matrix.binaries || 'adoc adoc-mcp' }}
+        run: |
+          set -o pipefail
+          for name in $BINARIES; do
+            binary="target/release/$name"
+            needed=$(objdump -T "$binary" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -V | tail -1)
+            test -n "$needed"
+            echo "$binary needs glibc $needed"
+            test "$(printf '%s\n%s\n' "$needed" "$MAX_GLIBC" | sort -V | tail -1)" = "$MAX_GLIBC"
+            # Symbol versions miss a newer libstdc++ (GLIBCXX_*), so allow only the C runtime.
+            unexpected=$(objdump -p "$binary" | awk '$1 == "NEEDED" { print $2 }' | grep -Evx 'libc\.so\.6|libm\.so\.6|libgcc_s\.so\.1|ld-linux-x86-64\.so\.2' || true)
+            test -z "$unexpected" || { echo "$binary links $unexpected"; exit 1; }
+          done
       - name: Smoke-check binary against example project
-        run: ./target/release/adoc check examples/expanded-pilot
+        run: |
+          ./target/release/adoc check examples/expanded-pilot
+          ./target/release/adoc build --no-embeddings examples/expanded-pilot
       - name: Package tarball with checksum
         env:
           VERSION: ${{ steps.version.outputs.version }}
+          BINARIES: ${{ matrix.binaries || 'adoc adoc-mcp' }}
         run: |
-          ARCHIVE="adoc-${VERSION}-${{ matrix.target }}.tar.gz"
-          tar -czf "$ARCHIVE" -C target/release adoc adoc-mcp -C "$GITHUB_WORKSPACE" LICENSE
+          ARCHIVE="${{ matrix.package || 'adoc' }}-${VERSION}-${{ matrix.target }}.tar.gz"
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+          # shellcheck disable=SC2086 # BINARIES is a word list
+          tar -czf "$ARCHIVE" -C target/release $BINARIES -C "$GITHUB_WORKSPACE" LICENSE
           case "${{ matrix.target }}" in
             aarch64-apple-darwin) EXPECTED_ARCH='Mach-O 64-bit executable arm64' ;;
             x86_64-unknown-linux-gnu) EXPECTED_ARCH='ELF 64-bit LSB.*x86-64' ;;
             aarch64-unknown-linux-gnu) EXPECTED_ARCH='ELF 64-bit LSB.*ARM aarch64' ;;
             *) exit 1 ;;
           esac
-          for binary in target/release/adoc target/release/adoc-mcp; do file "$binary"; file "$binary" | grep -Eq "$EXPECTED_ARCH"; done
+          for name in $BINARIES; do file "target/release/$name"; file "target/release/$name" | grep -Eq "$EXPECTED_ARCH"; done
           shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256"
           shasum -a 256 -c "$ARCHIVE.sha256"
           mkdir unpacked
           tar -xzf "$ARCHIVE" -C unpacked
       - name: Verify the packaged first-use journey
+        if: ${{ !matrix.binaries }}
         run: python3 scripts/smoke-test.py --bin-dir unpacked --embeddings
+      # smoke-test.py needs adoc-mcp, which this archive does not carry.
+      - name: Smoke-check the unpacked Cloud runtime
+        if: ${{ matrix.binaries }}
+        run: ./unpacked/adoc check examples/expanded-pilot
       - name: Upload build output
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: dist-${{ matrix.target }}
+          name: dist-${{ matrix.package || 'adoc' }}-${{ matrix.target }}
           path: |
-            adoc-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz
-            adoc-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz.sha256
+            ${{ env.ARCHIVE }}
+            ${{ env.ARCHIVE }}.sha256
           if-no-files-found: error
           retention-days: 1

@@ -100,7 +100,11 @@ tar -xzf adoc-v0.3.4-x86_64-unknown-linux-gnu.tar.gz
 These are **Linux** binaries. Use the
 [0.3.4 README](https://github.com/agentdoc-dev/adoc/blob/v0.3.4/README.md) for them.
 Future CLI/MCP archives from the current workflow retain this filename convention
-and include `adoc`, `adoc-mcp`, and `LICENSE`. Where an attestation is available:
+and include `adoc`, `adoc-mcp`, and `LICENSE`. The exception is
+`adoc-cloud-runtime-v<version>-x86_64-unknown-linux-gnu.tar.gz`, built for
+AgentDoc Cloud: it holds only `adoc` and `LICENSE`, runs on glibc 2.34, and has
+no local embeddings, so it supports `--no-embeddings` work only. Do not install it
+for local use. Where an attestation is available:
 
 ```sh
 gh attestation verify <archive.tar.gz> --repo agentdoc-dev/adoc

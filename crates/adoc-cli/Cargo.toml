@@ -17,7 +17,7 @@ path = "src/main.rs"
 [dependencies]
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-adoc-core = { path = "../adoc-core" }
+adoc-core = { path = "../adoc-core", default-features = false }
 adoc-local = { path = "../adoc-local" }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 clap = { version = "4", features = ["derive"] }
@@ -28,6 +28,11 @@ serde_json = "1"
 thiserror = "2.0.17"
 
 [features]
+# Local embedding retrieval (fastembed/ONNX). Off in the Cloud runtime build
+# (`--no-default-features`), which only runs `--no-embeddings` work and must
+# link against glibc 2.34.
+default = ["embeddings"]
+embeddings = ["adoc-core/embeddings"]
 fastembed-it = []
 
 [dev-dependencies]
