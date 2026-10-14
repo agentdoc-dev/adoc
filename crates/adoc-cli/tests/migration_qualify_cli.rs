@@ -657,8 +657,9 @@ fn pinned_git(root: &Path, args: &[&str]) -> String {
     String::from_utf8(out.stdout).unwrap().trim().into()
 }
 
-/// Golden prepare/qualify/import bytes were captured from the pre-v1 binary (a5e6f02d). Regenerate only with
-/// `ADOC_GOLDEN_BIN=<that binary> cargo test ... v0_bytes_match_pre_v1_golden`.
+/// Golden prepare/qualify/import bytes were first captured from the pre-v1 binary (a5e6f02d). On a release
+/// bump, regenerate with `ADOC_GOLDEN_BIN=<the new binary> cargo test ... v0_bytes_match_pre_v1_golden`;
+/// only `runtime.version` and the `candidate_bundle_digest` derived from it may change.
 #[test]
 fn migration_v0_bytes_match_pre_v1_golden() {
     let workspace = TestWorkspace::new("migration-golden");

@@ -2,11 +2,13 @@
 
 ## Choose a version
 
-This checkout is the **0.4.0 source preview**, not a published 0.4.0 release.
+This checkout is the **1.0.0-alpha.2** prerelease source. The latest published
+release is tracked at
+[releases/latest](https://github.com/agentdoc-dev/adoc/releases/latest).
 Build the CLI and MCP gateway from the same checkout. The current source emits
 `adoc.graph.v6` and `adoc.search.v2`.
 
-The latest published release at this update is
+The latest published 0.x release is
 [v0.3.4](https://github.com/agentdoc-dev/adoc/releases/tag/v0.3.4), with Linux CLI
 archives only. It emits graph v5/search v1. Use
 [its versioned README](https://github.com/agentdoc-dev/adoc/blob/v0.3.4/README.md)
