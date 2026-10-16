@@ -37,7 +37,7 @@ The citation points back to editable source. Validation checks the document's st
 
 ## Try it locally
 
-This branch contains the **1.0.0-alpha.2** prerelease. The previous release was **1.0.0-alpha.1**. Build from source for the workflow below.
+This branch contains the **1.0.0-alpha.3** prerelease. The previous release was **1.0.0-alpha.2**. Build from source for the workflow below.
 
 Install [Rustup](https://rustup.rs/) and your platform's native build tools, then:
 

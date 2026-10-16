@@ -166,7 +166,7 @@ fn run_compile_pipeline_counted<P: SourceProvider>(
     today: NaiveDate,
     anchor: Option<&dyn EvidenceFileReader>,
 ) -> (CompileResult, usize) {
-    run_compile_pipeline_gated(provider, build_options, today, anchor, &|_| true)
+    run_compile_pipeline_gated(provider, build_options, today, anchor, true, &|_| true)
 }
 
 /// Compile for one object's render check (issue 286): artifacts are produced
@@ -178,7 +178,7 @@ pub(crate) fn compile_tolerating_for_date<P: SourceProvider>(
     today: NaiveDate,
     blocks: &dyn Fn(&Diagnostic) -> bool,
 ) -> CompileResult {
-    run_compile_pipeline_gated(provider, None, today, None, blocks).0
+    run_compile_pipeline_gated(provider, None, today, None, false, blocks).0
 }
 
 /// `blocks` decides which diagnostics withhold artifacts (errors only).
@@ -187,6 +187,7 @@ fn run_compile_pipeline_gated<P: SourceProvider>(
     mut build_options: Option<BuildOptions<'_>>,
     today: NaiveDate,
     anchor: Option<&dyn EvidenceFileReader>,
+    render_html: bool,
     blocks: &dyn Fn(&Diagnostic) -> bool,
 ) -> (CompileResult, usize) {
     // Refuse unresolved authority before source inspection or embedding setup.
@@ -247,6 +248,7 @@ fn run_compile_pipeline_gated<P: SourceProvider>(
         build_options.as_mut(),
         Some(today),
         repository_identity,
+        render_html,
         blocks,
     );
     let artifacts = artifact_result.artifacts;
@@ -384,6 +386,7 @@ fn build_artifacts(workspace: &WorkspaceAst, diagnostics: &[Diagnostic]) -> Opti
         None,
         None,
         crate::domain::graph::GraphRepositoryIdentity::standalone(),
+        true,
         &|_| true,
     )
     .artifacts
@@ -400,6 +403,7 @@ fn build_artifacts_for_build(
     mut build_options: Option<&mut BuildOptions<'_>>,
     today: Option<NaiveDate>,
     repository_identity: crate::domain::graph::GraphRepositoryIdentity,
+    render_html: bool,
     blocks: &dyn Fn(&Diagnostic) -> bool,
 ) -> ArtifactBuildResult {
     if diagnostics
@@ -426,13 +430,17 @@ fn build_artifacts_for_build(
     let graph_json = graph_document
         .to_pretty_json()
         .expect("graph artifact serialization should not fail");
-    let html = HtmlRenderer.render_workspace_for_date_and_policy(
-        workspace,
-        today,
-        build_options
-            .as_ref()
-            .and_then(|options| options.policy.as_ref()),
-    );
+    let html = if render_html {
+        HtmlRenderer.render_workspace_for_date_and_policy(
+            workspace,
+            today,
+            build_options
+                .as_ref()
+                .and_then(|options| options.policy.as_ref()),
+        )
+    } else {
+        String::new()
+    };
     let prior_search_artifact_path = build_options
         .as_ref()
         .and_then(|options| options.prior_search_artifact_path.clone());
@@ -602,6 +610,28 @@ mod tests {
             result.artifacts.is_none(),
             "artifacts must not be produced when errors are present"
         );
+    }
+
+    #[test]
+    fn tolerant_compile_builds_only_graph_for_unresolved_object_references() {
+        let provider = InMemorySourceProvider::new().with_source(source_file(
+            "source.adoc",
+            "# Render @doc(render.object)\n\n::claim t.source\nstatus: draft\n--\nSee [[t.target]].\n::\n",
+        ));
+
+        let result = compile_tolerating_for_date(&provider, fixed_today(), &|diagnostic| {
+            diagnostic.code != DiagnosticCode::RefBroken
+        });
+
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == DiagnosticCode::RefBroken)
+        );
+        let artifacts = result.artifacts.expect("tolerated reference builds graph");
+        assert!(artifacts.graph_json.contains("t.target"));
+        assert!(artifacts.html.is_empty());
     }
 
     #[test]
