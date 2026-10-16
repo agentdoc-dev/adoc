@@ -1,6 +1,6 @@
 # Install AgentDoc
 
-## Current source (1.0.0-alpha.2)
+## Current source (1.0.0-alpha.3)
 
 Use this route for the current README and MCP gateway. Rust 1.95.0 and native
 build tools are required: Xcode Command Line Tools on macOS, or a C/C++ compiler,
@@ -16,7 +16,7 @@ export PATH="$PWD/target/release:$PATH"
 adoc --version
 ```
 
-The last command prints `adoc 1.0.0-alpha.2`. The PATH change lasts for this shell; keep
+The last command prints `adoc 1.0.0-alpha.3`. The PATH change lasts for this shell; keep
 this checkout or install both executables persistently with Cargo:
 
 ```sh

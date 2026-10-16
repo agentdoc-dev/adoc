@@ -194,6 +194,60 @@ fn render_object_output_is_deterministic_and_exactly_one_block() {
 }
 
 #[test]
+fn render_object_preserves_public_inline_cross_object_reference_for_composition() {
+    let input = json!({
+        "schema_version": "adoc.render_object.v0",
+        "id": "t.source", "kind": "claim", "status": "draft",
+        "body": "See [[t.target]].",
+    });
+    let rendered = TestWorkspace::new("render-object-inline-reference");
+    let out = rendered.root.join("source.adoc");
+    let output = render(&rendered, &input, &out);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let source = fs::read_to_string(&out).expect("rendered source");
+    assert!(source.contains("See [[t.target]]."), "{source}");
+
+    let composed = TestWorkspace::new("render-object-inline-reference-composed");
+    composed.write("docs/objects/source.adoc", &source);
+    composed.write(
+        "docs/objects/target.adoc",
+        "::claim t.target\nstatus: draft\n--\nTarget.\n::\n",
+    );
+    let graph = build_graph(&composed, "dist");
+    let node = objects(&graph)
+        .into_iter()
+        .find(|node| node["id"] == "t.source")
+        .expect("source object");
+    assert_eq!(node["body"], "See [[t.target]].");
+
+    let missing = TestWorkspace::new("render-object-inline-reference-missing");
+    missing.write("docs/objects/source.adoc", &source);
+    let check = adoc_command()
+        .current_dir(&missing.root)
+        .args(["check", "docs"])
+        .output()
+        .expect("check runs");
+    assert!(!check.status.success());
+    assert!(
+        stdout(&check).contains("error[ref.broken]"),
+        "{}",
+        stdout(&check)
+    );
+    let build = adoc_command()
+        .current_dir(&missing.root)
+        .args(["build", "docs", "--out", "dist", "--no-embeddings"])
+        .output()
+        .expect("build runs");
+    assert!(!build.status.success());
+    assert!(
+        stdout(&build).contains("error[ref.broken]"),
+        "{}",
+        stdout(&build)
+    );
+    assert!(!missing.root.join("dist/docs.graph.json").exists());
+}
+
+#[test]
 fn render_object_refuses_bad_input_with_a_structured_error() {
     let workspace = TestWorkspace::new("render-object-refusals");
     let good = json!({

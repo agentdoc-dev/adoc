@@ -2,7 +2,7 @@
 
 ## Choose a version
 
-This checkout is the **1.0.0-alpha.2** prerelease source. The latest published
+This checkout is the **1.0.0-alpha.3** prerelease source. The latest published
 release is tracked at
 [releases/latest](https://github.com/agentdoc-dev/adoc/releases/latest).
 Build the CLI and MCP gateway from the same checkout. The current source emits

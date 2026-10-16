@@ -17,7 +17,7 @@
   "validation_receipt": {
     "schema_version": "adoc.validation_receipt.v0",
     "runtime": {
-      "version": "1.0.0-alpha.2",
+      "version": "1.0.0-alpha.3",
       "binary_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     },
     "contract_versions": {

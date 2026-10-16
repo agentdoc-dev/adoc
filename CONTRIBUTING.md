@@ -1,7 +1,7 @@
 # Contributing to AgentDoc
 
 Thanks for improving AgentDoc. The project is a Rust workspace; the current
-version is the `1.0.0-alpha.2` prerelease. The previous release was `1.0.0-alpha.1`.
+version is the `1.0.0-alpha.3` prerelease. The previous release was `1.0.0-alpha.2`.
 
 ## Before you start
 

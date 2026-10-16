@@ -1,0 +1,17 @@
+{
+  "item": "Native render-object inline references corrective repair",
+  "rounds": [
+    {
+      "round": 1,
+      "stage": "local",
+      "snapshot": "6c2bc672eb821fcd008a95e442b10587cb8d96cc80f44ab6bd208d5a131e0c44",
+      "reviewers": [{ "name": "GPT-6.1 Sol native_inline_reference_review", "status": "complete" }],
+      "evidence": "/private/tmp/agentdoc-render-object-inline-review.md",
+      "findings": []
+    }
+  ],
+  "gates": [{
+    "after_round": 1, "verdict": "stop", "repair": [], "reclassified": [], "repeats": [], "found_work": [],
+    "reason": "Completed independent local review has no findings; source and golden checks support the frozen repair. Workspace/hosted checks remain separate delivery requirements."
+  }]
+}
